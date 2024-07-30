@@ -49,6 +49,10 @@ module Markd
       @stack << style
     end
 
+    def pop : Style
+      @stack.pop
+    end
+
     def last : Style
       @stack.last
     end
@@ -61,7 +65,7 @@ module Markd
       @output_io = String::Builder.new
       @last_output = "\n"
       s = Style.new
-      s.fore = :green
+      s.fore = :white
       s.back = :black
       s.underline = false
       s.bold = false
@@ -81,11 +85,16 @@ module Markd
     def_method line_break
 
     def link(node : Node, entering : Bool)
-      return unless entering
-      s = Style.new
-      s.underline = true
-      s.fore = :blue
-      @style << s
+      if entering
+        s = Style.new
+        s.underline = true
+        s.fore = :blue
+        @style << s
+      else
+        destination = node.data["destination"].as(String)
+        @output_io << @style.apply " <#{destination}>"
+        @style.pop
+      end
     end
 
     def_method list
