@@ -1,9 +1,28 @@
-require "markd"
 require "./markterm"
+require "docopt"
+require "markd"
 
-def main
-  source = File.read(ARGV[0])
-  puts Markd.to_term(source)
+doc = <<-DOC
+Markterm - A tool to render markdown to the terminal
+
+Usage:
+  markterm <file>
+  markterm -h | --help
+  markterm --version
+
+Options:
+  -h --help     Show this screen.
+  --version     Show version.
+DOC
+
+def main(source)
+  puts Markd.to_term(File.read(source))
 end
 
-main()
+options = Docopt.docopt(doc, ARGV)
+if options["--version"]
+  puts "Markterm 0.1.0"
+  exit 0
+end
+
+main(options["<file>"].as(String))
