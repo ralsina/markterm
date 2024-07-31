@@ -8,10 +8,17 @@ and implemented using [Markd](https://github.com/icyleaf/markd)
 
 * If you have [Chroma](https://github.com/alecthomas/chroma)
   it will syntax highlight code blocks
-* It will try to handle light and dark terminal themes
+* It will try to handle light and dark terminal themes. Since
+  it uses the terminal's colors, it should match things like
+  vs code themes in the vs code terminal, etc.
 * In general it tries to look good and not gaudy
 * It will do the right thing if output is not a tty
 * Can be used as a library or as a program
+
+![markterm on a light terminal](https://ralsina.me/markterm/markterm-light.png)
+![markterm on a dark terminal](https://ralsina.me/markterm/markterm-dark.png)
+
+
 
 ## TODO
 
