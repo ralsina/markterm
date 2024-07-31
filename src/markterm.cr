@@ -1,4 +1,5 @@
 require "./terminal"
+require "./styles"
 require "colorize"
 require "markd"
 
@@ -11,103 +12,16 @@ macro def_method(name)
 end
 
 module Markd
-  struct Style
-    property fore : Symbol?
-    property back : Symbol?
-    property bold : Bool?
-    property bright : Bool?
-    property dim : Bool?
-    property blink : Bool?
-    property reverse : Bool?
-    property hidden : Bool?
-    property italic : Bool?
-    property blink_fast : Bool?
-    property strikethrough : Bool?
-    property underline : Bool?
-    property double_underline : Bool?
-    property overline : Bool?
-
-    def initialize(@fore = nil, @back = nil, @bold = nil, @bright = nil, @dim = nil, @blink = nil, @reverse = nil, @hidden = nil, @italic = nil, @blink_fast = nil, @strikethrough = nil, @underline = nil, @double_underline = nil, @overline = nil)
-    end
-
-    macro merge_prop(prop)
-      new.{{prop}} = other.{{prop}}.nil? ? self.{{prop}} : other.{{prop}}
-    end
-
-    def +(other : Style) : Style
-      new = Style.new
-      merge_prop fore
-      merge_prop back
-      merge_prop bold
-      merge_prop bright
-      merge_prop dim
-      merge_prop blink
-      merge_prop reverse
-      merge_prop hidden
-      merge_prop italic
-      merge_prop blink_fast
-      merge_prop strikethrough
-      merge_prop underline
-      merge_prop double_underline
-      merge_prop overline
-      new
-    end
-  end
-
-  struct StyleStack
-    @stack : Array(Style) = [] of Style
-
-    def current : Style
-      @stack.reduce(@stack[0]) { |acc, i| acc + i }
-    end
-
-    macro apply_prop(prop)
-      input = input.{{prop}} if style.{{prop}}
-    end
-
-    def apply(input : String)
-      style = current
-      input = input.colorize
-      input = input.fore(style.fore.as(Symbol)) if style.fore
-      input = input.back(style.back.as(Symbol)) if style.back
-      apply_prop bold
-      apply_prop bright
-      apply_prop dim
-      apply_prop blink
-      apply_prop reverse
-      apply_prop hidden
-      apply_prop italic
-      apply_prop blink_fast
-      apply_prop strikethrough
-      apply_prop underline
-      apply_prop double_underline
-      apply_prop overline
-
-      input
-    end
-
-    def <<(style : Style)
-      @stack << style
-    end
-
-    def pop : Style
-      @stack.pop
-    end
-
-    def last : Style
-      @stack.last
-    end
-  end
 
   class TermRenderer < Renderer
-    @style : StyleStack = StyleStack.new
+    @style : Terminal::StyleStack = Terminal::StyleStack.new
     @indent = ["  "]
     @current_item = [] of Int32
 
     def initialize(@options = Options.new)
       @output_io = String::Builder.new
       @last_output = "\n"
-      @style << Style.new
+      @style << Terminal::Style.new
     end
 
     def print(s)
@@ -119,7 +33,7 @@ module Markd
       if entering
         print "\n"
         @indent << "│ "
-        s = Style.new(fore: :light_gray, italic: true)
+        s = Terminal::Style.new(fore: :light_gray, italic: true)
         @style << s
       else
         @indent.pop
@@ -130,7 +44,7 @@ module Markd
 
     def code(node : Node, entering : Bool)
       if entering
-        @style << Style.new(fore: :red, back: :dark_gray, italic: true)
+        @style << Terminal::Style.new(fore: :red, back: :dark_gray, italic: true)
         print @style.apply(node.text)
         @style.pop
       end
@@ -151,7 +65,7 @@ module Markd
 
     def emphasis(node : Node, entering : Bool)
       if entering
-        @style << Style.new(italic: true)
+        @style << Terminal::Style.new(italic: true)
       else
         @style.pop
       end
@@ -159,7 +73,7 @@ module Markd
 
     def heading(node : Node, entering : Bool)
       if entering
-        @style << Style.new(fore: :cyan, underline: true, bold: true, double_underline: true)
+        @style << Terminal::Style.new(fore: :cyan, underline: true, bold: true, double_underline: true)
         level = node.data["level"].as(Int32)
         print "\n\n"
         print @style.apply("#{"#" * level} ")
@@ -195,7 +109,7 @@ module Markd
 
     def link(node : Node, entering : Bool)
       if entering
-        @style << Style.new(fore: :blue, underline: true)
+        @style << Terminal::Style.new(fore: :blue, underline: true)
       else
         destination = node.data["destination"].as(String)
         print @style.apply "<#{destination}>"
@@ -223,7 +137,7 @@ module Markd
 
     def strong(node : Node, entering : Bool)
       if entering
-        @style << Style.new(bold: true)
+        @style << Terminal::Style.new(bold: true)
       else
         @style.pop
       end
