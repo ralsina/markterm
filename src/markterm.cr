@@ -15,13 +15,14 @@ module Markd
 
   class TermRenderer < Renderer
     @style : Terminal::StyleStack = Terminal::StyleStack.new
+    @theme = Terminal.get_theme
     @indent = ["  "]
     @current_item = [] of Int32
 
     def initialize(@options = Options.new)
       @output_io = String::Builder.new
       @last_output = "\n"
-      @style << Terminal::Style.new
+      @style << @theme["default"]
     end
 
     def print(s)
@@ -33,8 +34,7 @@ module Markd
       if entering
         print "\n"
         @indent << "│ "
-        s = Terminal::Style.new(fore: :light_gray, italic: true)
-        @style << s
+        @style << @theme["block_quote"]
       else
         @indent.pop
         @style.pop
@@ -44,7 +44,7 @@ module Markd
 
     def code(node : Node, entering : Bool)
       if entering
-        @style << Terminal::Style.new(fore: :red, back: :dark_gray, italic: true)
+        @style << @theme["code"]
         print @style.apply(node.text)
         @style.pop
       end
@@ -57,7 +57,7 @@ module Markd
       if languages.nil? || languages.empty?
         print node.text
       else
-        code = highlight(node.text, languages[0])
+        code = Terminal.highlight(node.text, languages[0])
         print code
       end
       @indent.pop
@@ -65,7 +65,7 @@ module Markd
 
     def emphasis(node : Node, entering : Bool)
       if entering
-        @style << Terminal::Style.new(italic: true)
+        @style << @theme["emphasis"]
       else
         @style.pop
       end
@@ -73,7 +73,7 @@ module Markd
 
     def heading(node : Node, entering : Bool)
       if entering
-        @style << Terminal::Style.new(fore: :cyan, underline: true, bold: true, double_underline: true)
+        @style << @theme["heading"]
         level = node.data["level"].as(Int32)
         print "\n\n"
         print @style.apply("#{"#" * level} ")
@@ -109,7 +109,7 @@ module Markd
 
     def link(node : Node, entering : Bool)
       if entering
-        @style << Terminal::Style.new(fore: :blue, underline: true)
+        @style << @theme["link"]
       else
         destination = node.data["destination"].as(String)
         print @style.apply "<#{destination}>"
@@ -137,7 +137,7 @@ module Markd
 
     def strong(node : Node, entering : Bool)
       if entering
-        @style << Terminal::Style.new(bold: true)
+        @style << @theme["strong"]
       else
         @style.pop
       end
@@ -161,18 +161,6 @@ module Markd
         print @style.apply("-" * 40)
         print "\n"
       end
-    end
-
-    def highlight(source : String, language : String) : String
-      result = ""
-      Process.run(
-        "chroma",
-        Process.parse_arguments_posix("-f terminal -l '#{language}' -s autumn"),
-        input: IO::Memory.new(source),
-        output: Process::Redirect::Pipe) do |process|
-        result += process.output.gets_to_end
-      end
-      result
     end
 
     def indent(s, n)

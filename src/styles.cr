@@ -86,4 +86,27 @@ module Terminal
       @stack.last
     end
   end
+
+  def get_theme : Hash(String, Style)
+    t = {} of String => Style
+    t["default"] = Style.new
+    if terminal_light?
+      pp! "LIGHT"
+      t["block_quote"] = Style.new(fore: :black, italic: true)
+      t["code"] = Terminal::Style.new(fore: :red, italic: true)
+      t["emphasis"] = Terminal::Style.new(italic: true)
+      t["heading"] = Terminal::Style.new(fore: :blue, underline: true, bold: true)
+      t["link"] = Terminal::Style.new(fore: :blue, underline: true)
+      t["strong"] = Terminal::Style.new(bold: true)
+    else
+      pp! "DARK"
+      t["block_quote"] = Style.new(fore: :light_gray, italic: true)
+      t["code"] = Terminal::Style.new(fore: :red, back: :dark_gray, italic: true)
+      t["emphasis"] = Terminal::Style.new(italic: true)
+      t["heading"] = Terminal::Style.new(fore: :cyan, underline: true, bold: true)
+      t["link"] = Terminal::Style.new(fore: :blue, underline: true)
+      t["strong"] = Terminal::Style.new(bold: true)
+    end
+    t
+  end
 end

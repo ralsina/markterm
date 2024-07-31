@@ -14,9 +14,13 @@ module Terminal
     # background color by sending an escape sequence.
     # We should only try if we are in a tty
     # and the TERM environment variable is set.
+    # 
+    # This doesn't work in all terminals. For example, alacitty
+    # seems to always return black in all queries.
     if !ENV.fetch("TERM", "").empty? && STDOUT.tty? && STDIN.tty?
       bg = parse_color(query_terminal("11"))
       fg = parse_color(query_terminal("10"))
+      p! bg, fg
 
       if bg.nil? # Who knows!
         return false
@@ -25,9 +29,11 @@ module Terminal
       # Some terms (alacritty) don't support querying the
       # fg color, so we just guess based on the bg color
       if bg == fg || !fg
+        pp! 111, bg.sum
         return bg.sum > 384 # Quick and dirty brightness check
       end
 
+      pp! 222, fg.sum < bg.sum
       return fg.sum < bg.sum # FG is darker, so term is light
     end
     # Let's just assume it's dark
@@ -52,9 +58,22 @@ module Terminal
     STDIN.raw do |io|
       io.each_char do |chr|
         break if chr == "\a" || chr == '\\'
-        result << ch
+        result << chr
       end
     end
     result.to_s
+  end
+
+  def highlight(source : String, language : String) : String
+    style = terminal_light? ? "xcode" : "xcode-dark"
+    result = ""
+    Process.run(
+      "chroma",
+      Process.parse_arguments_posix("-f terminal -l '#{language}' -s #{style}"),
+      input: IO::Memory.new(source),
+      output: Process::Redirect::Pipe) do |process|
+      result += process.output.gets_to_end
+    end
+    result
   end
 end
