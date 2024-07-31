@@ -1,0 +1,5 @@
+FROM --platform=${TARGETPLATFORM:-linux/amd64} alpine:3.20 AS build
+RUN apk add --no-cache \
+    crystal \
+    shards \
+    make
