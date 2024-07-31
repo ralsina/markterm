@@ -57,7 +57,7 @@ Options:
    ```yaml
    dependencies:
      markterm:
-       github: your-github-user/markterm
+       github: ralsina/markterm
    ```
 
 In your code, use it like this:
