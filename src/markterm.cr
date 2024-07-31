@@ -12,10 +12,9 @@ macro def_method(name)
 end
 
 module Markd
-
   class TermRenderer < Renderer
     @style : Terminal::StyleStack = Terminal::StyleStack.new
-    @theme = Terminal.get_theme
+    @theme = Terminal.theme
     @indent = ["  "]
     @current_item = [] of Int32
 
@@ -23,6 +22,7 @@ module Markd
       @output_io = String::Builder.new
       @last_output = "\n"
       @style << @theme["default"]
+      Colorize.on_tty_only!
     end
 
     def print(s)
@@ -97,7 +97,7 @@ module Markd
         end
         print "\n"
         print @style.apply("#{marker} ")
-        @indent << "  "
+        @indent << "   "
       else
         @indent.pop
       end
@@ -161,10 +161,6 @@ module Markd
         print @style.apply("-" * 40)
         print "\n"
       end
-    end
-
-    def indent(s, n)
-      s.split("\n").map { |line| " " * n + line }.join("\n")
     end
 
     def render(document : Node) : String
