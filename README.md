@@ -29,7 +29,26 @@ and implemented using [Markd](https://github.com/icyleaf/markd)
 
 ## Usage as a program
 
-TBW
+Either get a static binary from the [releases page](https://github.com/ralsina/markterm/releases) or build from source:
+
+* Install crystal
+* Checkout the repo
+* run `make`
+
+This is the help:
+
+```
+Markterm - A tool to render markdown to the terminal
+
+Usage:
+  markterm <file>
+  markterm -h | --help
+  markterm --version
+
+Options:
+  -h --help     Show this screen.
+  --version     Show version.
+```
 
 ## Usage as a library
 
