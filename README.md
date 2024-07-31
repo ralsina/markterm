@@ -2,6 +2,9 @@
 
 TODO: Write a description here
 
+> This is a blockquote
+> More quote
+
 ## Installation
 
 1. Add the dependency to your `shard.yml`:

@@ -1,7 +1,7 @@
 module Terminal
   extend self
 
-  def is_terminal_light : Bool
+  def terminal_light? : Bool
     # If the COLORFGBG environment variable is set, we can use
     # it to determine the result. It will be something like
     # `15;0` or `0;15`. The first number is the foreground color
@@ -25,7 +25,7 @@ module Terminal
       # Some terms (alacritty) don't support querying the
       # fg color, so we just guess based on the bg color
       if bg == fg || !fg
-        return bg.sum > 384  # Quick and dirty brightness check
+        return bg.sum > 384 # Quick and dirty brightness check
       end
 
       return fg.sum < bg.sum # FG is darker, so term is light
@@ -50,9 +50,9 @@ module Terminal
     STDOUT.flush
     result = String::Builder.new
     STDIN.raw do |io|
-      io.each_char do |c|
-        break if c == "\a" || c == '\\'
-        result << c
+      io.each_char do |chr|
+        break if chr == "\a" || chr == '\\'
+        result << ch
       end
     end
     result.to_s

@@ -1,5 +1,6 @@
-require "markd"
+require "./terminal"
 require "colorize"
+require "markd"
 
 macro def_method(name)
   def {{name}}(node : Node, entering : Bool)
@@ -11,20 +12,23 @@ end
 
 module Markd
   struct Style
-    property fore : Symbol? = nil
-    property back : Symbol? = nil
-    property bold : Bool? = nil
-    property bright : Bool? = nil
-    property dim : Bool? = nil
-    property blink : Bool? = nil
-    property reverse : Bool? = nil
-    property hidden : Bool? = nil
-    property italic : Bool? = nil
-    property blink_fast : Bool? = nil
-    property strikethrough : Bool? = nil
-    property underline : Bool? = nil
-    property double_underline : Bool? = nil
-    property overline : Bool? = nil
+    property fore : Symbol?
+    property back : Symbol?
+    property bold : Bool?
+    property bright : Bool?
+    property dim : Bool?
+    property blink : Bool?
+    property reverse : Bool?
+    property hidden : Bool?
+    property italic : Bool?
+    property blink_fast : Bool?
+    property strikethrough : Bool?
+    property underline : Bool?
+    property double_underline : Bool?
+    property overline : Bool?
+
+    def initialize(@fore = nil, @back = nil, @bold = nil, @bright = nil, @dim = nil, @blink = nil, @reverse = nil, @hidden = nil, @italic = nil, @blink_fast = nil, @strikethrough = nil, @underline = nil, @double_underline = nil, @overline = nil)
+    end
 
     macro merge_prop(prop)
       new.{{prop}} = other.{{prop}}.nil? ? self.{{prop}} : other.{{prop}}
@@ -103,13 +107,7 @@ module Markd
     def initialize(@options = Options.new)
       @output_io = String::Builder.new
       @last_output = "\n"
-      s = Style.new
-      s.fore = nil
-      s.back = nil
-      s.underline = false
-      s.bold = false
-      s.italic = false
-      @style << s
+      @style << Style.new
     end
 
     def print(s)
@@ -121,9 +119,7 @@ module Markd
       if entering
         print "\n"
         @indent << "│ "
-        s = Style.new
-        s.fore = :light_gray
-        s.italic = true
+        s = Style.new(fore: :light_gray, italic: true)
         @style << s
       else
         @indent.pop
@@ -134,11 +130,7 @@ module Markd
 
     def code(node : Node, entering : Bool)
       if entering
-        s = Style.new
-        s.fore = :red
-        s.back = :dark_gray
-        s.italic = true
-        @style << s
+        @style << Style.new(fore: :red, back: :dark_gray, italic: true)
         print @style.apply(node.text)
         @style.pop
       end
@@ -159,9 +151,7 @@ module Markd
 
     def emphasis(node : Node, entering : Bool)
       if entering
-        s = Style.new
-        s.italic = true
-        @style << s
+        @style << Style.new(italic: true)
       else
         @style.pop
       end
@@ -169,12 +159,7 @@ module Markd
 
     def heading(node : Node, entering : Bool)
       if entering
-        s = Style.new
-        s.underline = true
-        s.bold = true
-        s.double_underline = true
-        s.fore = :cyan
-        @style << s
+        @style << Style.new(fore: :cyan, underline: true, bold: true, double_underline: true)
         level = node.data["level"].as(Int32)
         print "\n\n"
         print @style.apply("#{"#" * level} ")
@@ -210,10 +195,7 @@ module Markd
 
     def link(node : Node, entering : Bool)
       if entering
-        s = Style.new
-        s.underline = true
-        s.fore = :blue
-        @style << s
+        @style << Style.new(fore: :blue, underline: true)
       else
         destination = node.data["destination"].as(String)
         print @style.apply "<#{destination}>"
@@ -241,9 +223,7 @@ module Markd
 
     def strong(node : Node, entering : Bool)
       if entering
-        s = Style.new
-        s.bold = true
-        @style << s
+        @style << Style.new(bold: true)
       else
         @style.pop
       end
