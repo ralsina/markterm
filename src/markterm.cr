@@ -109,7 +109,7 @@ module Markd
 
     # The `link` method sets the style but doesn't
     # print the link, the children nodes do that.
-    # 
+    #
     # They will get the destination by looking up
     # their parent.
     def link(node : Node, entering : Bool)
@@ -137,7 +137,12 @@ module Markd
     end
 
     def soft_break(node : Node, entering : Bool)
-      print "\n"
+      # When in a paragraph, soft breaks are just spaces.
+      if node.parent.try &.type == Node::Type::Paragraph
+        print @style.apply " "
+      else
+        print "\n"
+      end
     end
 
     def strong(node : Node, entering : Bool)

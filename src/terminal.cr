@@ -2,8 +2,8 @@ module Terminal
   extend self
 
   def supports_links? : Bool
-    (["kitty", "alacritty"].includes? ENV["TERM"]) ||
-      (ENV["TERM_PROGRAM"] == "vscode")
+    STDOUT.tty? && ((["kitty", "alacritty"].includes? ENV["TERM"]) ||
+      (ENV["TERM_PROGRAM"] == "vscode"))
   end
 
   def terminal_light? : Bool
