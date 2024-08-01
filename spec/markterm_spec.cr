@@ -40,7 +40,7 @@ describe "Markterm" do
       )
     end
     it "uses OSC 8 for links when TERM is kitty" do
-      ENV["TERM"] = "kitty"
+      ENV["TERM"] = "xterm-kitty"
       Markd.to_term("[foo](http://go.to)").should eq(
         "  \e[34;4m\e]8;;http://go.to\e\\foo\e]8;;\e\\\e[0m"
       )

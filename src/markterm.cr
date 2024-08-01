@@ -85,7 +85,20 @@ module Markd
 
     def_method html_block
     def_method html_inline
-    def_method image
+
+    def image(node : Node, entering : Bool)
+      title = node.data["title"].as(String) + " "
+      if entering
+        if Terminal.supports_images?
+          Colorize.reset
+          print "\n\n" + Terminal.show_image(node.data["destination"].as(String)) + "\n"
+        else
+          print @style.apply "\n\n[#{title}#{node.data["destination"].as(String)}]\n"
+        end
+      else
+        print "\n"
+      end
+    end
 
     def item(node : Node, entering : Bool)
       if entering

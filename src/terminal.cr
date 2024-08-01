@@ -2,8 +2,12 @@ module Terminal
   extend self
 
   def supports_links? : Bool
-    STDOUT.tty? && ((["kitty", "alacritty"].includes? ENV["TERM"]) ||
+    STDOUT.tty? && ((["xterm-kitty", "kitty", "alacritty"].includes? ENV["TERM"]) ||
       (ENV["TERM_PROGRAM"] == "vscode"))
+  end
+
+  def supports_images? : Bool
+    !Process.find_executable("timg").nil? || !Process.find_executable("catimg").nil?
   end
 
   def terminal_light? : Bool
@@ -64,6 +68,22 @@ module Terminal
       end
     end
     result.to_s
+  end
+
+  def show_image(path : String) : String
+    result = ""
+    return result unless supports_images?
+
+    if ENV["TERM"] == "xterm-kitty" && Process.find_executable("timg")
+      tmpfile = File.tempname
+      Process.run("timg", ["-p", "k", "-o", tmpfile, path], error: STDERR, output: STDERR)
+      result = File.read(tmpfile)
+    else
+      Process.run("catimg", [path, "-w", "256"], output: Process::Redirect::Pipe) do |process|
+        result += process.output.gets_to_end
+      end
+    end
+    result
   end
 
   def highlight(source : String, language : String) : String
