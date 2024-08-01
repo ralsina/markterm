@@ -23,7 +23,7 @@ and implemented using [Markd](https://github.com/icyleaf/markd)
 ## TODO
 
 * Configurable themes
-* Implement HTML-style links as supported in kitty/alacritty
+* ✅ Implement HTML-style links as supported in kitty/alacritty
 * Implement images as supported in kitty
 * Fix whatever bug is there
 

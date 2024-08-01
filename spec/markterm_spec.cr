@@ -10,6 +10,10 @@ basic_style.italic = false
 fore_only = Terminal::Style.new
 fore_only.fore = :red
 
+# These variables affect test outcomes
+ENV["TERM"] = "xterm"
+ENV["TERM_PROGRAM"] = "xterm"
+
 describe "Markterm" do
   describe "TermRenderer" do
     it "works" do
@@ -27,7 +31,7 @@ describe "Markterm" do
     end
     it "does links with text" do
       Markd.to_term("[foo](http://go.to)").should eq(
-        "  \e[34;4mfoo \e[0m\e[34;4m<http://go.to>\e[0m"
+        "  \e[34;4mfoo <http://go.to>\e[0m"
       )
     end
     it "removes text if it's just the URL" do
@@ -35,10 +39,12 @@ describe "Markterm" do
         "  \e[34;4m<http://go.to>\e[0m"
       )
     end
-    pending "uses OSC 8 for links when TERM is kitty" do
+    it "uses OSC 8 for links when TERM is kitty" do
+      ENV["TERM"] = "kitty"
       Markd.to_term("[foo](http://go.to)").should eq(
-        "  \e]8;;https://go.to\e\\foo\e]8;;\e\\"
+        "  \e[34;4m\e]8;;http://go.to\e\\foo\e]8;;\e\\\e[0m"
       )
+      ENV["TERM"] = "xterm"
     end
   end
   describe "Style" do

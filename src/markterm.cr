@@ -107,12 +107,17 @@ module Markd
       print "\n"
     end
 
+    # The `link` method sets the style but doesn't
+    # print the link, the children nodes do that.
+    # 
+    # They will get the destination by looking up
+    # their parent.
     def link(node : Node, entering : Bool)
       if entering
         @style << @theme["link"]
       else
-        destination = node.data["destination"].as(String)
-        print @style.apply "<#{destination}>"
+        # destination = node.data["destination"].as(String)
+        # print @style.apply "<#{destination}>"
         @style.pop
       end
     end
@@ -145,10 +150,20 @@ module Markd
 
     def text(node : Node, entering : Bool)
       if node.parent?.try &.type == Node::Type::Link
-        if node.parent.data["destination"].as(String) == node.text
-          # Do nothing
+        # The parent node is a link, so we need to handle
+        # specially.
+        dest = node.parent.data["destination"].as(String)
+        if dest == node.text
+          # This is a bare URL, just print it.
+          print @style.apply "<#{dest}>"
         else
-          print @style.apply "#{node.text} "
+          # This is a link with text. In some terminals, we can get fancy
+          # and show a HTML-style hyperlink.
+          if Terminal.supports_links?
+            print @style.apply "\e]8;;#{dest}\e\\#{node.text}\e]8;;\e\\"
+          else
+            print @style.apply "#{node.text} <#{dest}>"
+          end
         end
       else
         print @style.apply node.text

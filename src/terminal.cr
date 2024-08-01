@@ -1,6 +1,11 @@
 module Terminal
   extend self
 
+  def supports_links? : Bool
+    (["kitty", "alacritty"].includes? ENV["TERM"]) ||
+      (ENV["TERM_PROGRAM"] == "vscode")
+  end
+
   def terminal_light? : Bool
     # If the COLORFGBG environment variable is set, we can use
     # it to determine the result. It will be something like
