@@ -15,8 +15,8 @@ and implemented using [Markd](https://github.com/icyleaf/markd)
 * It will do the right thing if output is not a tty
 * Can be used as a library or as a program
 
-![markterm on a light terminal](markterm-light.png)
-![markterm on a dark terminal](markterm-dark.png)
+![markterm on a light terminal](https://ralsina.me/markterm/markterm-light.png)
+![markterm on a dark terminal](https://ralsina.me/markterm/markterm-dark.png)
 
 
 
