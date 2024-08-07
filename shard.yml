@@ -14,6 +14,8 @@ dependencies:
   markd:
     github: icyleaf/markd
   docopt:
-    github: chenkovsky/docopt.cr  
+    github: chenkovsky/docopt.cr
+  tartrazine:
+    github: ralsina/tartrazine
 
 license: MIT

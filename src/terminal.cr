@@ -1,3 +1,5 @@
+require "tartrazine"
+
 module Terminal
   extend self
 
@@ -88,16 +90,10 @@ module Terminal
 
   def highlight(source : String, language : String) : String
     return source unless STDOUT.tty?
-    return source unless Process.find_executable("chroma")
-    style = terminal_light? ? "xcode" : "xcode-dark"
-    result = ""
-    Process.run(
-      "chroma",
-      Process.parse_arguments_posix("-f terminal -l '#{language}' -s #{style}"),
-      input: IO::Memory.new(source),
-      output: Process::Redirect::Pipe) do |process|
-      result += process.output.gets_to_end
-    end
-    result
+    style = terminal_light? ? "base16_edge-light" : "base16_edge-dark"
+
+    lexer = Tartrazine.lexer(language)
+    theme = Tartrazine.theme(style)
+    Tartrazine::Ansi.new.format(source, lexer, theme)
   end
 end
