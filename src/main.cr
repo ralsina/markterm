@@ -6,12 +6,13 @@ doc = <<-DOC
 Markterm - A tool to render markdown to the terminal
 
 Usage:
-  markterm <file>
+  markterm <file> [-t <theme>]
   markterm -h | --help
   markterm --version
 
 Options:
   -h --help     Show this screen.
+  -t <theme>    Which theme to use
   --version     Show version.
 DOC
 
