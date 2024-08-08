@@ -6,8 +6,7 @@ and implemented using [Markd](https://github.com/icyleaf/markd)
 
 ## Features
 
-* If you have [Chroma](https://github.com/alecthomas/chroma)
-  it will syntax highlight code blocks
+* It will syntax highlight code blocks
 * It will try to handle light and dark terminal themes. Since
   it uses the terminal's colors, it should match things like
   vs code themes in the vs code terminal, etc.
