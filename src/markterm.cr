@@ -15,12 +15,15 @@ module Markd
   class TermRenderer < Renderer
     @style : Terminal::StyleStack = Terminal::StyleStack.new
     @theme = Terminal.theme
+    @code_theme : String?
     @indent = ["  "]
     @current_item = [] of Int32
 
-    def initialize(@options = Options.new)
+    def initialize(@options = Options.new, theme : String? = nil, code_theme : String? = nil)
       @output_io = String::Builder.new
       @last_output = "\n"
+      @theme = Terminal.theme(theme)
+      @code_theme = code_theme
       @style << @theme["default"]
       Colorize.on_tty_only!
     end
@@ -57,7 +60,7 @@ module Markd
       if languages.nil? || languages.empty?
         print node.text
       else
-        code = Terminal.highlight(node.text, languages[0])
+        code = Terminal.highlight(node.text, languages[0], @code_theme)
         print code
       end
       @indent.pop
@@ -201,10 +204,11 @@ module Markd
     end
   end
 
-  def self.to_term(source : String, options = Options.new) : String
+  def self.to_term(source : String, options = Options.new,
+                   theme : String? = nil, code_theme : String? = nil) : String
     return "" if source.empty?
     document = Parser.parse(source, options)
-    renderer = TermRenderer.new(options)
+    renderer = TermRenderer.new(options, theme, code_theme)
     renderer.render(document)
   end
 end

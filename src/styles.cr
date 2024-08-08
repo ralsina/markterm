@@ -1,7 +1,9 @@
+require "sixteen"
+
 module Terminal
   struct Style
-    property fore : Symbol?
-    property back : Symbol?
+    property fore : Symbol | Colorize::ColorRGB | Nil
+    property back : Symbol | Colorize::ColorRGB | Nil
     property bold : Bool?
     property bright : Bool?
     property dim : Bool?
@@ -56,8 +58,8 @@ module Terminal
     def apply(input : String)
       style = current
       input = input.colorize
-      input = input.fore(style.fore.as(Symbol)) if style.fore
-      input = input.back(style.back.as(Symbol)) if style.back
+      style.fore.try { |col| input.fore(col) }
+      style.back.try { |col| input.back(col) }
       apply_prop bold
       apply_prop bright
       apply_prop dim
@@ -87,24 +89,42 @@ module Terminal
     end
   end
 
-  def theme : Hash(String, Style)
+  def theme(name : String? = nil) : Hash(String, Style)
     t = {} of String => Style
     t["default"] = Style.new
-    if terminal_light?
-      t["block_quote"] = Style.new(fore: :black, italic: true)
-      t["code"] = Terminal::Style.new(fore: :red, italic: true)
-      t["emphasis"] = Terminal::Style.new(italic: true)
-      t["heading"] = Terminal::Style.new(fore: :blue, underline: true, bold: true)
-      t["link"] = Terminal::Style.new(fore: :blue, underline: true)
-      t["strong"] = Terminal::Style.new(bold: true)
+    if name.nil?
+      if terminal_light?
+        t["block_quote"] = Style.new(fore: :black, italic: true)
+        t["code"] = Terminal::Style.new(fore: :red, italic: true)
+        t["emphasis"] = Terminal::Style.new(italic: true)
+        t["heading"] = Terminal::Style.new(fore: :blue, underline: true, bold: true)
+        t["link"] = Terminal::Style.new(fore: :blue, underline: true)
+        t["strong"] = Terminal::Style.new(bold: true)
+      else
+        t["block_quote"] = Style.new(fore: :light_gray, italic: true)
+        t["code"] = Terminal::Style.new(fore: :light_red, italic: true)
+        t["emphasis"] = Terminal::Style.new(italic: true)
+        t["heading"] = Terminal::Style.new(fore: :cyan, underline: true, bold: true)
+        t["link"] = Terminal::Style.new(fore: :blue, underline: true)
+        t["strong"] = Terminal::Style.new(bold: true)
+      end
     else
-      t["block_quote"] = Style.new(fore: :light_gray, italic: true)
-      t["code"] = Terminal::Style.new(fore: :light_red, italic: true)
+      base16 = Sixteen.theme(name).palette
+      t["block_quote"] = Style.new(fore: rgb(base16["base05"]), italic: true)
+      t["code"] = Terminal::Style.new(fore: rgb(base16["base0B"]), italic: true)
       t["emphasis"] = Terminal::Style.new(italic: true)
-      t["heading"] = Terminal::Style.new(fore: :cyan, underline: true, bold: true)
-      t["link"] = Terminal::Style.new(fore: :blue, underline: true)
+      t["heading"] = Terminal::Style.new(fore: rgb(base16["base0D"]), underline: true, bold: true)
+      t["link"] = Terminal::Style.new(fore: rgb(base16["base09"]), underline: true)
       t["strong"] = Terminal::Style.new(bold: true)
     end
     t
+  end
+
+  # Get rid of this here and in tartrazine
+  def rgb(c : String)
+    r = c[0..1].to_u8(16)
+    g = c[2..3].to_u8(16)
+    b = c[4..5].to_u8(16)
+    Colorize::ColorRGB.new(r, g, b)
   end
 end

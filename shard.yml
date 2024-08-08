@@ -17,5 +17,7 @@ dependencies:
     github: chenkovsky/docopt.cr
   tartrazine:
     github: ralsina/tartrazine
+  sixteen:
+    github: ralsina/sixteen
 
 license: MIT

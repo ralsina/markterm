@@ -88,9 +88,13 @@ module Terminal
     result
   end
 
-  def highlight(source : String, language : String) : String
+  def highlight(source : String, language : String, theme : String?) : String
     return source unless STDOUT.tty?
-    style = terminal_light? ? "base16_papercolor-light" : "base16_papercolor-dark"
+    if theme.nil?
+      style = terminal_light? ? "base16_papercolor-light" : "base16_papercolor-dark"
+    else
+      style = "base16_#{theme}"
+    end
     theme = Tartrazine.theme(style)
     lexer = Tartrazine.lexer(language)
     Tartrazine::Ansi.new.format(source, lexer, theme)
