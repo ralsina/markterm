@@ -21,7 +21,7 @@ and implemented using [Markd](https://github.com/icyleaf/markd)
 
 ## TODO
 
-* Configurable themes
+* ✅ Configurable themes
 * ✅ Implement HTML-style links as supported in kitty/alacritty
 * ✅ Don't break paragraphs on soft breaks
 * ✅ Implement images as supported in kitty (requires timg, kinda buggy)
