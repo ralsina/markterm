@@ -109,22 +109,14 @@ module Terminal
         t["strong"] = Terminal::Style.new(bold: true)
       end
     else
-      base16 = Sixteen.theme(name).palette
-      t["block_quote"] = Style.new(fore: rgb(base16["base05"]), italic: true)
-      t["code"] = Terminal::Style.new(fore: rgb(base16["base0B"]), italic: true)
+      base16 = Sixteen.theme(name)
+      t["block_quote"] = Style.new(fore: base16["05"].colorize, italic: true)
+      t["code"] = Terminal::Style.new(fore: base16["0B"].colorize, italic: true)
       t["emphasis"] = Terminal::Style.new(italic: true)
-      t["heading"] = Terminal::Style.new(fore: rgb(base16["base0D"]), underline: true, bold: true)
-      t["link"] = Terminal::Style.new(fore: rgb(base16["base09"]), underline: true)
+      t["heading"] = Terminal::Style.new(fore: base16["0D"].colorize, underline: true, bold: true)
+      t["link"] = Terminal::Style.new(fore: base16["09"].colorize, underline: true)
       t["strong"] = Terminal::Style.new(bold: true)
     end
     t
-  end
-
-  # Get rid of this here and in tartrazine
-  def rgb(c : String)
-    r = c[0..1].to_u8(16)
-    g = c[2..3].to_u8(16)
-    b = c[4..5].to_u8(16)
-    Colorize::ColorRGB.new(r, g, b)
   end
 end
