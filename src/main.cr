@@ -21,9 +21,11 @@ def main(source, theme, code_theme)
   puts Markd.to_term(File.read(source), theme: theme, code_theme: code_theme)
 end
 
+VERSION = {{ `shards version #{__DIR__}`.chomp.stringify }}
+
 options = Docopt.docopt(doc, ARGV)
 if options["--version"]
-  puts "Markterm 0.1.0"
+  puts "Markterm #{VERSION}"
   exit 0
 end
 
