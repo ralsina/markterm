@@ -1,4 +1,4 @@
-require "tartrazine"
+require "tartrazine/formatters/ansi"
 
 module Terminal
   extend self
@@ -91,12 +91,12 @@ module Terminal
   def highlight(source : String, language : String, theme : String?) : String
     return source unless STDOUT.tty?
     if theme.nil?
-      style = terminal_light? ? "base16_papercolor-light" : "base16_papercolor-dark"
+      style = terminal_light? ? "papercolor-light" : "papercolor-dark"
     else
-      style = "base16_#{theme}"
+      style = "#{theme}"
     end
-    theme = Tartrazine.theme(style)
+    formatter = Tartrazine::Ansi.new(theme: Tartrazine.theme(style))
     lexer = Tartrazine.lexer(language)
-    Tartrazine::Ansi.new.format(source, lexer, theme)
+    formatter.format(source, lexer)
   end
 end
