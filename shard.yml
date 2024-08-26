@@ -19,5 +19,6 @@ dependencies:
     github: ralsina/tartrazine
   sixteen:
     github: ralsina/sixteen
+    branch: main
 
 license: MIT
