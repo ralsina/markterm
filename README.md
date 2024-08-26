@@ -17,8 +17,6 @@ and implemented using [Markd](https://github.com/icyleaf/markd)
 ![markterm on a light terminal](https://ralsina.me/markterm/markterm-light.png)
 ![markterm on a dark terminal](https://ralsina.me/markterm/markterm-dark.png)
 
-
-
 ## TODO
 
 * ✅ Configurable themes
@@ -33,7 +31,8 @@ and implemented using [Markd](https://github.com/icyleaf/markd)
 
 ## Usage as a program
 
-Either get a static binary from the [releases page](https://github.com/ralsina/markterm/releases) or build from source:
+Either get a static binary from the [releases page](https://github.com/ralsina/markterm/releases)
+or build from source:
 
 * Install crystal
 * Checkout the repo
@@ -41,7 +40,7 @@ Either get a static binary from the [releases page](https://github.com/ralsina/m
 
 This is the help:
 
-```
+```docopt
 Markterm - A tool to render markdown to the terminal
 
 Usage:
@@ -80,4 +79,4 @@ In your code, use it like this:
 
 ## Contributors
 
-- [Roberto Alsina](https://github.com/ralsina) - creator and maintainer
+* [Roberto Alsina](https://github.com/ralsina) - creator and maintainer
