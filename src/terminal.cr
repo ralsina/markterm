@@ -5,7 +5,7 @@ module Terminal
 
   def supports_links? : Bool
     STDOUT.tty? && ((["xterm-kitty", "kitty", "alacritty"].includes? ENV["TERM"]) ||
-      (ENV["TERM_PROGRAM"] == "vscode"))
+      (ENV.fetch("TERM_PROGRAM", nil) == "vscode"))
   end
 
   def supports_images? : Bool
