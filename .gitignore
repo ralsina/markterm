@@ -3,6 +3,7 @@
 /bin/
 /.shards/
 *.dwarf
+.crystal/
 
 # Libraries don't need dependency lock
 # Dependencies will be locked in applications that use them
