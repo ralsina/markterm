@@ -3,7 +3,7 @@
 
 repos:
     - repo: https://github.com/pre-commit/pre-commit-hooks
-      rev: v4.4.0
+      rev: v4.6.0
       hooks:
           - id: trailing-whitespace
           - id: end-of-file-fixer
@@ -22,7 +22,7 @@ repos:
           - id: checkmake
             exclude: lexers/makefile.xml
     - repo: https://github.com/python-jsonschema/check-jsonschema
-      rev: 0.23.2
+      rev: 0.29.2
       hooks:
           - id: check-github-workflows
     - repo: https://github.com/commitizen-tools/commitizen
