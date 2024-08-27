@@ -26,6 +26,7 @@ and implemented using [Markd](https://github.com/icyleaf/markd)
 * ✅ Images in all terminals (requires catimg, kinda useless)
 * Use crystal-term/color to detect color capabilities
 * Better textual image display when images are not supported
+* Implement HTML block support
 * Maybe only support timg with options
 * Fix whatever bug is there
 
