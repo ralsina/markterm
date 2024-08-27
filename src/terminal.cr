@@ -96,7 +96,11 @@ module Terminal
       style = "#{theme}"
     end
     formatter = Tartrazine::Ansi.new(theme: Tartrazine.theme(style))
-    lexer = Tartrazine.lexer(language)
+    begin
+      lexer = Tartrazine.lexer(language)
+    rescue
+      lexer = Tartrazine.lexer("plaintext")
+    end
     formatter.format(source, lexer)
   end
 end
