@@ -21,4 +21,8 @@ dependencies:
     github: ralsina/sixteen
     branch: main
 
+development_dependencies:
+  ameba:
+    github: crystal-ameba/ameba
+
 license: MIT
