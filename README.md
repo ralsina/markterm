@@ -37,7 +37,7 @@ or build from source:
 
 * Install crystal
 * Checkout the repo
-* run `make`
+* run `shards build`
 
 This is the help:
 
