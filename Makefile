@@ -17,4 +17,7 @@ test:
 lint:
 	ameba --fix src spec
 
+changelog:
+	git cliff -o --sort=newest
+
 .PHONY: clean all test bin lint

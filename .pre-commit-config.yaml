@@ -20,7 +20,16 @@ repos:
       rev: 0.2.2
       hooks:
           - id: checkmake
+            exclude: lexers/makefile.xml
     - repo: https://github.com/python-jsonschema/check-jsonschema
       rev: 0.23.2
       hooks:
           - id: check-github-workflows
+    - repo: https://github.com/commitizen-tools/commitizen
+      rev: v3.29.0 # automatically updated by Commitizen
+      hooks:
+        - id: commitizen
+        - id: commitizen-branch
+          stages:
+            - post-commit
+            - push
