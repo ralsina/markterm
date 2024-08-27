@@ -1,0 +1,91 @@
+variables:
+  FLAGS: "-d --error-trace"
+  NAME: "markterm"
+
+tasks:
+  build:
+    default: true
+    dependencies:
+      - src
+      - shard.lock
+      - shard.yml
+      - Hacefile.yml
+    outputs:
+      - bin/markterm
+    commands: |
+      shards build {{FLAGS}}
+
+  get-deps:
+    default: false
+    dependencies:
+      - shard.yml
+    outputs:
+      - shard.lock
+    commands: |
+      shards install
+
+  build-release:
+    phony: true
+    always_run: true
+    default: false
+    commands: |
+      hace build FLAGS="--release"
+
+  install:
+    default: false
+    phony: true
+    always_run: true
+    dependencies:
+      - bin/markterm
+    commands: |
+      rm ${HOME}/.local/bin/markterm
+      cp bin/markterm ${HOME}/.local/bin/markterm
+
+  static:
+    default: false
+    outputs:
+      - bin/markterm-static-linux-amd64
+      - bin/markterm-static-linux-arm64
+    commands: |
+      hace clean
+      ./build_static.sh
+
+  test:
+    default: false
+    dependencies:
+      - src
+      - spec
+      - shard.lock
+      - shard.yml
+    commands: |
+      crystal spec -v --error-trace
+    phony: true
+    always_run: true
+
+  lint:
+    default: false
+    dependencies:
+      - src
+      - spec
+      - shard.lock
+      - shard.yml
+    commands: |
+      crystal tool format src/*.cr spec/*.cr
+      bin/ameba --fix
+    always_run: true
+    phony: true
+
+  pre-commit:
+    default: true
+    outputs:
+      - .git/hooks/commit-msg
+      - .git/hooks/pre-commit
+    commands: |
+      pre-commit install --hook-type commit-msg
+      pre-commit install
+
+  clean:
+    phony: true
+    always_run: true
+    commands: |
+      rm -rf shard.lock bin lib
