@@ -25,7 +25,6 @@ module Markd
       @theme = Terminal.theme(theme)
       @code_theme = code_theme
       @style << @theme["default"]
-      Colorize.on_tty_only!
     end
 
     def print(s)

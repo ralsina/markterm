@@ -89,7 +89,6 @@ module Terminal
   end
 
   def highlight(source : String, language : String, theme : String?) : String
-    return source unless STDOUT.tty?
     if theme.nil?
       style = terminal_light? ? "papercolor-light" : "papercolor-dark"
     else
