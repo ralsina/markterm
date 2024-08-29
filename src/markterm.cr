@@ -85,8 +85,14 @@ module Markd
       end
     end
 
-    def_method html_block
-    def_method html_inline
+    def html_block(node : Node, entering : Bool)
+      print "\n\n"
+      print Terminal.highlight(node.text, "html", @code_theme)
+    end
+
+    def html_inline(node : Node, entering : Bool)
+      print Terminal.highlight(node.text, "html", @code_theme)
+    end
 
     def image(node : Node, entering : Bool)
       title = node.data["title"].as(String) + " "

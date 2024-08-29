@@ -24,9 +24,9 @@ and implemented using [Markd](https://github.com/icyleaf/markd)
 * ✅ Don't break paragraphs on soft breaks
 * ✅ Implement images as supported in kitty (requires timg, kinda buggy)
 * ✅ Images in all terminals (requires catimg, kinda useless)
+* ✅ Implement HTML block support
 * Use crystal-term/color to detect color capabilities
 * Better textual image display when images are not supported
-* Implement HTML block support
 * Maybe only support timg with options
 * Fix whatever bug is there
 
