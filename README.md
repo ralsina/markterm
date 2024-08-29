@@ -25,9 +25,9 @@ and implemented using [Markd](https://github.com/icyleaf/markd)
 * ✅ Implement images as supported in kitty (requires timg, kinda buggy)
 * ✅ Images in all terminals (requires catimg, kinda useless)
 * ✅ Implement HTML block support
+* ✅ Better textual image display when images are not supported
+* ✅ Maybe only support timg with options
 * Use crystal-term/color to detect color capabilities
-* Better textual image display when images are not supported
-* Maybe only support timg with options
 * Fix whatever bug is there
 
 ## Usage as a program

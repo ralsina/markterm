@@ -97,7 +97,7 @@ module Markd
     def image(node : Node, entering : Bool)
       title = node.data["title"].as(String) + " "
       if entering
-        if Terminal.supports_images? && STDOUT.tty?
+        if Terminal.supports_images?
           Colorize.reset
           print "\n\n" + Terminal.show_image(node.data["destination"].as(String)) + "\n"
         else

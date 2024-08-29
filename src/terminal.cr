@@ -9,7 +9,7 @@ module Terminal
   end
 
   def supports_images? : Bool
-    !Process.find_executable("timg").nil? || !Process.find_executable("catimg").nil?
+    !Process.find_executable("timg").nil?
   end
 
   def terminal_light? : Bool
@@ -76,14 +76,12 @@ module Terminal
     result = ""
     return result unless supports_images?
 
-    if ENV["TERM"] == "xterm-kitty" && Process.find_executable("timg")
+    quantization = "k"
+    quantization = "q" unless ENV.fetch("TERM", nil) == "xterm-kitty" && STDOUT.tty?
+    if Process.find_executable("timg")
       tmpfile = File.tempname
-      Process.run("timg", ["-p", "k", "-o", tmpfile, path], error: STDERR, output: STDERR)
+      Process.run("timg", ["-p", quantization, "-o", tmpfile, path], error: STDERR, output: STDERR)
       result = File.read(tmpfile)
-    else
-      Process.run("catimg", [path, "-w", "256"], output: Process::Redirect::Pipe) do |process|
-        result += process.output.gets_to_end
-      end
     end
     result
   end
