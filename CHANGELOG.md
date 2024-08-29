@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2024-08-29
+
+### 🚀 Features
+
+- Highlight HTML blocks and inline HTML
+
+### 🐛 Bug Fixes
+
+- Show image targets as links when images are not supported
+- Simplify and make reliable image support
+
+### ⚙️ Miscellaneous Tasks
+
+- Adjusted markdown check
+
 ## [0.3.3] - 2024-08-28
 
 ### 🐛 Bug Fixes
