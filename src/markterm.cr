@@ -97,11 +97,17 @@ module Markd
     def image(node : Node, entering : Bool)
       title = node.data["title"].as(String) + " "
       if entering
-        if Terminal.supports_images?
+        if Terminal.supports_images? && STDOUT.tty?
           Colorize.reset
           print "\n\n" + Terminal.show_image(node.data["destination"].as(String)) + "\n"
         else
-          print @style.apply "\n\n[#{title}#{node.data["destination"].as(String)}]\n"
+          # Print as a link
+          dest = node.data["destination"].as(String)
+          if Terminal.supports_links?
+            print @style.apply "\n\e]8;;#{dest}\e\\#{node.text}\e]8;;\e\\"
+          else
+            print @style.apply "\n<#{dest}> #{title}"
+          end
         end
       else
         print "\n"
