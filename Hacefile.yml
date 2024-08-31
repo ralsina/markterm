@@ -38,7 +38,7 @@ tasks:
     dependencies:
       - bin/markterm
     commands: |
-      rm ${HOME}/.local/bin/markterm
+      rm -f ${HOME}/.local/bin/markterm
       cp bin/markterm ${HOME}/.local/bin/markterm
 
   static:
