@@ -18,8 +18,9 @@ module Markd
     @code_theme : String?
     @indent = ["  "]
     @current_item = [] of Int32
+    @force_links = false
 
-    def initialize(@options = Options.new, theme : String? = nil, code_theme : String? = nil)
+    def initialize(@options = Options.new, theme : String? = nil, code_theme : String? = nil, @force_links : Bool = false)
       @output_io = String::Builder.new
       @last_output = "\n"
       @theme = Terminal.theme(theme)
@@ -103,7 +104,7 @@ module Markd
         else
           # Print as a link
           dest = node.data["destination"].as(String)
-          if Terminal.supports_links?
+          if Terminal.supports_links? || @force_links
             print @style.apply "\n\e]8;;#{dest}\e\\#{node.text}\e]8;;\e\\"
           else
             print @style.apply "\n<#{dest}> #{title}"
@@ -191,7 +192,7 @@ module Markd
         else
           # This is a link with text. In some terminals, we can get fancy
           # and show a HTML-style hyperlink.
-          if Terminal.supports_links?
+          if Terminal.supports_links? || @force_links
             print @style.apply "\e]8;;#{dest}\e\\#{node.text}\e]8;;\e\\"
           else
             print @style.apply "#{node.text} <#{dest}>"
@@ -216,10 +217,11 @@ module Markd
   end
 
   def self.to_term(source : String, options = Options.new,
-                   theme : String? = nil, code_theme : String? = nil) : String
+                   theme : String? = nil, code_theme : String? = nil,
+                   force_links : Bool = false) : String
     return "" if source.empty?
     document = Parser.parse(source, options)
-    renderer = TermRenderer.new(options, theme, code_theme)
+    renderer = TermRenderer.new(options, theme, code_theme, force_links)
     renderer.render(document)
   end
 end
