@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2024-08-31
+
+### 🚀 Features
+
+- Added -l option to force use of html-like links
+
+### ⚙️ Miscellaneous Tasks
+
+- Ameba path
+- Fix install target
+
 ## [0.4.0] - 2024-08-29
 
 ### 🚀 Features
@@ -16,6 +27,10 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Adjusted markdown check
+
+### Bump
+
+- Release v0.4.0
 
 ## [0.3.3] - 2024-08-28
 
