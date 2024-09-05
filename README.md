@@ -27,6 +27,7 @@ and implemented using [Markd](https://github.com/icyleaf/markd)
 * ✅ Implement HTML block support
 * ✅ Better textual image display when images are not supported
 * ✅ Maybe only support timg with options
+* Support being used in a pipeline
 * Implement internal piping to $PAGER
 * Allow enabling/disabling images/html-style-links via CLI (partly done)
 * Use crystal-term/color to detect color capabilities
