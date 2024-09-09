@@ -16,11 +16,18 @@ Options:
   --code-theme <code-theme>  Theme to use for coloring code blocks
   --version                  Show version.
   -l                         Force html-like links
+
+If you use "-" as the file argument, markterm will read from stdin.
 DOC
 
 def main(source, theme, code_theme, force_links = false)
+  if source == "-"
+    input = STDIN.gets_to_end
+  else
+    input = File.read(source)
+  end
   puts Markd.to_term(
-    File.read(source),
+    input,
     theme: theme,
     code_theme: code_theme,
     force_links: force_links

@@ -1,4 +1,5 @@
 require "tartrazine"
+require "tartrazine/formatters/ansi"
 
 module Terminal
   extend self
