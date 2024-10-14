@@ -19,7 +19,6 @@ dependencies:
     github: ralsina/tartrazine
   sixteen:
     github: ralsina/sixteen
-    branch: main
 
 development_dependencies:
   ameba:
