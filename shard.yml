@@ -9,6 +9,8 @@ crystal: '>= 1.13.0'
 targets:
   markterm:
     main: src/main.cr
+  markmark:
+    main: src/main_mark.cr
 
 dependencies:
   markd:
