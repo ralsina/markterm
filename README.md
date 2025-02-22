@@ -4,6 +4,8 @@ Markterm is a library and program to render Markdown to
 a terminal. It's inspired by [Glow](https://github.com/charmbracelet/glow)
 and implemented using [Markd](https://github.com/icyleaf/markd)
 
+It can also render Markdown to Markdown if you really need that :-)
+
 ## Features
 
 * It will syntax highlight code blocks
@@ -62,6 +64,8 @@ Options:
 If you use "-" as the file argument, markterm will read from stdin.
 ```
 
+There is a similar `markmark` binary that will render markdown to markdown.
+
 ## Usage as a library
 
 1. Add the dependency to your `shard.yml`:
@@ -76,6 +80,7 @@ In your code, use it like this:
 
 ```crystal
   puts Markd.to_term(source)
+  puts Markd.to_md(source)
 ```
 
 ## Contributing
