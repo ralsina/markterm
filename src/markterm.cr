@@ -165,12 +165,7 @@ module Markd
     end
 
     def soft_break(node : Node, entering : Bool)
-      # When in a paragraph, soft breaks are just spaces.
-      if node.parent.try &.type == Node::Type::Paragraph
-        print @style.apply " "
-      else
-        print "\n"
-      end
+      print "\n"
     end
 
     def strong(node : Node, entering : Bool)
