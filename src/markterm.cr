@@ -211,6 +211,14 @@ module Markd
       end
     end
 
+    def strikethrough(node : Node, entering : Bool)
+      if entering
+        @style << @theme["strikethrough"]
+      else
+        @style.pop
+      end
+    end
+
     def render(document : Node) : String
       super.split("\n").map(&.rstrip).join("\n")
     end

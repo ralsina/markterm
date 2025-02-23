@@ -30,7 +30,7 @@ def main(source, theme, code_theme, force_links = false)
     input,
     theme: theme,
     code_theme: code_theme,
-    force_links: force_links
+    force_links: force_links,
   )
 end
 
