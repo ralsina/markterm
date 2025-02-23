@@ -168,6 +168,14 @@ module Markd
       end
     end
 
+    def strikethrough(node : Node, entering : Bool)
+      if entering
+        print "~~"
+        print node.text
+        print "~~"
+      end
+    end
+
     def render(document : Node) : String
       super.split("\n").map(&.rstrip).join("\n")
     end
