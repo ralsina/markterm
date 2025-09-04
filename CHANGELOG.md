@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1] - 2025-09-04
+
+### Build
+
+- Include markmark in releases and packages
+
 ## [0.6.0] - 2025-09-04
 
 ### 🚀 Features
