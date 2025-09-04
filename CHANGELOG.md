@@ -15,6 +15,10 @@ All notable changes to this project will be documented in this file.
 - Respect soft breaks
 - Issue #4: COLORFGBG was handled backwards
 
+### 🧪 Testing
+
+- Fix broken test
+
 ### Build
 
 - Updated dependencies

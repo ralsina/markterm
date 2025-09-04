@@ -80,7 +80,6 @@ module Markd
     end
 
     def image(node : Node, entering : Bool)
-      title = node.data["title"].as(String) + " "
       if entering
         print "![#{node.first_child.text}](#{node.data["destination"].as(String)})"
       end
@@ -152,9 +151,9 @@ module Markd
         else
           # This is a link with text. In some terminals, we can get fancy
           # and show a HTML-style hyperlink.
-            print "[#{node.text}](#{dest})"
+          print "[#{node.text}](#{dest})"
         end
-      # Image nodes already print their children's text
+        # Image nodes already print their children's text
       elsif node.parent?.try &.type != Node::Type::Image
         print node.text
       end
