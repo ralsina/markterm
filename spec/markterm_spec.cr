@@ -21,7 +21,7 @@ describe "Markterm" do
     end
     it "does block quotes" do
       Markd.to_term("> text\n> text2").should eq(
-        "\n  │ \e[37;3mtext\e[0m\e[37;3m \e[0m\e[37;3mtext2\e[0m\n"
+        "\n" + "  │ \e[37;3mtext\e[0m\n" + "  │ \e[37;3mtext2\e[0m\n"
       )
     end
     it "does links with just a URL" do
