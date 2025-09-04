@@ -19,7 +19,7 @@ module Terminal
     # `15;0` or `0;15`. The first number is the foreground color
     # and the second number is the background color.
     if ["15;0", "15;default;0"].includes?(ENV.fetch("COLORFGBG", ""))
-      return true
+      return false
     end
 
     # In most linuxy terminals, we can query the terminal's
