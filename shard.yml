@@ -16,7 +16,7 @@ dependencies:
   markd:
     github: icyleaf/markd
   docopt:
-    github: chenkovsky/docopt.cr
+    github: ralsina/docopt.cr
   tartrazine:
     github: ralsina/tartrazine
   sixteen:
