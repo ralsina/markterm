@@ -66,7 +66,7 @@ module Terminal
     result = String::Builder.new
     STDIN.raw do |io|
       io.each_char do |chr|
-        break if chr == "\a" || chr == '\\'
+        break if chr == '\a' || chr == '\\'
         result << chr
       end
     end
