@@ -15,12 +15,18 @@ targets:
 dependencies:
   markd:
     github: icyleaf/markd
+    branch: master
   docopt:
     github: ralsina/docopt.cr
   tartrazine:
     github: ralsina/tartrazine
   sixteen:
     github: ralsina/sixteen
+  tablo:
+    github: hutou/tablo
+  progress_bar:
+    github: mgomes/progress_bar
+    branch: master    
 
 development_dependencies:
   ameba:
