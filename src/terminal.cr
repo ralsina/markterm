@@ -1,8 +1,52 @@
 require "tartrazine"
 require "tartrazine/formatters/ansi"
 
+lib LibC
+  struct Winsize
+    ws_row : UInt16
+    ws_col : UInt16
+    ws_xpixel : UInt16
+    ws_ypixel : UInt16
+  end
+
+  fun ioctl(fd : Int32, request : UInt64, ...) : Int32
+end
+
 module Terminal
   extend self
+
+  # Get terminal width, with fallback
+  # Returns nil if not in a TTY or unable to determine
+  def terminal_width : Int32?
+    return nil unless STDOUT.tty?
+
+    # Try COLUMNS environment variable first
+    if (cols = ENV["COLUMNS"]?.try(&.to_i?)) && cols > 0
+      return cols
+    end
+
+    # Use ioctl TIOCGWINSZ to get terminal size
+    {% if flag?(:linux) %}
+      tiocgwinsz = 0x5413_u64
+      winsize = LibC::Winsize.new
+      ret = LibC.ioctl(1, tiocgwinsz, pointerof(winsize))
+      return nil if ret != 0
+      cols = winsize.ws_col
+      return nil if cols == 0
+      cols.to_i32
+    {% elsif flag?(:darwin) %}
+      tiocgwinsz = 0x40087468_u64
+      winsize = LibC::Winsize.new
+      ret = LibC.ioctl(1, tiocgwinsz, pointerof(winsize))
+      return nil if ret != 0
+      cols = winsize.ws_col
+      return nil if cols == 0
+      cols.to_i32
+    {% else %}
+      # Fallback for other platforms
+      nil
+    {% end %}
+  end
 
   def supports_links? : Bool
     STDOUT.tty? && ((["xterm-kitty", "kitty", "alacritty"].includes? ENV["TERM"]) ||

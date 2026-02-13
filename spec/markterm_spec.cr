@@ -97,3 +97,81 @@ describe "Table rendering" do
     result.should contain("| --- | --- |")
   end
 end
+
+describe "Word wrap" do
+  it "wraps paragraphs to max_width" do
+    long_text = "This is a long paragraph that should wrap to fit within the specified width."
+    result = Markd.to_term(long_text, max_width: 20)
+    lines = result.strip.split("\n")
+    # Each line should be at most 20 visible characters (excluding ANSI codes)
+    lines.each do |line|
+      # Strip ANSI codes for length check
+      visible = line.gsub(/\e\[[0-9;]*[mGKH]/, "").gsub(/\e\]8;;[^\e]*\e\\/, "")
+      visible.size.should be <= 20
+    end
+  end
+
+  it "wraps headings to max_width" do
+    heading = "# This is a very long heading that needs wrapping"
+    result = Markd.to_term(heading, max_width: 25)
+    lines = result.strip.split("\n")
+    lines.each do |line|
+      visible = line.gsub(/\e\[[0-9;]*[mGKH]/, "").gsub(/\e\]8;;[^\e]*\e\\/, "")
+      visible.size.should be <= 25
+    end
+  end
+
+  it "does not wrap when max_width is nil" do
+    long_text = "This is a long paragraph that should not wrap when max_width is nil."
+    result = Markd.to_term(long_text, max_width: nil)
+    # Should be a single line (plus indent)
+    result.strip.split("\n").size.should eq(1)
+  end
+
+  it "does not wrap code blocks" do
+    code = "```\nthis_is_a_very_long_line_of_code_that_should_not_be_wrapped_at_all\n```"
+    result = Markd.to_term(code, max_width: 20)
+    result.should contain("this_is_a_very_long_line_of_code_that_should_not_be_wrapped_at_all")
+  end
+
+  it "handles long words by letting them overflow" do
+    text = "short supercalifragilisticexpialidocious short"
+    result = Markd.to_term(text, max_width: 30)
+    # The long word should appear intact (not split)
+    result.should contain("supercalifragilisticexpialidocious")
+  end
+
+  it "wraps list items" do
+    list = "- This is a very long list item that should wrap properly when width is limited"
+    result = Markd.to_term(list, max_width: 25)
+    lines = result.strip.split("\n")
+    lines.each do |line|
+      visible = line.gsub(/\e\[[0-9;]*[mGKH]/, "").gsub(/\e\]8;;[^\e]*\e\\/, "")
+      visible.size.should be <= 25
+    end
+  end
+
+  it "preserves ANSI styling in wrapped text" do
+    styled = "**bold text here that is long enough to wrap**"
+    result = Markd.to_term(styled, max_width: 20)
+    # Should still contain ANSI codes for bold
+    result.should match(/\e\[1m/)
+  end
+
+  it "wraps block quotes with indentation" do
+    quote = "> This is a long block quote that should wrap properly with the indent prefix."
+    result = Markd.to_term(quote, max_width: 25)
+    lines = result.strip.split("\n")
+    lines.each do |line|
+      visible = line.gsub(/\e\[[0-9;]*[mGKH]/, "").gsub(/\e\]8;;[^\e]*\e\\/, "")
+      visible.size.should be <= 25
+    end
+  end
+end
+
+describe "Terminal width detection" do
+  it "returns nil when not in a TTY" do
+    # STDOUT.tty? will be false in tests
+    Terminal.terminal_width.should be_nil
+  end
+end

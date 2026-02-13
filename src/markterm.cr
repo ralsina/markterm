@@ -27,13 +27,17 @@ module Markd
     @cell_content = ""
     @cell_placeholders : Array(Tuple(String, String)) = [] of Tuple(String, String)
     @placeholder_index = 0
+    @max_width : Int32?
+    @block_buffer = ""
+    @in_wrappable_block = false
 
-    def initialize(@options = Options.new, theme : String? = nil, code_theme : String? = nil, @force_links : Bool = false)
+    def initialize(@options = Options.new, theme : String? = nil, code_theme : String? = nil, @force_links : Bool = false, max_width : Int32? = nil)
       @output_io = String::Builder.new
       @last_output = "\n"
       @theme = Terminal.theme(theme)
       @code_theme = code_theme
       @style << @theme["default"]
+      @max_width = max_width
     end
 
     def print(s)
@@ -41,10 +45,12 @@ module Markd
       @output_io << s
     end
 
-    # Print or collect based on whether we're in a table cell
+    # Print or collect based on whether we're in a table cell or wrappable block
     private def output(s : String)
       if @in_table_cell
         @cell_content += s
+      elsif @in_wrappable_block && @max_width
+        @block_buffer += s
       else
         print s
       end
@@ -73,6 +79,48 @@ module Markd
     # Calculate visible length (excluding ANSI codes and OSC 8 hyperlinks)
     private def visible_length(str : String) : Int32
       strip_osc8(strip_ansi(str)).size
+    end
+
+    # Wrap text to fit within max_width, accounting for indentation
+    # Long words overflow rather than break
+    private def word_wrap(text : String, max_width : Int32, indent : String) : String
+      return text if max_width <= 0
+
+      indent_len = visible_length(indent)
+      available = max_width - indent_len
+      return text if available <= 0
+
+      lines = [] of String
+      current_line = ""
+
+      # Split on whitespace but preserve the text structure
+      text.split(/(\s+)/).each do |segment|
+        next if segment.empty?
+
+        # Check if segment is whitespace or a word
+        if segment =~ /^\s+$/
+          # It's whitespace - add to current line if we have content
+          if !current_line.empty? && visible_length(current_line) + visible_length(segment) <= available
+            current_line += segment
+          end
+          # Otherwise, skip the whitespace (it would cause a new line anyway)
+        else
+          # It's a word
+          word_len = visible_length(segment)
+
+          if current_line.empty?
+            current_line = segment
+          elsif visible_length(current_line) + 1 + word_len <= available
+            current_line += " " + segment
+          else
+            lines << current_line
+            current_line = segment
+          end
+        end
+      end
+      lines << current_line unless current_line.empty?
+
+      lines.join("\n")
     end
 
     def block_quote(node : Node, entering : Bool) : Nil
@@ -121,8 +169,15 @@ module Markd
         @style << @theme["heading"]
         level = node.data["level"].as(Int32)
         print "\n\n"
-        print @style.apply("#{"#" * level} ")
+        @in_wrappable_block = true
+        @block_buffer = @style.apply("#{"#" * level} ").to_s
       else
+        @in_wrappable_block = false
+        if (max_width = @max_width) && !@block_buffer.empty?
+          wrapped = word_wrap(@block_buffer, max_width, @indent.join)
+          print wrapped
+        end
+        @block_buffer = ""
         print "\n"
         @style.pop
       end
@@ -213,8 +268,19 @@ module Markd
     end
 
     def paragraph(node : Node, entering : Bool) : Nil
-      if entering && node.parent?.try(&.type) != Node::Type::Item
-        print "\n"
+      if entering
+        @in_wrappable_block = true
+        @block_buffer = ""
+        if node.parent?.try(&.type) != Node::Type::Item
+          print "\n"
+        end
+      else
+        @in_wrappable_block = false
+        if (max_width = @max_width) && !@block_buffer.empty?
+          wrapped = word_wrap(@block_buffer, max_width, @indent.join)
+          print wrapped
+        end
+        @block_buffer = ""
       end
     end
 
@@ -369,10 +435,10 @@ module Markd
 
   def self.to_term(source : String, options = Options.new,
                    theme : String? = nil, code_theme : String? = nil,
-                   force_links : Bool = false) : String
+                   force_links : Bool = false, max_width : Int32? = nil) : String
     return "" if source.empty?
     document = Parser.parse(source, options)
-    renderer = TermRenderer.new(options, theme, code_theme, force_links)
+    renderer = TermRenderer.new(options, theme, code_theme, force_links, max_width)
     renderer.render(document)
   end
 end
