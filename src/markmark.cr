@@ -17,6 +17,8 @@ module Markd
     @current_item = [] of Int32
     @table_alignments : Array(String) = [] of String
     @current_row : Array(String) = [] of String
+    @in_table_cell = false
+    @cell_content = ""
 
     def initialize(@options = Options.new)
       @output_io = String::Builder.new
@@ -26,6 +28,15 @@ module Markd
     def print(s)
       s = s.to_s.gsub("\n", "\n" + @indent.join)
       @output_io << s
+    end
+
+    # Print or collect based on whether we're in a table cell
+    private def output(s : String)
+      if @in_table_cell
+        @cell_content += s
+      else
+        print s
+      end
     end
 
     def block_quote(node : Node, entering : Bool) : Nil
@@ -40,7 +51,7 @@ module Markd
 
     def code(node : Node, entering : Bool) : Nil
       if entering
-        print "`#{node.text}`"
+        output "`#{node.text}`"
       end
     end
 
@@ -57,9 +68,9 @@ module Markd
 
     def emphasis(node : Node, entering : Bool) : Nil
       if entering
-        print "*"
+        output "*"
       else
-        print "*"
+        output "*"
       end
     end
 
@@ -139,28 +150,25 @@ module Markd
     end
 
     def strong(node : Node, entering : Bool) : Nil
-      print "**"
+      output "**"
     end
 
     def text(node : Node, entering : Bool) : Nil
-      # Skip text rendering inside table cells - we collect it in table_cell
-      return if node.parent?.try &.type == Node::Type::TableCell
-
       if node.parent?.try &.type == Node::Type::Link
         # The parent node is a link, so we need to handle
         # specially.
         dest = node.parent.data["destination"].as(String)
         if dest == node.text
           # This is a bare URL, just print it.
-          print "<#{dest}>"
+          output "<#{dest}>"
         else
           # This is a link with text. In some terminals, we can get fancy
           # and show a HTML-style hyperlink.
-          print "[#{node.text}](#{dest})"
+          output "[#{node.text}](#{dest})"
         end
         # Image nodes already print their children's text
       elsif node.parent?.try &.type != Node::Type::Image
-        print node.text
+        output node.text
       end
     end
 
@@ -174,9 +182,9 @@ module Markd
 
     def strikethrough(node : Node, entering : Bool) : Nil
       if entering
-        print "~~"
-        print node.text
-        print "~~"
+        output "~~"
+        output node.text
+        output "~~"
       end
     end
 
@@ -228,10 +236,14 @@ module Markd
           align = node.data["align"]?.try(&.as(String)) || ""
           @table_alignments << align
         end
+        @in_table_cell = true
+        @cell_content = ""
       else
-        # Get text from the first child (Text node)
-        cell_text = node.first_child?.try(&.text) || ""
+        @in_table_cell = false
+        # Use collected cell content, or fall back to text from first child
+        cell_text = @cell_content.empty? ? (node.first_child?.try(&.text) || "") : @cell_content
         @current_row << cell_text
+        @cell_content = ""
       end
     end
 

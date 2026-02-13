@@ -23,6 +23,8 @@ module Markd
     @table_data : Array(Array(String)) = [] of Array(String)
     @table_alignments : Array(String) = [] of String
     @current_row : Array(String) = [] of String
+    @in_table_cell = false
+    @cell_content = ""
 
     def initialize(@options = Options.new, theme : String? = nil, code_theme : String? = nil, @force_links : Bool = false)
       @output_io = String::Builder.new
@@ -35,6 +37,25 @@ module Markd
     def print(s)
       s = s.to_s.gsub("\n", "\n" + @indent.join)
       @output_io << s
+    end
+
+    # Print or collect based on whether we're in a table cell
+    private def output(s : String)
+      if @in_table_cell
+        @cell_content += s
+      else
+        print s
+      end
+    end
+
+    # Check if any ancestor is a table cell
+    private def inside_table_cell?(node : Node) : Bool
+      parent = node.parent?
+      while parent
+        return true if parent.type == Node::Type::TableCell
+        parent = parent.parent?
+      end
+      false
     end
 
     def block_quote(node : Node, entering : Bool) : Nil
@@ -52,7 +73,7 @@ module Markd
     def code(node : Node, entering : Bool) : Nil
       if entering
         @style << @theme["code"]
-        print @style.apply(node.text)
+        output @style.apply(node.text).to_s
         @style.pop
       end
     end
@@ -145,7 +166,7 @@ module Markd
       if entering
         @style << @theme["link"]
         # Output style codes at the start of the link
-        print @style.prefix
+        output @style.prefix
       else
         # Print destination after all text nodes (for non-OSC8 links)
         unless Terminal.supports_links? || @force_links
@@ -156,12 +177,12 @@ module Markd
           # Only print destination if it's not the same as the text (not a bare URL)
           # If there's a next child, the text is split so it's not a bare URL match
           if dest != link_text || next_child
-            print " <#{dest}>"
+            output " <#{dest}>"
           end
         end
         @style.pop
-        # Reset style at the end of the link
-        print "\e[0m"
+        # Reset style at the end of the link (skip if inside table cell)
+        output "\e[0m" unless @in_table_cell
       end
     end
 
@@ -192,28 +213,25 @@ module Markd
     end
 
     def text(node : Node, entering : Bool) : Nil
-      # Skip text rendering inside table cells - we collect it in table_cell
-      return if node.parent?.try &.type == Node::Type::TableCell
-
       if node.parent?.try &.type == Node::Type::Link
         # The parent node is a link, so we need to handle specially.
         # Style is already set by link() method, so just print raw text
         dest = node.parent.data["destination"].as(String)
         if dest == node.text
           # This is a bare URL, just print it.
-          print "<#{dest}>"
+          output "<#{dest}>"
         else
           # This is a link with text.
           if Terminal.supports_links? || @force_links
             # For OSC 8 links, wrap the text in the link
-            print "\e]8;;#{dest}\e\\#{node.text}\e]8;;\e\\"
+            output "\e]8;;#{dest}\e\\#{node.text}\e]8;;\e\\"
           else
             # Print just the text, destination is printed by link() on exit
-            print node.text
+            output node.text
           end
         end
       else
-        print @style.apply node.text
+        output @style.apply(node.text).to_s
       end
     end
 
@@ -266,10 +284,14 @@ module Markd
           align = node.data["align"]?.try(&.as(String)) || ""
           @table_alignments << align
         end
+        @in_table_cell = true
+        @cell_content = ""
       else
-        # Get text from the first child (Text node)
-        cell_text = node.first_child?.try(&.text) || ""
-        @current_row << @style.apply(cell_text).to_s
+        @in_table_cell = false
+        # Use collected cell content, or fall back to text from first child
+        cell_text = @cell_content.empty? ? (node.first_child?.try(&.text) || "") : @cell_content
+        @current_row << cell_text
+        @cell_content = ""
       end
     end
 

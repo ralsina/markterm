@@ -23,9 +23,9 @@ def main(source)
   else
     input = File.read(source)
   end
-  puts Markd.to_md(
-    input,
-  )
+  options = Markd::Options.new
+  options.gfm = true
+  puts Markd.to_md(input, options)
 end
 
 VERSION = {{ `shards version #{__DIR__}`.chomp.stringify }}
