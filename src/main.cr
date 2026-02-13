@@ -1,12 +1,13 @@
 require "./markterm"
 require "docopt"
 require "markd"
+require "colorize"
 
 doc = <<-DOC
 Markterm - A tool to render markdown to the terminal
 
 Usage:
-  markterm <file> [-t <theme>][--code-theme <code-theme>][-l]
+  markterm <file> [-t <theme>][--code-theme <code-theme>][-l][-c]
   markterm -h | --help
   markterm --version
 
@@ -16,11 +17,14 @@ Options:
   --code-theme <code-theme>  Theme to use for coloring code blocks
   --version                  Show version.
   -l                         Force html-like links
+  -c --color                 Force color output even when piping
 
 If you use "-" as the file argument, markterm will read from stdin.
 DOC
 
-def main(source, theme, code_theme, force_links = false)
+def main(source, theme, code_theme, force_links = false, force_color = false)
+  Colorize.enabled = true if force_color
+
   if source == "-"
     input = STDIN.gets_to_end
   else
@@ -49,5 +53,6 @@ main(
   options["<file>"].as(String),
   theme: options["-t"].try &.as(String),
   code_theme: options["--code-theme"].try &.as(String),
-  force_links: options["-l"] != nil
+  force_links: options["-l"] != nil,
+  force_color: options["--color"] != nil
 )
