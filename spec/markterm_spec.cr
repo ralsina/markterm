@@ -79,3 +79,23 @@ describe "Markterm" do
     end
   end
 end
+
+describe "Table rendering" do
+  it "renders basic table in TermRenderer" do
+    markdown = "| Name | Age |\n|------|-----|\n| Alice | 30 |"
+    options = Markd::Options.new
+    options.gfm = true
+    result = Markd.to_term(markdown, options)
+    result.should contain("Alice")
+    result.should contain("Name")
+  end
+
+  it "renders markdown table in MarkRenderer" do
+    markdown = "| Name | Age |\n|------|-----|\n| Alice | 30 |"
+    options = Markd::Options.new
+    options.gfm = true
+    result = Markd.to_md(markdown, options)
+    result.should contain("| Name | Age |")
+    result.should contain("| --- | --- |")
+  end
+end
