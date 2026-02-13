@@ -139,18 +139,29 @@ module Markd
       print "\n"
     end
 
-    # The `link` method sets the style but doesn't
-    # print the link, the children nodes do that.
-    #
-    # They will get the destination by looking up
-    # their parent.
+    # The `link` method sets the style and prints the destination
+    # on exit (for non-OSC8 links). The text nodes print the link text.
     def link(node : Node, entering : Bool) : Nil
       if entering
         @style << @theme["link"]
+        # Output style codes at the start of the link
+        print @style.prefix
       else
-        # destination = node.data["destination"].as(String)
-        # print @style.apply "<#{destination}>"
+        # Print destination after all text nodes (for non-OSC8 links)
+        unless Terminal.supports_links? || @force_links
+          dest = node.data["destination"].as(String)
+          # Get the full text of the link to check if it's a bare URL
+          link_text = node.first_child?.try(&.text) || ""
+          next_child = node.first_child?.try(&.next?)
+          # Only print destination if it's not the same as the text (not a bare URL)
+          # If there's a next child, the text is split so it's not a bare URL match
+          if dest != link_text || next_child
+            print " <#{dest}>"
+          end
+        end
         @style.pop
+        # Reset style at the end of the link
+        print "\e[0m"
       end
     end
 
@@ -185,19 +196,20 @@ module Markd
       return if node.parent?.try &.type == Node::Type::TableCell
 
       if node.parent?.try &.type == Node::Type::Link
-        # The parent node is a link, so we need to handle
-        # specially.
+        # The parent node is a link, so we need to handle specially.
+        # Style is already set by link() method, so just print raw text
         dest = node.parent.data["destination"].as(String)
         if dest == node.text
           # This is a bare URL, just print it.
-          print @style.apply "<#{dest}>"
+          print "<#{dest}>"
         else
-          # This is a link with text. In some terminals, we can get fancy
-          # and show a HTML-style hyperlink.
+          # This is a link with text.
           if Terminal.supports_links? || @force_links
-            print @style.apply "\e]8;;#{dest}\e\\#{node.text}\e]8;;\e\\"
+            # For OSC 8 links, wrap the text in the link
+            print "\e]8;;#{dest}\e\\#{node.text}\e]8;;\e\\"
           else
-            print @style.apply "#{node.text} <#{dest}>"
+            # Print just the text, destination is printed by link() on exit
+            print node.text
           end
         end
       else
