@@ -25,6 +25,8 @@ module Markd
     @current_row : Array(String) = [] of String
     @in_table_cell = false
     @cell_content = ""
+    @cell_placeholders : Array(Tuple(String, String)) = [] of Tuple(String, String)
+    @placeholder_index = 0
 
     def initialize(@options = Options.new, theme : String? = nil, code_theme : String? = nil, @force_links : Bool = false)
       @output_io = String::Builder.new
@@ -40,10 +42,9 @@ module Markd
     end
 
     # Print or collect based on whether we're in a table cell
-    # When collecting for table cells, strip ANSI codes to avoid width calculation issues
     private def output(s : String)
       if @in_table_cell
-        @cell_content += strip_ansi(s)
+        @cell_content += s
       else
         print s
       end
@@ -62,6 +63,16 @@ module Markd
     # Strip ANSI escape codes from a string (for table cell width calculation)
     private def strip_ansi(str : String) : String
       str.gsub(/\e\[[0-9;]*[mGKH]/, "")
+    end
+
+    # Strip OSC 8 hyperlink sequences (they don't contribute to visible length)
+    private def strip_osc8(str : String) : String
+      str.gsub(/\e\]8;;[^\e]*\e\\/, "")
+    end
+
+    # Calculate visible length (excluding ANSI codes and OSC 8 hyperlinks)
+    private def visible_length(str : String) : Int32
+      strip_osc8(strip_ansi(str)).size
     end
 
     def block_quote(node : Node, entering : Bool) : Nil
@@ -175,7 +186,8 @@ module Markd
         output @style.prefix
       else
         # Print destination after all text nodes (for non-OSC8 links)
-        unless Terminal.supports_links? || @force_links
+        # Skip URL in table cells to keep visible length correct
+        unless Terminal.supports_links? || @force_links || @in_table_cell
           dest = node.data["destination"].as(String)
           # Get the full text of the link to check if it's a bare URL
           link_text = node.first_child?.try(&.text) || ""
@@ -296,7 +308,19 @@ module Markd
         @in_table_cell = false
         # Use collected cell content, or fall back to text from first child
         cell_text = @cell_content.empty? ? (node.first_child?.try(&.text) || "") : @cell_content
-        @current_row << cell_text
+
+        # If cell has ANSI codes, use a placeholder for tablo layout
+        if cell_text.includes?("\e")
+          vlen = visible_length(cell_text)
+          # Use PUA character U+E000+ as placeholder marker
+          marker_char = (0xE000 + @placeholder_index).chr
+          marker = marker_char.to_s * vlen
+          @placeholder_index += 1
+          @cell_placeholders << {marker, cell_text}
+          @current_row << marker
+        else
+          @current_row << cell_text
+        end
         @cell_content = ""
       end
     end
@@ -316,7 +340,17 @@ module Markd
 
       # Use pack with autosize to fit columns to their content
       table.pack(autosize: true)
-      print table.to_s
+      result = table.to_s
+
+      # Replace placeholders with actual styled content
+      # Replace from last to first, first occurrence only, to avoid corrupting earlier placeholders
+      @cell_placeholders.reverse_each do |placeholder, styled|
+        result = result.sub(placeholder, styled)
+      end
+
+      print result
+      @cell_placeholders.clear
+      @placeholder_index = 0
     end
 
     private def alignment_to_tablo(align : String) : Tablo::Justify
