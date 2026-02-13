@@ -40,9 +40,10 @@ module Markd
     end
 
     # Print or collect based on whether we're in a table cell
+    # When collecting for table cells, strip ANSI codes to avoid width calculation issues
     private def output(s : String)
       if @in_table_cell
-        @cell_content += s
+        @cell_content += strip_ansi(s)
       else
         print s
       end
@@ -56,6 +57,11 @@ module Markd
         parent = parent.parent?
       end
       false
+    end
+
+    # Strip ANSI escape codes from a string (for table cell width calculation)
+    private def strip_ansi(str : String) : String
+      str.gsub(/\e\[[0-9;]*[mGKH]/, "")
     end
 
     def block_quote(node : Node, entering : Bool) : Nil
@@ -308,6 +314,8 @@ module Markd
         end
       end
 
+      # Use pack with autosize to fit columns to their content
+      table.pack(autosize: true)
       print table.to_s
     end
 
