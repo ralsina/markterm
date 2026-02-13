@@ -76,6 +76,11 @@ module Terminal
       input
     end
 
+    # Returns the ANSI prefix for the current style
+    def prefix : String
+      apply("").to_s
+    end
+
     def <<(style : Style)
       @stack << style
     end
