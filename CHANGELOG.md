@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-02-13
+
+### 🚀 Features
+
+- Add GFM table support to both renderers
+- Restore styling in table cells with placeholder replacement
+
+### 🐛 Bug Fixes
+
+- Update tests and link rendering for compatibility
+- Enable GFM by default and fix inline content in table cells
+- Properly size table columns and strip ANSI codes from cells
+
 ## [0.6.3] - 2026-01-14
 
 ### ⚙️ Miscellaneous Tasks
