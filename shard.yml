@@ -26,7 +26,9 @@ dependencies:
     github: hutou/tablo
   progress_bar:
     github: mgomes/progress_bar
-    branch: master    
+    branch: master
+  term-screen:
+    github: crystal-term/screen    
 
 development_dependencies:
   ameba:
