@@ -93,29 +93,19 @@ module Markd
       lines = [] of String
       current_line = ""
 
-      # Split on whitespace but preserve the text structure
-      text.split(/(\s+)/).each do |segment|
-        next if segment.empty?
+      # Split on whitespace and reassemble with single spaces
+      text.split(/\s+/).each do |word|
+        next if word.empty?
 
-        # Check if segment is whitespace or a word
-        if segment =~ /^\s+$/
-          # It's whitespace - add to current line if we have content
-          if !current_line.empty? && visible_length(current_line) + visible_length(segment) <= available
-            current_line += segment
-          end
-          # Otherwise, skip the whitespace (it would cause a new line anyway)
+        word_len = visible_length(word)
+
+        if current_line.empty?
+          current_line = word
+        elsif visible_length(current_line) + 1 + word_len <= available
+          current_line += " " + word
         else
-          # It's a word
-          word_len = visible_length(segment)
-
-          if current_line.empty?
-            current_line = segment
-          elsif visible_length(current_line) + 1 + word_len <= available
-            current_line += " " + segment
-          else
-            lines << current_line
-            current_line = segment
-          end
+          lines << current_line
+          current_line = word
         end
       end
       lines << current_line unless current_line.empty?
