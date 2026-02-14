@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-02-14
+
+### 🚀 Features
+
+- Add maximum width feature for text wrapping
+
+### 🐛 Bug Fixes
+
+- Remove double spaces in word wrap output
+- Update terminal width test to be environment-agnostic
+
+### 🚜 Refactor
+
+- Use term-screen library for terminal width detection
+
 ## [0.7.0] - 2026-02-13
 
 ### 🚀 Features
