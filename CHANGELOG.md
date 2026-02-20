@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.1] - 2026-02-20
+
+### 🐛 Bug Fixes
+
+- Move theme initialization from class-level to instance initializer
+
 ## [0.8.0] - 2026-02-14
 
 ### 🚀 Features
