@@ -14,8 +14,8 @@ end
 
 module Markd
   class TermRenderer < Renderer
-    @style : Terminal::StyleStack = Terminal::StyleStack.new
-    @theme = Terminal.theme
+    @style : Terminal::StyleStack
+    @theme : Hash(String, Terminal::Style)
     @code_theme : String?
     @indent = ["  "]
     @current_item = [] of Int32
@@ -36,6 +36,7 @@ module Markd
       @last_output = "\n"
       @theme = Terminal.theme(theme)
       @code_theme = code_theme
+      @style = Terminal::StyleStack.new
       @style << @theme["default"]
       @max_width = max_width
     end
