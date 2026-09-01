@@ -4,9 +4,9 @@ require "colorize"
 require "markd"
 
 macro def_method(name)
-  def {{name}}(node : Node, entering : Bool) : Nil
+  def {{ name }}(node : Node, entering : Bool) : Nil
     if entering
-      print "{{name}}\n"
+      print "{{ name }}\n"
     end
   end
 end

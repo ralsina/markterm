@@ -2,8 +2,8 @@ require "sixteen"
 
 module Terminal
   struct Style
-    property fore : Symbol | Colorize::ColorRGB | Nil
-    property back : Symbol | Colorize::ColorRGB | Nil
+    property fore : Symbol | Colorize::ColorRGB?
+    property back : Symbol | Colorize::ColorRGB?
     property bold : Bool?
     property bright : Bool?
     property dim : Bool?
@@ -21,7 +21,7 @@ module Terminal
     end
 
     macro merge_prop(prop)
-      new.{{prop}} = other.{{prop}}.nil? ? self.{{prop}} : other.{{prop}}
+      new.{{ prop }} = other.{{ prop }}.nil? ? self.{{ prop }} : other.{{ prop }}
     end
 
     def +(other : Style) : Style
@@ -52,7 +52,7 @@ module Terminal
     end
 
     macro apply_prop(prop)
-      input = input.{{prop}} if style.{{prop}}
+      input = input.{{ prop }} if style.{{ prop }}
     end
 
     def apply(input : String)
