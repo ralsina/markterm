@@ -91,7 +91,8 @@ module Terminal
 
     tmpfile = File.tempname
     begin
-      process = Process.run(executable, ["-p", quantization, "-o", tmpfile, path], error: STDERR, output: STDERR)
+      # Discard timg's chatter instead of passing it through to the user
+      process = Process.run(executable, ["-p", quantization, "-o", tmpfile, path], error: IO::Memory.new, output: IO::Memory.new)
       process.success? ? File.read(tmpfile) : ""
     ensure
       File.delete(tmpfile) if File.exists?(tmpfile)

@@ -3,18 +3,18 @@ require "docopt"
 require "markd"
 
 doc = <<-DOC
-  Markterm - A tool to render markdown to the terminal
+  Markmark - A tool to render markdown to markdown
 
   Usage:
-    markterm <file>
-    markterm -h | --help
-    markterm --version
+    markmark <file>
+    markmark -h | --help
+    markmark --version
 
   Options:
     -h --help                  Show this screen.
     --version                  Show version.
 
-  If you use "-" as the file argument, markterm will read from stdin.
+  If you use "-" as the file argument, markmark will read from stdin.
   DOC
 
 def main(source)
@@ -32,10 +32,15 @@ VERSION = {{ `shards version #{__DIR__}`.chomp.stringify }}
 
 options = Docopt.docopt(doc, ARGV)
 if options["--version"]
-  puts "Markterm #{VERSION}"
+  puts "Markmark #{VERSION}"
   exit 0
 end
 
-main(
-  options["<file>"].as(String),
-)
+begin
+  main(
+    options["<file>"].as(String),
+  )
+rescue error
+  STDERR.puts "markmark: #{error.message}"
+  exit 1
+end
