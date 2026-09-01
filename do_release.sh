@@ -6,6 +6,9 @@ rm -rf aur-markterm
 
 sed "s/^version:.*$/version: $VERSION/g" -i shard.yml
 hace static
+# build_static.sh removes shard.lock and shards regenerates it without
+# development dependencies; restore the tracked one
+git checkout -- shard.lock
 git add shard.yml
 hace lint test
 git cliff --bump -o
