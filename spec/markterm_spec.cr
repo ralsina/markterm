@@ -184,6 +184,20 @@ describe "Word wrap" do
       visible.size.should be <= 25
     end
   end
+
+  it "preserves soft breaks inside wrapped paragraphs" do
+    result = Markd.to_term("line1\nline2 here", max_width: 20)
+    result.strip.should eq("line1\n  line2 here")
+  end
+
+  it "keeps soft break segments in order when wrapping" do
+    text = "alpha beta gamma delta\nepsilon zeta eta theta iota kappa"
+    result = Markd.to_term(text, max_width: 20)
+    visible = result.gsub(/\e\[[0-9;]*[mGKH]/, "").gsub(/\e\]8;;[^\e]*\e\\/, "")
+    visible.should match(/alpha.*delta/m)
+    visible.should match(/delta\s+epsilon/m)
+    visible.should_not contain("deltaepsilon")
+  end
 end
 
 describe "Terminal width detection" do

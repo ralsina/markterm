@@ -82,6 +82,15 @@ module Markd
       strip_osc8(strip_ansi(str)).size
     end
 
+    # Wrap and print the accumulated block buffer, then clear it
+    private def flush_block_buffer
+      if (max_width = @max_width) && !@block_buffer.empty?
+        wrapped = word_wrap(@block_buffer, max_width, @indent.join)
+        print wrapped
+      end
+      @block_buffer = ""
+    end
+
     # Wrap text to fit within max_width, accounting for indentation
     # Long words overflow rather than break
     private def word_wrap(text : String, max_width : Int32, indent : String) : String
@@ -164,11 +173,7 @@ module Markd
         @block_buffer = @style.apply("#{"#" * level} ").to_s
       else
         @in_wrappable_block = false
-        if (max_width = @max_width) && !@block_buffer.empty?
-          wrapped = word_wrap(@block_buffer, max_width, @indent.join)
-          print wrapped
-        end
-        @block_buffer = ""
+        flush_block_buffer
         print "\n"
         @style.pop
       end
@@ -267,15 +272,16 @@ module Markd
         end
       else
         @in_wrappable_block = false
-        if (max_width = @max_width) && !@block_buffer.empty?
-          wrapped = word_wrap(@block_buffer, max_width, @indent.join)
-          print wrapped
-        end
-        @block_buffer = ""
+        flush_block_buffer
       end
     end
 
     def soft_break(node : Node, entering : Bool) : Nil
+      if @in_wrappable_block && @max_width
+        # Print the buffered text before the break, otherwise word_wrap
+        # would collapse the break into a space and reorder the output
+        flush_block_buffer
+      end
       print "\n"
     end
 
