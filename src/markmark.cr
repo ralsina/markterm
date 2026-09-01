@@ -34,7 +34,7 @@ module Markd
     def block_quote(node : Node, entering : Bool) : Nil
       if entering
         print "\n"
-        @indent << "│ "
+        @indent << "> "
       else
         @indent.pop
         print "\n"
@@ -89,14 +89,22 @@ module Markd
 
     def item(node : Node, entering : Bool) : Nil
       if entering
-        if node.parent?.try &.data["type"] == "bullet"
-          marker = "* "
-        else
-          @current_item[-1] += 1
-          marker = "#{@current_item[-1]}. "
-        end
+        marker =
+          case node.data["type"]?
+          when "bullet"
+            "* "
+          when "checkbox"
+            if node.data["checked"]? == true
+              "[x] "
+            else
+              "[ ] "
+            end
+          else
+            @current_item[-1] += 1
+            "#{@current_item[-1]}. "
+          end
         print "\n"
-        print "#{marker}"
+        print marker
         @indent << "   "
       else
         @indent.pop
@@ -171,8 +179,15 @@ module Markd
     end
 
     def alert(node : Node, entering : Bool) : Nil
-      # Treat alerts like block quotes for now
-      block_quote(node, entering)
+      if entering
+        label = node.data["alert"]?.try(&.as(String)) || ""
+        title = node.data["title"]?.try(&.as(String)) || ""
+        @indent << "> "
+        marker = title == label || title.empty? ? "[!#{label}]" : "[!#{label}] #{title}"
+        print "\n#{marker}"
+      else
+        @indent.pop
+      end
     end
 
     def table(node : Node, entering : Bool) : Nil

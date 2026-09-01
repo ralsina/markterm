@@ -206,12 +206,20 @@ module Markd
 
     def item(node : Node, entering : Bool) : Nil
       if entering
-        if node.parent?.try &.data["type"] == "bullet"
-          marker = "• "
-        else
-          @current_item[-1] += 1
-          marker = "#{@current_item[-1]}. "
-        end
+        marker =
+          case node.data["type"]?
+          when "bullet"
+            "• "
+          when "checkbox"
+            if node.data["checked"]? == true
+              "[x] "
+            else
+              "[ ] "
+            end
+          else
+            @current_item[-1] += 1
+            "#{@current_item[-1]}. "
+          end
         print "\n"
         print @style.apply("#{marker} ")
         @indent << "   "
@@ -263,7 +271,8 @@ module Markd
       if entering
         @in_wrappable_block = true
         @block_buffer = ""
-        if node.parent?.try(&.type) != Node::Type::Item
+        parent_type = node.parent?.try(&.type)
+        if parent_type != Node::Type::Item && parent_type != Node::Type::Alert
           print "\n"
         end
       else
@@ -329,8 +338,17 @@ module Markd
     end
 
     def alert(node : Node, entering : Bool) : Nil
-      # Treat alerts like block quotes for now
-      block_quote(node, entering)
+      if entering
+        print "\n"
+        @indent << "│ "
+        @style << @theme["block_quote"]
+        title = node.data["title"]?.try(&.as(String)) || ""
+        print @style.apply("#{title}\n") unless title.empty?
+      else
+        @indent.pop
+        @style.pop
+        print "\n"
+      end
     end
 
     def table(node : Node, entering : Bool) : Nil
