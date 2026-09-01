@@ -24,6 +24,6 @@ jobs:
       - name: Build both binaries
         run: shards build
       - name: Lint
-        run: shards build ameba && bin/ameba src spec
+        run: crystal run lib/ameba/src/cli.cr -- src spec
       - name: Test
         run: crystal spec --error-trace
