@@ -8,6 +8,8 @@ require "tablo"
 
 module Markd
   class TermRenderer < TextRenderer
+    SGR_OR_OSC8 = /\e\[[0-9;]*[mGKH]|\e\]8;;[^\e]*\e\\/
+
     @style : Terminal::StyleStack
     @theme : Hash(String, Terminal::Style)
     @code_theme : String?
@@ -367,20 +369,48 @@ module Markd
         # Use collected cell content, or fall back to text from first child
         cell_text = @cell_content.empty? ? (node.first_child?.try(&.text) || "") : @cell_content
 
-        # If cell has ANSI codes, use a placeholder for tablo layout
         if cell_text.includes?("\e")
-          vlen = visible_length(cell_text)
-          # Use PUA character U+E000+ as placeholder marker
-          marker_char = (0xE000 + @placeholder_index).chr
-          marker = marker_char.to_s * vlen
-          @placeholder_index += 1
-          @cell_placeholders << {marker, cell_text}
-          @current_row << marker
+          @current_row << words_to_placeholders(cell_text)
         else
           @current_row << cell_text
         end
         @cell_content = ""
       end
+    end
+
+    # Represent a styled cell as placeholder characters so tablo's
+    # width math works on visible length. Each whitespace-separated
+    # word gets its own marker run, and real spaces are kept between
+    # runs, so tablo can wrap the cell at word boundaries.
+    private def words_to_placeholders(cell_text : String) : String
+      # A part with no visible characters is a pure escape sequence:
+      # it terminates the previous word, or opens the next one
+      parts = [] of String
+      cell_text.split(/\s+/).each do |part|
+        next if part.empty?
+        if visible_length(part) == 0
+          if parts.empty?
+            parts << part
+          else
+            parts[-1] += part
+          end
+        elsif !parts.empty? && visible_length(parts[-1]) == 0
+          parts[-1] += part
+        else
+          parts << part
+        end
+      end
+      return cell_text if parts.empty?
+
+      result = String::Builder.new
+      parts.each_with_index do |part, index|
+        result << " " if index > 0
+        marker = (0xE000 + @placeholder_index).chr.to_s
+        result << marker * visible_length(part)
+        @cell_placeholders << {marker * visible_length(part), part}
+        @placeholder_index += 1
+      end
+      result.to_s
     end
 
     private def render_table
@@ -396,19 +426,83 @@ module Markd
         end
       end
 
-      # Use pack with autosize to fit columns to their content
+      # Size columns to fit their content, then shrink the table to
+      # max_width if it overflows. pack's width argument would also
+      # widen narrower tables, so only repack when actually too wide.
       table.pack(autosize: true)
       result = table.to_s
-
-      # Replace placeholders with actual styled content
-      # Replace from last to first, first occurrence only, to avoid corrupting earlier placeholders
-      @cell_placeholders.reverse_each do |placeholder, styled|
-        result = result.sub(placeholder, styled)
+      max_width = @max_width
+      if max_width
+        available = max_width - visible_length(@indent.join)
+        if result.split("\n").any? { |line| visible_length(line) > available }
+          table.pack(available, autosize: true)
+          result = table.to_s
+        end
       end
+
+      result = restore_styled_cells(result)
 
       print result
       @cell_placeholders.clear
       @placeholder_index = 0
+    end
+
+    # Replace the placeholder characters with the styled cell content
+    # they stand for. Tablo's wrapping may split a placeholder run
+    # across lines, so match runs of marker characters and hand each
+    # run its share of the styled text, in order.
+    private def restore_styled_cells(result : String) : String
+      return result if @cell_placeholders.empty?
+
+      offsets = {} of Char => Int32
+      @cell_placeholders.each_with_index do |_, index|
+        offsets[(0xE000 + index).chr] = 0
+      end
+
+      String.build do |builder|
+        index = 0
+        while index < result.size
+          char = result[index]
+          if offsets.has_key?(char)
+            run_start = index
+            while index < result.size && result[index] == char
+              index += 1
+            end
+            styled, offset = @cell_placeholders[char.ord - 0xE000][1], offsets[char]
+            builder << styled_fragment(styled, offset, index - run_start)
+            offsets[char] = offset + index - run_start
+          else
+            builder << char
+            index += 1
+          end
+        end
+      end
+    end
+
+    # Extract a fragment of a styled string: run_length visible
+    # characters starting at visible offset, keeping the escape
+    # sequences that fall inside the fragment
+    private def styled_fragment(styled : String, offset : Int32, run_length : Int32) : String
+      fragment = String::Builder.new
+      visible_seen = 0
+      emitting = false
+      index = 0
+
+      while index < styled.size
+        char = styled[index]
+        if char == '\e'
+          sequence = SGR_OR_OSC8.match(styled, index).try(&.[0]) || char.to_s
+          fragment << sequence if emitting && visible_seen < offset + run_length
+          index += sequence.size
+        else
+          emitting = true if !emitting && visible_seen == offset
+          break if emitting && visible_seen >= offset + run_length
+          fragment << char if emitting
+          visible_seen += 1
+          index += 1
+        end
+      end
+      fragment.to_s
     end
 
     private def alignment_to_tablo(align : String) : Tablo::Justify
