@@ -1,5 +1,7 @@
 # MARKTerm
 
+[![CI](https://github.com/ralsina/markterm/actions/workflows/ci.yml/badge.svg)](https://github.com/ralsina/markterm/actions/workflows/ci.yml)
+
 Markterm is a library and program to render Markdown to
 a terminal. It's inspired by [Glow](https://github.com/charmbracelet/glow)
 and implemented using [Markd](https://github.com/icyleaf/markd)
@@ -30,10 +32,11 @@ It can also render Markdown to Markdown if you really need that :-)
 * ✅ Better textual image display when images are not supported
 * ✅ Maybe only support timg with options
 * ✅ Support being used in a pipeline
+* ✅ Task lists, GFM alerts, wrapped tables
 * Implement internal piping to $PAGER
 * Allow enabling/disabling images/html-style-links via CLI (partly done)
 * Use crystal-term/color to detect color capabilities
-* Fix whatever bug is there
+* Wrap styled table cells at word boundaries when tables are squeezed
 
 ## Usage as a program
 
