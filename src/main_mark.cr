@@ -3,19 +3,19 @@ require "docopt"
 require "markd"
 
 doc = <<-DOC
-Markterm - A tool to render markdown to the terminal
+  Markterm - A tool to render markdown to the terminal
 
-Usage:
-  markterm <file>
-  markterm -h | --help
-  markterm --version
+  Usage:
+    markterm <file>
+    markterm -h | --help
+    markterm --version
 
-Options:
-  -h --help                  Show this screen.
-  --version                  Show version.
+  Options:
+    -h --help                  Show this screen.
+    --version                  Show version.
 
-If you use "-" as the file argument, markterm will read from stdin.
-DOC
+  If you use "-" as the file argument, markterm will read from stdin.
+  DOC
 
 def main(source)
   if source == "-"

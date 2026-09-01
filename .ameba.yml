@@ -1,0 +1,5 @@
+# Third-party code and the nested AUR checkout are not this project's
+# responsibility; lint everything else (run `ameba` from the repo root)
+Excluded:
+  - lib/**/*
+  - aur-markterm/**/*
