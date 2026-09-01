@@ -8,7 +8,7 @@ module Terminal
   # Get terminal width, with fallback
   # Returns nil if not in a TTY or unable to determine
   def terminal_width : Int32?
-    return nil unless STDOUT.tty?
+    return unless STDOUT.tty?
     Term::Screen.width
   end
 
@@ -60,7 +60,7 @@ module Terminal
   def parse_color(color)
     m = /([0-9a-f]+)\/([0-9a-f]+)\/([0-9a-f]+)/.match(color)
     if m.nil?
-      return nil
+      return
     end
     r = m[0][...2].to_i(16)
     g = m[1][...2].to_i(16)
@@ -82,17 +82,20 @@ module Terminal
   end
 
   def show_image(path : String) : String
-    result = ""
-    return result unless supports_images?
+    return "" unless supports_images?
 
     quantization = "k"
     quantization = "q" unless ENV.fetch("TERM", nil) == "xterm-kitty" && STDOUT.tty?
-    if Process.find_executable("timg")
-      tmpfile = File.tempname
-      Process.run("timg", ["-p", quantization, "-o", tmpfile, path], error: STDERR, output: STDERR)
-      result = File.read(tmpfile)
+    executable = Process.find_executable("timg")
+    return "" unless executable
+
+    tmpfile = File.tempname
+    begin
+      process = Process.run(executable, ["-p", quantization, "-o", tmpfile, path], error: STDERR, output: STDERR)
+      process.success? ? File.read(tmpfile) : ""
+    ensure
+      File.delete(tmpfile) if File.exists?(tmpfile)
     end
-    result
   end
 
   def highlight(source : String, language : String, theme : String?) : String

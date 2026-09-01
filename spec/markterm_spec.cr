@@ -58,7 +58,7 @@ describe "Markterm" do
       stack << basic_style
       stack.last.fore.should eq(:white)
       stack.last.back.should eq(:black)
-      stack.last.underline.should eq(false)
+      stack.last.underline.should be_false
     end
 
     it "applies styles" do
@@ -91,7 +91,7 @@ describe "GFM features" do
   end
 
   it "defines a strikethrough style in the default theme" do
-    Terminal.theme["strikethrough"].strikethrough.should eq(true)
+    Terminal.theme["strikethrough"].strikethrough.should be_true
   end
 end
 
@@ -197,6 +197,16 @@ describe "Word wrap" do
     visible.should match(/alpha.*delta/m)
     visible.should match(/delta\s+epsilon/m)
     visible.should_not contain("deltaepsilon")
+  end
+end
+
+describe "Image rendering" do
+  it "falls back to link rendering when the image cannot be shown" do
+    # A nonexistent file makes timg fail on machines that have it,
+    # and is equivalent to not having timg at all on machines that don't
+    result = Markd.to_term("![dot](/nonexistent/path/image.png)")
+    result.should contain("dot")
+    result.should contain("/nonexistent/path/image.png")
   end
 end
 

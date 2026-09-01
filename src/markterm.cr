@@ -5,9 +5,9 @@ require "markd"
 require "tablo"
 
 macro def_method(name)
-  def {{name}}(node : Node, entering : Bool) : Nil
+  def {{ name }}(node : Node, entering : Bool) : Nil
     if entering
-      print "{{name}}\n"
+      print "{{ name }}\n"
     end
   end
 end
@@ -191,17 +191,21 @@ module Markd
     def image(node : Node, entering : Bool) : Nil
       title = node.data["title"].as(String) + " "
       if entering
-        if Terminal.supports_images?
-          Colorize.reset
-          print "\n\n" + Terminal.show_image(node.data["destination"].as(String)) + "\n"
-        else
+        dest = node.data["destination"].as(String)
+        image_data = Terminal.supports_images? ? Terminal.show_image(dest) : ""
+        if image_data.empty?
           # Print as a link
-          dest = node.data["destination"].as(String)
           if Terminal.supports_links? || @force_links
             print @style.apply "\n\e]8;;#{dest}\e\\#{node.text}\e]8;;\e\\"
           else
             print @style.apply "\n<#{dest}> #{title}"
           end
+        else
+          # Reset colors in-band before the image, so the image's own
+          # escape sequences start from a clean style. Writing through
+          # Colorize.reset would leak to STDOUT outside the result.
+          reset_code = Colorize.enabled? ? "\e[0m" : ""
+          print "\n\n#{reset_code}#{image_data}\n"
         end
       else
         print "\n"
