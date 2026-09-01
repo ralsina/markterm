@@ -42,6 +42,32 @@ describe "GFM rendering (to_term)" do
     result.should contain("|")
   end
 
+  it "wraps wide tables to max_width" do
+    markdown = "| Column One | Column Two | Column Three |\n|---|---|---|\n| some long content here | middle sized | tiny |"
+    result = Markd.to_term(markdown, options, max_width: 40)
+    result.split("\n").each do |line|
+      visible = line.gsub(/\e\[[0-9;]*[mGKH]/, "").gsub(/\e\]8;;[^\e]*\e\\/, "")
+      visible.size.should be <= 40
+    end
+    result.should contain("middle")
+    result.should contain("sized")
+  end
+
+  it "restores styled cells without leaking placeholder characters" do
+    was_enabled = Colorize.enabled?
+    Colorize.enabled = true
+    markdown = "| Col A | Col B |\n|---|---|\n| long text content that needs space | `code` and **bold** |"
+    result = Markd.to_term(markdown, options, max_width: 30)
+    # PUA characters are internal placeholders and must never leak,
+    # and the styled text must still be present (tablo may wrap a
+    # styled run mid-word when the table is squeezed)
+    result.should_not contain('\uE000'.to_s)
+    result.should contain("code")
+    result.should contain("and")
+    result.should contain("old")
+    Colorize.enabled = was_enabled
+  end
+
   it "highlights fenced code blocks" do
     code = "```crystal\nputs \"hello\"\n```"
     result = Markd.to_term(code, options)
