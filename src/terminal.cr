@@ -57,15 +57,16 @@ module Terminal
     false
   end
 
-  def parse_color(color)
-    m = /([0-9a-f]+)\/([0-9a-f]+)\/([0-9a-f]+)/.match(color)
-    if m.nil?
-      return
-    end
-    r = m[0][...2].to_i(16)
-    g = m[1][...2].to_i(16)
-    b = m[2][...2].to_i(16)
-    [r, g, b]
+  # Parse an X11-style color reply like "rgb:1c1c/1c1c/1c1c"
+  # into [red, green, blue], or nil if it doesn't parse
+  def parse_color(color) : Array(Int32)?
+    match = /([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)/.match(color)
+    return if match.nil?
+
+    red = match[1][...2].to_i(16)
+    green = match[2][...2].to_i(16)
+    blue = match[3][...2].to_i(16)
+    [red, green, blue]
   end
 
   # Query a terminal color via OSC and read the reply.
