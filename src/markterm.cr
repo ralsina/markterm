@@ -4,14 +4,6 @@ require "colorize"
 require "markd"
 require "tablo"
 
-macro def_method(name)
-  def {{ name }}(node : Node, entering : Bool) : Nil
-    if entering
-      print "{{ name }}\n"
-    end
-  end
-end
-
 module Markd
   class TermRenderer < Renderer
     @style : Terminal::StyleStack
