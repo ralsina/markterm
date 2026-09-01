@@ -14,11 +14,12 @@ targets:
 
 dependencies:
   # Pinned to a commit, not branch: master, so builds are
-  # reproducible; this commit is where the GFM features
-  # (tables, alerts, strikethrough, task lists) live
+  # reproducible. This is the footnotes branch of our fork, which
+  # also carries the GFM features (tables, alerts, strikethrough,
+  # task lists) that icyleaf/master has
   markd:
-    github: icyleaf/markd
-    commit: 03cd4f5d6f4e56054502a6548b4c2ff92fb3dc20
+    github: ralsina/markd
+    commit: be4adc9e7764a3a4178fe017b0511534bdf79f1a
   docopt:
     github: ralsina/docopt.cr
   tartrazine:

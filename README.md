@@ -33,6 +33,7 @@ It can also render Markdown to Markdown if you really need that :-)
 * ✅ Maybe only support timg with options
 * ✅ Support being used in a pipeline
 * ✅ Task lists, GFM alerts, wrapped tables
+* ✅ Footnotes
 * Implement internal piping to $PAGER
 * Allow enabling/disabling images/html-style-links via CLI (partly done)
 * Use crystal-term/color to detect color capabilities
