@@ -24,6 +24,9 @@ jobs:
       - name: Build both binaries
         run: shards build
       - name: Lint
+        # ameba (dev dependency) requires a newer Crystal than the
+        # minimum supported version, so only lint with the latest
+        if: matrix.crystal == 'latest'
         run: crystal run lib/ameba/src/cli.cr -- src spec
       - name: Test
         run: crystal spec --error-trace
