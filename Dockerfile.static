@@ -16,4 +16,6 @@ RUN apk add --no-cache \
     gc-dev \
     pcre2-dev \
     pcre2-static \
+    readline-dev \
+    readline-static \
     make
