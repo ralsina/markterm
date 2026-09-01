@@ -94,7 +94,8 @@ module Markd
 
     def image(node : Node, entering : Bool) : Nil
       if entering
-        print "![#{node.first_child.text}](#{node.data["destination"].as(String)})"
+        alt = node.first_child?.try(&.text) || ""
+        print "![#{alt}](#{node.data["destination"].as(String)})"
       end
     end
 

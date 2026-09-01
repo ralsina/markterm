@@ -113,6 +113,11 @@ describe "Table rendering" do
     result.should contain("| Name | Age |")
     result.should contain("| --- | --- |")
   end
+
+  it "renders images with empty alt text" do
+    result = Markd.to_md("![](http://example.com/cat.png)")
+    result.should contain("![](http://example.com/cat.png)")
+  end
 end
 
 describe "Word wrap" do
