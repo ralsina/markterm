@@ -78,6 +78,23 @@ describe "Markterm" do
   end
 end
 
+describe "GFM features" do
+  it "renders strikethrough without crashing" do
+    options = Markd::Options.new
+    options.gfm = true
+    result = Markd.to_term("hello ~~gone~~ world", options)
+    result.should contain("hello")
+    result.should contain("gone")
+    result.should contain("world")
+    # SGR 9 is strikethrough
+    result.should match(/\e\[9m/)
+  end
+
+  it "defines a strikethrough style in the default theme" do
+    Terminal.theme["strikethrough"].strikethrough.should eq(true)
+  end
+end
+
 describe "Table rendering" do
   it "renders basic table in TermRenderer" do
     markdown = "| Name | Age |\n|------|-----|\n| Alice | 30 |"
