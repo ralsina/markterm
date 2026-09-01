@@ -1,0 +1,70 @@
+require "./spec_helper"
+
+describe "GFM rendering (to_term)" do
+  options = Markd::Options.new
+  options.gfm = true
+
+  it "renders task list checkboxes" do
+    result = Markd.to_term("- [x] done thing\n- [ ] open thing", options)
+    result.should contain("[x]")
+    result.should contain("[ ]")
+    result.should contain("done thing")
+    result.should contain("open thing")
+    # They must not be renumbered as an ordered list
+    result.should_not match(/\d\. /)
+  end
+
+  it "renders bullet lists with bullet markers" do
+    result = Markd.to_term("- one\n- two", options)
+    result.should contain("•")
+    result.should_not match(/\d\. /)
+  end
+
+  it "renders ordered lists with numbers" do
+    result = Markd.to_term("1. one\n2. two", options)
+    result.should contain("1.")
+    result.should contain("2.")
+  end
+
+  it "renders the alert title in a quote gutter" do
+    result = Markd.to_term("> [!NOTE]\n> note body", options)
+    result.should contain("NOTE")
+    result.should contain("│")
+    result.should contain("note body")
+  end
+
+  it "renders tables with all rows" do
+    markdown = "| Name | Age |\n|------|-----|\n| Alice | 30 |\n| Bob | 25 |"
+    result = Markd.to_term(markdown, options)
+    result.should contain("Name")
+    result.should contain("Alice")
+    result.should contain("Bob")
+    result.should contain("|")
+  end
+
+  it "highlights fenced code blocks" do
+    code = "```crystal\nputs \"hello\"\n```"
+    result = Markd.to_term(code, options)
+    result.should contain("puts")
+    # Tartrazine's ANSI formatter emits escape sequences
+    result.should match(/\e\[/)
+  end
+
+  it "falls back to plaintext for unknown code languages" do
+    code = "```not-a-real-language\nplain text here\n```"
+    result = Markd.to_term(code, options)
+    result.should contain("plain text here")
+  end
+
+  it "renders html blocks" do
+    result = Markd.to_term("<div>\n  some html\n</div>", options)
+    result.should contain("some html")
+  end
+
+  it "renders nested lists" do
+    markdown = "- outer\n  - inner\n- outer again"
+    result = Markd.to_term(markdown, options)
+    result.should contain("outer")
+    result.should contain("inner")
+  end
+end
