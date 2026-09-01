@@ -9,11 +9,16 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         crystal: ["1.13.0", "latest"]
     container: crystallang/crystal:${{ matrix.crystal }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install system libraries
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq libreadline-dev libxml2-dev
       - name: Install dependencies
         run: shards install
       - name: Build both binaries
