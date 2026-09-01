@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crystal: ["1.13.0", "latest"]
+    container: crystallang/crystal:${{ matrix.crystal }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: shards install
+      - name: Build both binaries
+        run: shards build
+      - name: Lint
+        run: shards build ameba && bin/ameba src spec
+      - name: Test
+        run: crystal spec --error-trace
