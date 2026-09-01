@@ -1,5 +1,5 @@
 #!/bin/bash
-set e
+set -euo pipefail
 
 PKGNAME=$(basename "$PWD")
 VERSION=$(git cliff --bumped-version |cut -dv -f2)
@@ -12,7 +12,13 @@ hace lint test
 git cliff --bump -o
 git commit -a -m "bump: Release v$VERSION"
 git tag "v$VERSION"
+git push
 git push --tags
-gh release create "v$VERSION" "bin/$PKGNAME-static-linux-amd64" "bin/$PKGNAME-static-linux-arm64" "bin/markterm-static-linux-amd64" "bin/markterm-static-linux-arm64" --title "Release v$VERSION" --notes "$(git cliff -l -s all)"
+gh release create "v$VERSION" \
+  "bin/markterm-static-linux-amd64" \
+  "bin/markterm-static-linux-arm64" \
+  "bin/markmark-static-linux-amd64" \
+  "bin/markmark-static-linux-arm64" \
+  --title "Release v$VERSION" --notes "$(git cliff -l -s all)"
 
 bash -x ./do_aur.sh
