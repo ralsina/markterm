@@ -156,8 +156,15 @@ module Markd
         @style << @theme["heading"]
         level = node.data["level"].as(Int32)
         print "\n\n"
-        @in_wrappable_block = true
-        @block_buffer = @style.apply("#{"#" * level} ").to_s
+        # When wrapping, buffer the prefix so it word-wraps together
+        # with the heading text; otherwise print it right away, as
+        # the text nodes bypass the buffer when there is no max_width
+        if @max_width
+          @in_wrappable_block = true
+          @block_buffer = @style.apply("#{"#" * level} ").to_s
+        else
+          print @style.apply("#{"#" * level} ")
+        end
       else
         @in_wrappable_block = false
         flush_block_buffer

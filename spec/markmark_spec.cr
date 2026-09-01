@@ -38,8 +38,8 @@ describe "MarkRenderer round-trips" do
 
   it "round-trips checked and unchecked task lists" do
     result = Markd.to_md("- [x] done thing\n- [ ] open thing", options)
-    result.should contain("[x] done thing")
-    result.should contain("[ ] open thing")
+    result.should contain("- [x] done thing")
+    result.should contain("- [ ] open thing")
   end
 
   it "round-trips block quotes" do
