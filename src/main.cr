@@ -40,6 +40,8 @@ def main(source, theme, code_theme, force_links = false, force_color = false, wi
     width_int = width.to_i?
     if width_int && width_int >= 0
       max_width = width_int == 0 ? nil : width_int
+    else
+      abort "markterm: invalid width '#{width}'"
     end
   elsif STDOUT.tty?
     max_width = Terminal.terminal_width
@@ -64,11 +66,16 @@ if options["--version"]
   exit 0
 end
 
-main(
-  options["<file>"].as(String),
-  theme: options["-t"].try &.as(String),
-  code_theme: options["--code-theme"].try &.as(String),
-  force_links: options["-l"] != nil,
-  force_color: options["--color"] != nil,
-  width: options["-w"].try &.as(String),
-)
+begin
+  main(
+    options["<file>"].as(String),
+    theme: options["-t"].try &.as(String),
+    code_theme: options["--code-theme"].try &.as(String),
+    force_links: options["-l"] != nil,
+    force_color: options["--color"] != nil,
+    width: options["-w"].try &.as(String),
+  )
+rescue error
+  STDERR.puts "markterm: #{error.message}"
+  exit 1
+end
