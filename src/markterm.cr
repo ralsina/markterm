@@ -182,6 +182,38 @@ module Markd
       print Terminal.highlight(node.text, "html", @code_theme)
     end
 
+    def footnote(node : Node, entering : Bool) : Nil
+      if entering
+        # References get their number normalized by the parser (1..n
+        # in definition order), so [^weird-label] still shows as [2]
+        number = node.data["number"]?.try(&.as(Int32)) || 0
+        @style << @theme["link"]
+        output @style.apply("[#{number}]").to_s
+        @style.pop
+      end
+    end
+
+    # Definitions are moved to the end of the document by the parser,
+    # so render a small section header before the first one
+    def footnote_definition(node : Node, entering : Bool) : Nil
+      if entering
+        if node.prev?.try(&.type) != Node::Type::FootnoteDefinition
+          print "\n\n"
+          print @style.apply("--" * 20)
+          print "\n"
+          @style << @theme["heading"]
+          print @style.apply("Footnotes")
+          @style.pop
+        end
+        number = node.data["number"]?.try(&.as(Int32)) || 0
+        print "\n"
+        print @style.apply("[#{number}] ")
+        @indent << "    "
+      else
+        @indent.pop
+      end
+    end
+
     def image(node : Node, entering : Bool) : Nil
       title = node.data["title"].as(String) + " "
       if entering
@@ -262,7 +294,8 @@ module Markd
         @in_wrappable_block = true
         @block_buffer = ""
         parent_type = node.parent?.try(&.type)
-        if parent_type != Node::Type::Item && parent_type != Node::Type::Alert
+        if parent_type != Node::Type::Item && parent_type != Node::Type::Alert &&
+           parent_type != Node::Type::FootnoteDefinition
           print "\n"
         end
       else

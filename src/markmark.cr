@@ -57,6 +57,26 @@ module Markd
       print node.text
     end
 
+    def footnote(node : Node, entering : Bool) : Nil
+      if entering
+        label = node.data["title"]?.try(&.as(String)) || ""
+        output "[^#{label}]"
+      end
+    end
+
+    def footnote_definition(node : Node, entering : Bool) : Nil
+      if entering
+        label = node.data["title"]?.try(&.as(String)) || ""
+        # Blank line + column 0 marker: the parser only matches
+        # definitions on unindented lines. Only the content that
+        # follows is indented, which is what continues the definition
+        print "\n\n[^#{label}]: "
+        @indent << "    "
+      else
+        @indent.pop
+      end
+    end
+
     def image(node : Node, entering : Bool) : Nil
       if entering
         alt = node.first_child?.try(&.text) || ""
@@ -99,8 +119,18 @@ module Markd
     end
 
     def paragraph(node : Node, entering : Bool) : Nil
-      if entering && node.parent?.try(&.type) != Node::Type::Item
-        print "\n"
+      if entering
+        parent_type = node.parent?.try(&.type)
+        case parent_type
+        when Node::Type::Item
+          # no extra newline
+        when Node::Type::FootnoteDefinition
+          # The first paragraph follows the [^label]: marker; later
+          # ones need a blank line to stay separate paragraphs
+          print "\n\n" if node.prev?
+        else
+          print "\n"
+        end
       end
     end
 
