@@ -71,10 +71,12 @@ module Markd
           when "bullet"
             "* "
           when "checkbox"
+            # Keep the bullet so the output re-parses as a task list
+            bullet = node.data["bullet_char"]?.try(&.as(String)) || "-"
             if node.data["checked"]? == true
-              "[x] "
+              "#{bullet} [x] "
             else
-              "[ ] "
+              "#{bullet} [ ] "
             end
           else
             @current_item[-1] += 1

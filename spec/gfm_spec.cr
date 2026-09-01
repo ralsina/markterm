@@ -4,6 +4,13 @@ describe "GFM rendering (to_term)" do
   options = Markd::Options.new
   options.gfm = true
 
+  it "renders headings with their level even without max_width" do
+    result = Markd.to_term("# Top\n\n## Sub", options)
+    visible = result.gsub(/\e\[[0-9;]*[mGKH]/, "")
+    visible.should contain("# Top")
+    visible.should contain("## Sub")
+  end
+
   it "renders task list checkboxes" do
     result = Markd.to_term("- [x] done thing\n- [ ] open thing", options)
     result.should contain("[x]")
