@@ -1,7 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-PKGNAME=$(basename "$PWD")
 VERSION=$(git cliff --bumped-version |cut -dv -f2)
 rm -rf aur-markterm
 
