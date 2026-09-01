@@ -13,9 +13,12 @@ targets:
     main: src/main_mark.cr
 
 dependencies:
+  # Pinned to a commit, not branch: master, so builds are
+  # reproducible; this commit is where the GFM features
+  # (tables, alerts, strikethrough, task lists) live
   markd:
     github: icyleaf/markd
-    branch: master
+    commit: 03cd4f5d6f4e56054502a6548b4c2ff92fb3dc20
   docopt:
     github: ralsina/docopt.cr
   tartrazine:
