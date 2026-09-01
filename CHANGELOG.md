@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0] - 2026-09-01
+
+### 🚀 Features
+
+- Wrap wide tables to max_width
+- Support footnotes
+
+### 🐛 Bug Fixes
+
+- Add missing strikethrough style to themes
+- Preserve soft breaks inside wrapped paragraphs
+- Degrade gracefully when image rendering fails
+- Handle images with empty alt text in markdown output
+- Friendly CLI errors and correct markmark identity
+- Time out terminal color queries instead of hanging
+- Round-trip strikethrough in markdown output
+- Make do_release.sh fail fast and upload all release assets
+- Drop unused PKGNAME variable from do_release.sh
+- Round-trip task lists, alerts and block quotes
+- Parse OSC color reply channels in the right order
+- Keep heading levels in unwrapped output and bullets on task lists
+- Restore tracked shard.lock after the static build
+- Make the static build work without a TTY
+- Add readline to the static build dependencies
+- Add ncurses static library to the static build
+
+### 🚜 Refactor
+
+- Extract shared TextRenderer base and CLI helpers
+
+### ⚙️ Miscellaneous Tasks
+
+- Fix ameba lint issues and scope linting to project sources
+- Pin markd to a commit and track shard.lock
+- Add GitHub Actions workflow
+- Install readline and libxml2 dev packages before building
+- Run ameba from its installed source instead of a binary
+- Only lint with the latest Crystal version
+
 ## [0.8.1] - 2026-02-20
 
 ### 🐛 Bug Fixes
