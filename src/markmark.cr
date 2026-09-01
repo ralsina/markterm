@@ -1,35 +1,12 @@
 require "./terminal"
 require "./styles"
-require "colorize"
+require "./text_renderer"
 require "markd"
 
 module Markd
-  class MarkRenderer < Renderer
-    @indent = [] of String
-    @current_item = [] of Int32
+  class MarkRenderer < TextRenderer
     @table_alignments : Array(String) = [] of String
     @current_row : Array(String) = [] of String
-    @in_table_cell = false
-    @cell_content = ""
-
-    def initialize(@options = Options.new)
-      @output_io = String::Builder.new
-      @last_output = "\n"
-    end
-
-    def print(s)
-      s = s.to_s.gsub("\n", "\n" + @indent.join)
-      @output_io << s
-    end
-
-    # Print or collect based on whether we're in a table cell
-    private def output(s : String)
-      if @in_table_cell
-        @cell_content += s
-      else
-        print s
-      end
-    end
 
     def block_quote(node : Node, entering : Bool) : Nil
       if entering
@@ -111,24 +88,12 @@ module Markd
       end
     end
 
-    def line_break(node : Node, entering : Bool) : Nil
-      print "\n"
-    end
-
     # The `link` method sets the style but doesn't
     # print the link, the children nodes do that.
     #
     # They will get the destination by looking up
     # their parent.
     def link(node : Node, entering : Bool) : Nil
-    end
-
-    def list(node : Node, entering : Bool) : Nil
-      if entering
-        @current_item << node.data["start"].as(Int32) - 1
-      else
-        @current_item.pop
-      end
     end
 
     def paragraph(node : Node, entering : Bool) : Nil
@@ -242,10 +207,6 @@ module Markd
         @current_row << cell_text
         @cell_content = ""
       end
-    end
-
-    def render(document : Node) : String
-      super(document, nil).split("\n").map(&.rstrip).join("\n")
     end
   end
 

@@ -1,4 +1,5 @@
 require "./markterm"
+require "./cli"
 require "docopt"
 require "markd"
 require "colorize"
@@ -26,11 +27,7 @@ doc = <<-DOC
 def main(source, theme, code_theme, force_links = false, force_color = false, width = nil)
   Colorize.enabled = true if force_color
 
-  if source == "-"
-    input = STDIN.gets_to_end
-  else
-    input = File.read(source)
-  end
+  input = Cli.read_source(source)
   options = Markd::Options.new
   options.gfm = true
 
@@ -57,12 +54,10 @@ def main(source, theme, code_theme, force_links = false, force_color = false, wi
   )
 end
 
-VERSION = {{ `shards version #{__DIR__}`.chomp.stringify }}
-
 options = Docopt.docopt(doc, ARGV)
 
 if options["--version"]
-  puts "Markterm #{VERSION}"
+  puts "Markterm #{Cli::VERSION}"
   exit 0
 end
 

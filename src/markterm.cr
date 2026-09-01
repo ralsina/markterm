@@ -1,22 +1,21 @@
 require "./terminal"
 require "./styles"
+require "./text_renderer"
+require "./markmark"
 require "colorize"
 require "markd"
 require "tablo"
 
 module Markd
-  class TermRenderer < Renderer
+  class TermRenderer < TextRenderer
     @style : Terminal::StyleStack
     @theme : Hash(String, Terminal::Style)
     @code_theme : String?
     @indent = ["  "]
-    @current_item = [] of Int32
     @force_links = false
     @table_data : Array(Array(String)) = [] of Array(String)
     @table_alignments : Array(String) = [] of String
     @current_row : Array(String) = [] of String
-    @in_table_cell = false
-    @cell_content = ""
     @cell_placeholders : Array(Tuple(String, String)) = [] of Tuple(String, String)
     @placeholder_index = 0
     @max_width : Int32?
@@ -24,18 +23,12 @@ module Markd
     @in_wrappable_block = false
 
     def initialize(@options = Options.new, theme : String? = nil, code_theme : String? = nil, @force_links : Bool = false, max_width : Int32? = nil)
-      @output_io = String::Builder.new
-      @last_output = "\n"
+      super(@options)
       @theme = Terminal.theme(theme)
       @code_theme = code_theme
       @style = Terminal::StyleStack.new
       @style << @theme["default"]
       @max_width = max_width
-    end
-
-    def print(s)
-      s = s.to_s.gsub("\n", "\n" + @indent.join)
-      @output_io << s
     end
 
     # Print or collect based on whether we're in a table cell or wrappable block
@@ -228,10 +221,6 @@ module Markd
       end
     end
 
-    def line_break(node : Node, entering : Bool) : Nil
-      print "\n"
-    end
-
     # The `link` method sets the style and prints the destination
     # on exit (for non-OSC8 links). The text nodes print the link text.
     def link(node : Node, entering : Bool) : Nil
@@ -256,14 +245,6 @@ module Markd
         @style.pop
         # Reset style at the end of the link (skip if inside table cell)
         output "\e[0m" unless @in_table_cell
-      end
-    end
-
-    def list(node : Node, entering : Bool) : Nil
-      if entering
-        @current_item << node.data["start"].as(Int32) - 1
-      else
-        @current_item.pop
       end
     end
 
@@ -437,10 +418,6 @@ module Markd
       when "right"  then Tablo::Justify::Right
       else               Tablo::Justify::Left
       end
-    end
-
-    def render(document : Node) : String
-      super(document, nil).split("\n").map(&.rstrip).join("\n")
     end
   end
 

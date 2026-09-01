@@ -1,4 +1,5 @@
 require "./markmark"
+require "./cli"
 require "docopt"
 require "markd"
 
@@ -18,21 +19,15 @@ doc = <<-DOC
   DOC
 
 def main(source)
-  if source == "-"
-    input = STDIN.gets_to_end
-  else
-    input = File.read(source)
-  end
+  input = Cli.read_source(source)
   options = Markd::Options.new
   options.gfm = true
   puts Markd.to_md(input, options)
 end
 
-VERSION = {{ `shards version #{__DIR__}`.chomp.stringify }}
-
 options = Docopt.docopt(doc, ARGV)
 if options["--version"]
-  puts "Markmark #{VERSION}"
+  puts "Markmark #{Cli::VERSION}"
   exit 0
 end
 
