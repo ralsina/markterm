@@ -68,14 +68,22 @@ module Terminal
     [r, g, b]
   end
 
+  # Query a terminal color via OSC and read the reply.
+  # If the terminal never replies (some don't support the query),
+  # time out instead of blocking forever.
   def query_terminal(color) : String
     STDOUT << "\e]#{color};?\e\\"
     STDOUT.flush
     result = String::Builder.new
     STDIN.raw do |io|
-      io.each_char do |chr|
-        break if chr == '\a' || chr == '\\'
-        result << chr
+      io.read_timeout = 200.milliseconds
+      begin
+        io.each_char do |chr|
+          break if chr == '\a' || chr == '\\'
+          result << chr
+        end
+      rescue IO::TimeoutError
+        # No reply; the caller will fall back to its default
       end
     end
     result.to_s
