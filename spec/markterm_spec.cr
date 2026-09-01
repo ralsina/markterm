@@ -118,6 +118,13 @@ describe "Table rendering" do
     result = Markd.to_md("![](http://example.com/cat.png)")
     result.should contain("![](http://example.com/cat.png)")
   end
+
+  it "round-trips strikethrough" do
+    options = Markd::Options.new
+    options.gfm = true
+    result = Markd.to_md("hello ~~gone~~ world", options)
+    result.should eq("hello ~~gone~~ world")
+  end
 end
 
 describe "Word wrap" do

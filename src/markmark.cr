@@ -3,14 +3,6 @@ require "./styles"
 require "colorize"
 require "markd"
 
-macro def_method(name)
-  def {{ name }}(node : Node, entering : Bool) : Nil
-    if entering
-      print "{{ name }}\n"
-    end
-  end
-end
-
 module Markd
   class MarkRenderer < Renderer
     @indent = [] of String
@@ -67,11 +59,7 @@ module Markd
     end
 
     def emphasis(node : Node, entering : Bool) : Nil
-      if entering
-        output "*"
-      else
-        output "*"
-      end
+      output "*"
     end
 
     def heading(node : Node, entering : Bool) : Nil
@@ -142,12 +130,8 @@ module Markd
     end
 
     def soft_break(node : Node, entering : Bool) : Nil
-      # When in a paragraph, soft breaks are just spaces.
-      if node.parent.try &.type == Node::Type::Paragraph
-        print "\n"
-      else
-        print "\n"
-      end
+      # Keep soft breaks as newlines so documents round-trip
+      print "\n"
     end
 
     def strong(node : Node, entering : Bool) : Nil
@@ -182,11 +166,8 @@ module Markd
     end
 
     def strikethrough(node : Node, entering : Bool) : Nil
-      if entering
-        output "~~"
-        output node.text
-        output "~~"
-      end
+      # The text children between the delimiters are printed by the walk
+      output "~~"
     end
 
     def alert(node : Node, entering : Bool) : Nil

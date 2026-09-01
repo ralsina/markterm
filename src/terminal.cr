@@ -108,11 +108,7 @@ module Terminal
   end
 
   def highlight(source : String, language : String, theme : String?) : String
-    if theme.nil?
-      style = terminal_light? ? "papercolor-light" : "papercolor-dark"
-    else
-      style = "#{theme}"
-    end
+    style = theme || (terminal_light? ? "papercolor-light" : "papercolor-dark")
     formatter = Tartrazine::Ansi.new(theme: Tartrazine.theme(style))
     begin
       lexer = Tartrazine.lexer(language)

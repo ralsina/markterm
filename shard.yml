@@ -24,11 +24,8 @@ dependencies:
     github: ralsina/sixteen
   tablo:
     github: hutou/tablo
-  progress_bar:
-    github: mgomes/progress_bar
-    branch: master
   term-screen:
-    github: crystal-term/screen    
+    github: crystal-term/screen
 
 development_dependencies:
   ameba:
