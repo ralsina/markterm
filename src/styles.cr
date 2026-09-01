@@ -113,6 +113,7 @@ module Terminal
         t["link"] = Terminal::Style.new(fore: :blue, underline: true)
         t["strong"] = Terminal::Style.new(bold: true)
       end
+      t["strikethrough"] = Terminal::Style.new(strikethrough: true)
     else
       base16 = Sixteen.theme(name)
       t["block_quote"] = Style.new(fore: base16["05"].colorize, italic: true)
@@ -121,6 +122,7 @@ module Terminal
       t["heading"] = Terminal::Style.new(fore: base16["0D"].colorize, underline: true, bold: true)
       t["link"] = Terminal::Style.new(fore: base16["09"].colorize, underline: true)
       t["strong"] = Terminal::Style.new(bold: true)
+      t["strikethrough"] = Terminal::Style.new(strikethrough: true)
     end
     t
   end
