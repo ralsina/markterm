@@ -550,6 +550,9 @@ std::string g_emoji_font_path;
 std::string g_header_template;
 std::string g_footer_template;
 
+// Page background color as a CSS "#rrggbb" string; empty = white.
+std::string g_page_background;
+
 // Provided font files (--font flags), then scanned system fonts.
 std::vector<FontFile> g_provided_fonts;
 std::vector<FontFile> g_system_fonts;
@@ -1972,6 +1975,12 @@ void litepdf_set_page_text(const char* header, const char* footer)
     g_footer_template = footer ? footer : "";
 }
 
+// Set the page background color (CSS "#rrggbb"); empty = white.
+void litepdf_set_page_background(const char* css_color)
+{
+    g_page_background = css_color ? css_color : "";
+}
+
 // Register a TTF file as a candidate font for font-family matching.
 // Provided fonts take priority over scanned system fonts. Parses the
 // font's metadata; returns 1 on success, 0 and fills errbuf on failure.
@@ -2223,6 +2232,17 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         }
         HPDF_Page_SetWidth(page, page_width);
         HPDF_Page_SetHeight(page, page_height);
+        // Themed page background: fill the whole page before clipping.
+        if (g_page_background.size() >= 7 && g_page_background[0] == '#')
+        {
+            auto channel = [](const std::string& text, size_t offset) {
+                return std::strtol(text.substr(offset, 2).c_str(), nullptr, 16) / 255.0f;
+            };
+            HPDF_Page_SetRGBFill(page, channel(g_page_background, 1), channel(g_page_background, 3),
+                                 channel(g_page_background, 5));
+            HPDF_Page_Rectangle(page, 0, 0, page_width, page_height);
+            HPDF_Page_Fill(page);
+        }
         context.page = page;
         context.page_height = page_height;
         context.y_offset = window.first;
