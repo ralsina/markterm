@@ -130,6 +130,17 @@ describe Markd::Pdf do
       end
     end
 
+    it "accepts header and footer templates" do
+      path = temp_pdf_path
+      begin
+        pages = Markd::Pdf.render(sample_markdown, path, footer: "page %p of %t", header: "Markpdf spec")
+        pages.should eq(1)
+        File.size(path).should be > 1000
+      ensure
+        File.delete?(path)
+      end
+    end
+
     it "rejects unknown page sizes" do
       path = temp_pdf_path
       begin

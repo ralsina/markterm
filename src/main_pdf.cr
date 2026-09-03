@@ -7,7 +7,7 @@ doc = <<-DOC
   Markpdf - A tool to render markdown to PDF
 
   Usage:
-    markpdf [<file>] [-o <output>] [--page-size <size>] [--margin <margin>] [--css <css>] [--font <font>]... [--emoji-font <font>]
+    markpdf [<file>] [-o <output>] [--page-size <size>] [--margin <margin>] [--css <css>] [--font <font>]... [--emoji-font <font>] [--header <header>] [--footer <footer>]
     markpdf -h | --help
     markpdf --version
 
@@ -23,12 +23,15 @@ doc = <<-DOC
                             are used automatically when available.
     --emoji-font <font>     TTF font used for emoji and symbols the main fonts
                             lack (auto-detected from system fonts by default)
+    --header <header>       Page header text; "%p" is the page number, "%t" the
+                            total page count
+    --footer <footer>       Page footer text; supports the same placeholders
 
   If you use "-" as the file argument, markpdf will read from stdin.
   Images are resolved relative to the input file's directory.
   DOC
 
-def main(source, output, page_size, margin, css_path, font_paths, emoji_font)
+def main(source, output, page_size, margin, css_path, font_paths, emoji_font, header, footer)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
 
@@ -77,13 +80,13 @@ def main(source, output, page_size, margin, css_path, font_paths, emoji_font)
 
   if output
     Markd::Pdf.render(input, output, options, page_size: page_size,
-      margin_mm: margin_mm, base_dir: base_dir)
+      margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "")
   else
     # No output file: render to a temporary file and stream to stdout
     temp_path = File.tempname("markpdf", ".pdf")
     begin
       Markd::Pdf.render(input, temp_path, options, page_size: page_size,
-        margin_mm: margin_mm, base_dir: base_dir)
+        margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "")
       STDOUT.write(File.read(temp_path).to_slice)
     ensure
       File.delete?(temp_path)
@@ -109,6 +112,8 @@ begin
     options["--css"].try &.as(String),
     fonts.as(Array),
     options["--emoji-font"].try &.as(String),
+    options["--header"].try &.as(String),
+    options["--footer"].try &.as(String),
   )
 rescue error : Markd::Pdf::Error
   STDERR.puts "markpdf: #{error.message}"
