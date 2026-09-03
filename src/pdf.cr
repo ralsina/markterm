@@ -1,5 +1,9 @@
 require "markd"
 require "sixteen"
+require "crimage"
+require "http/client"
+require "uri"
+require "base64"
 
 require "./cli"
 
@@ -126,7 +130,8 @@ module Markd
         td, th { border-color: #{base.call("base02")}; }
         blockquote { border-left-color: #{base.call("base03")}; color: #{base.call("base04")}; }
         hr { border-bottom-color: #{base.call("base03")}; }
-      CSS
+        CSS
+
     rescue error : Exception
       raise Error.new("could not load theme '#{name}': #{error.message}")
     end
@@ -142,21 +147,157 @@ module Markd
       # produce dark pages; the shim paints it before any content.
       body_background = css.match(/body\s*\{[^}]*background-color\s*:\s*(#[0-9a-fA-F]{3,8}|[a-zA-Z]+)/)
       Litepdf.set_page_background(body_background ? body_background[1] : "")
-      html = document_html(Markd.to_html(source, options))
-      size_code = PAGE_SIZES[page_size.downcase]?
-      if size_code.nil?
-        raise Error.new("unknown page size '#{page_size}' (expected a4 or letter)")
-      end
-      margin_pt = margin_mm * 72.0 / 25.4
+      temp_dir = File.join(Dir.tempdir, "markpdf-imgs-#{Process.pid}-#{Time.utc.to_unix_ms}")
+      Dir.mkdir(temp_dir, 0o700)
+      converted = [] of String
+      begin
+        body_html = process_images(Markd.to_html(source, options), base_dir, temp_dir, converted)
+        html = document_html(body_html)
+        size_code = PAGE_SIZES[page_size.downcase]?
+        if size_code.nil?
+          raise Error.new("unknown page size '#{page_size}' (expected a4 or letter)")
+        end
+        margin_pt = margin_mm * 72.0 / 25.4
 
-      errbuf = Bytes.new(512)
-      pages = Litepdf.render(html, nil, size_code, margin_pt.to_f32,
-        output_path, base_dir, errbuf, errbuf.size)
-      if pages < 0
-        message = String.new(errbuf).strip
-        raise Error.new(message.empty? ? "PDF rendering failed" : message)
+        errbuf = Bytes.new(512)
+        pages = Litepdf.render(html, nil, size_code, margin_pt.to_f32,
+          output_path, base_dir, errbuf, errbuf.size)
+        if pages < 0
+          message = String.new(errbuf).strip
+          raise Error.new(message.empty? ? "PDF rendering failed" : message)
+        end
+        pages
+      ensure
+        converted.each { |path| File.delete?(path) }
+        begin
+          Dir.delete(temp_dir)
+        rescue File::Error
+        end
       end
-      pages
+    end
+
+    # Rewrite <img> sources the shim cannot load itself: remote URLs are
+    # fetched, other formats are converted to PNG (crimage), data URIs are
+    # decoded. PNG/JPEG files are left alone. Converted files land in
+    # temp_dir and are tracked in converted for later cleanup; sources
+    # that fail keep working as before (silently skipped).
+    private def self.process_images(html : String, base_dir : String, temp_dir : String,
+                                    converted : Array(String)) : String
+      sources = html.scan(/<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/).map(&.[1]).uniq!
+      return html if sources.empty?
+      rewritten = {} of String => String
+      sources.each do |source|
+        if replacement = image_source(source, base_dir, temp_dir, converted)
+          rewritten[source] = replacement
+        end
+      end
+      return html if rewritten.empty?
+      html.gsub(/src\s*=\s*["']([^"']+)["']/) do |match|
+        source = $1
+        rewritten.has_key?(source) ? "src=\"#{rewritten[source]}\"" : match
+      end
+    end
+
+    private def self.image_source(source : String, base_dir : String, temp_dir : String,
+                                  converted : Array(String)) : String?
+      if source.starts_with?("data:image/")
+        return data_uri_image(source, temp_dir, converted)
+      end
+      if source.starts_with?("http://") || source.starts_with?("https://")
+        bytes = fetch_image(source)
+        return unless bytes
+        return passthrough_or_convert(bytes, temp_dir, converted)
+      end
+      path = File.expand_path(source, base_dir)
+      return unless File.file?(path)
+      return if {".png", ".jpg", ".jpeg"}.includes?(File.extname(path).downcase)
+      convert_to_png(path, temp_dir, converted)
+    end
+
+    private def self.data_uri_image(source : String, temp_dir : String, converted : Array(String)) : String?
+      header, _, payload = source.partition(",")
+      return if payload.nil? || payload.empty?
+      return unless header.match(/data:image\/(png|jpeg|jpg|gif|bmp|webp)/i)
+      convert_to_png_bytes(Base64.decode(payload), temp_dir, converted)
+    rescue
+      nil
+    end
+
+    private def self.fetch_image(url : String) : Bytes?
+      uri = URI.parse(url)
+      3.times do
+        client = HTTP::Client.new(uri)
+        client.read_timeout = 15.seconds
+        client.connect_timeout = 15.seconds
+        begin
+          response = client.get(uri.request_target)
+          case response.status
+          when .redirection?
+            location = response.headers["Location"]?
+            return unless location
+            uri = URI.parse(location)
+          when .success?
+            return response.body.to_slice
+          else
+            return
+          end
+        ensure
+          client.close
+        end
+      end
+      nil
+    rescue
+      nil
+    end
+
+    # libharu loads PNG and JPEG natively; anything else becomes PNG.
+    private def self.passthrough_or_convert(bytes : Bytes, temp_dir : String,
+                                            converted : Array(String)) : String?
+      ext = sniff_image_ext(bytes)
+      return unless ext
+      return write_temp(bytes, temp_dir, ext, converted) if {".png", ".jpg"}.includes?(ext)
+      path = write_temp(bytes, temp_dir, ext, converted)
+      return unless path
+      convert_to_png(path, temp_dir, converted)
+    end
+
+    private def self.sniff_image_ext(bytes : Bytes) : String?
+      return if bytes.size < 12
+      return ".png" if bytes[0, 4] == "\x89PNG".bytes
+      return ".jpg" if bytes[0] == 0xFF && bytes[1] == 0xD8
+      return ".gif" if bytes[0, 3] == "GIF".bytes
+      return ".bmp" if bytes[0, 2] == "BM".bytes
+      return ".webp" if bytes[0, 4] == "RIFF".bytes && bytes[8, 4] == "WEBP".bytes
+      return ".tiff" if bytes[0, 4] == "II*\x00".bytes || bytes[0, 4] == "MM\x00*".bytes
+      nil
+    end
+
+    private def self.write_temp(bytes : Bytes, temp_dir : String, ext : String, converted : Array(String)) : String
+      path = File.join(temp_dir, "img#{converted.size}#{ext}")
+      File.write(path, bytes, mode: "wb")
+      converted << path
+      path
+    end
+
+    private def self.convert_to_png(source_path : String, temp_dir : String, converted : Array(String)) : String?
+      # Normalize any decoded variant to RGBA via the pipeline: PNG.write
+      # only handles concrete image types.
+      image = CrImage::Pipeline.new(CrImage.read(source_path)).result
+      png_path = File.join(temp_dir, "img#{converted.size}.png")
+      CrImage.write(png_path, image)
+      converted << png_path
+      png_path
+    rescue
+      nil
+    end
+
+    private def self.convert_to_png_bytes(bytes : Bytes, temp_dir : String,
+                                          converted : Array(String)) : String?
+      ext = sniff_image_ext(bytes)
+      return unless ext
+      path = write_temp(bytes, temp_dir, ext, converted)
+      return unless path
+      convert_to_png(path, temp_dir, converted)
     end
 
     # Wrap rendered HTML in a document skeleton with the stylesheet.

@@ -32,61 +32,53 @@ doc = <<-DOC
   Images are resolved relative to the input file's directory.
   DOC
 
+def abort_with(message : String)
+  STDERR.puts "markpdf: #{message}"
+  exit 1
+end
+
+def apply_theme(theme : String)
+  Markd::Pdf.css = Markd::Pdf.css + "\n" + Markd::Pdf.theme_css(theme)
+rescue error : Markd::Pdf::Error
+  abort_with(error.message.to_s)
+end
+
+def apply_user_css(css_path : String)
+  abort_with("CSS file not found: #{css_path}") unless File.file?(css_path)
+  Markd::Pdf.css = Markd::Pdf.css + "\n" + File.read(css_path)
+end
+
+def setup_emoji_font(emoji_font : String)
+  abort_with("emoji font file not found: #{emoji_font}") unless File.file?(emoji_font)
+  begin
+    Markd::Pdf.emoji_font = emoji_font
+  rescue error : Markd::Pdf::Error
+    abort_with(error.message.to_s)
+  end
+end
+
+def register_fonts(font_paths : Array(String))
+  font_paths.each do |font_path|
+    abort_with("font file not found: #{font_path}") unless File.file?(font_path)
+    begin
+      Markd::Pdf.register_font(font_path)
+    rescue error : Markd::Pdf::Error
+      abort_with(error.message.to_s)
+    end
+  end
+end
+
 def main(source, output, page_size, margin, css_path, font_paths, emoji_font, header, footer, theme)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
 
-  full_css = Markd::Pdf.css
-
-  if theme
-    begin
-      full_css = full_css + "\n" + Markd::Pdf.theme_css(theme)
-    rescue error : Markd::Pdf::Error
-      STDERR.puts "markpdf: #{error.message}"
-      exit 1
-    end
-  end
-
-  if css_path
-    unless File.file?(css_path)
-      STDERR.puts "markpdf: CSS file not found: #{css_path}"
-      exit 1
-    end
-    full_css = full_css + "\n" + File.read(css_path)
-  end
-  Markd::Pdf.css = full_css
-
-  if emoji_font
-    unless File.file?(emoji_font)
-      STDERR.puts "markpdf: emoji font file not found: #{emoji_font}"
-      exit 1
-    end
-    begin
-      Markd::Pdf.emoji_font = emoji_font
-    rescue error : Markd::Pdf::Error
-      STDERR.puts "markpdf: #{error.message}"
-      exit 1
-    end
-  end
-
-  font_paths.each do |font_path|
-    unless File.file?(font_path)
-      STDERR.puts "markpdf: font file not found: #{font_path}"
-      exit 1
-    end
-    begin
-      Markd::Pdf.register_font(font_path)
-    rescue error : Markd::Pdf::Error
-      STDERR.puts "markpdf: #{error.message}"
-      exit 1
-    end
-  end
+  apply_theme(theme) if theme
+  apply_user_css(css_path) if css_path
+  setup_emoji_font(emoji_font) if emoji_font
+  register_fonts(font_paths)
 
   margin_mm = margin.to_f?
-  unless margin_mm && margin_mm >= 0
-    STDERR.puts "markpdf: invalid margin '#{margin}'"
-    exit 1
-  end
+  abort_with("invalid margin '#{margin}'") unless margin_mm && margin_mm >= 0
 
   options = Markd::Options.new
   options.gfm = true
@@ -129,10 +121,6 @@ begin
     options["--footer"].try &.as(String),
     options["-t"].try &.as(String),
   )
-rescue error : Markd::Pdf::Error
-  STDERR.puts "markpdf: #{error.message}"
-  exit 1
 rescue error
-  STDERR.puts "markpdf: #{error.message}"
-  exit 1
+  abort_with(error.message.to_s)
 end
