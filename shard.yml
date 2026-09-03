@@ -11,6 +11,8 @@ targets:
     main: src/main.cr
   markmark:
     main: src/main_mark.cr
+  markpdf:
+    main: src/main_pdf.cr
 
 dependencies:
   # Pinned to a commit, not branch: master, so builds are

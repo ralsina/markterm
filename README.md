@@ -38,6 +38,7 @@ It can also render Markdown to Markdown if you really need that :-)
 * Allow enabling/disabling images/html-style-links via CLI (partly done)
 * Use crystal-term/color to detect color capabilities
 * Wrap styled table cells at word boundaries when tables are squeezed
+* markpdf: page headers/footers, themes generated from base16 palettes
 
 ## Usage as a program
 
@@ -69,6 +70,49 @@ If you use "-" as the file argument, markterm will read from stdin.
 ```
 
 There is a similar `markmark` binary that will render markdown to markdown.
+
+### markpdf
+
+The `markpdf` binary renders markdown to PDF. It converts the markdown to
+HTML with markd, lays it out with [litehtml](https://github.com/litehtml/litehtml),
+and writes the PDF through [libharu](https://github.com/libharu/libharu),
+via the C++ shim in `ext/`. Styling is CSS: `markpdf` ships a print-oriented
+default stylesheet, and you can add your own rules with `--css`.
+
+```docopt
+Markpdf - A tool to render markdown to PDF
+
+  Usage:
+    markpdf [<file>] [-o <output>] [--page-size <size>] [--margin <margin>] [--css <css>] [--font <font>]... [--emoji-font <font>]
+    markpdf -h | --help
+    markpdf --version
+
+Options:
+  -h --help               Show this screen.
+  --version               Show version.
+  -o <output>             Write the PDF to a file (defaults to standard output)
+  --page-size <size>      Page size: a4 or letter [default: a4]
+  --margin <margin>       Page margin in millimeters [default: 20]
+  --css <css>             Additional CSS file with extra styles
+  --font <font>           TTF font file to embed (can be repeated). Fonts are
+                          matched by their internal family name; system fonts
+                          are used automatically when available.
+  --emoji-font <font>     TTF font used for emoji and symbols the main fonts
+                          lack (auto-detected from system fonts by default)
+
+If you use "-" as the file argument, markpdf will read from stdin.
+Images are resolved relative to the input file's directory.
+```
+
+Text uses embedded TrueType fonts with full Unicode support: the shim
+matches the CSS `font-family` names against the fonts you pass with
+`--font` and against installed system fonts (`/usr/share/fonts`,
+`~/.fonts`, ...), falling back to the PDF base-14 fonts for Latin text
+when nothing matches.
+
+Building `markpdf` from source requires libharu (`pacman -S libharu`,
+`apt install libharu-dev`, ...) and a C++ toolchain: run `make -C ext`
+once to build the shim, then `shards build`.
 
 ## Usage as a library
 
