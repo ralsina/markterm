@@ -1803,17 +1803,27 @@ class PdfContainer : public litehtml::document_container
     }
 
     // -- links -------------------------------------------------------------
-    // Turn <a href="scheme:..."> elements into real PDF URI annotations:
-    // after layout, each anchor's inline boxes become clickable rectangles
-    // (split across pages when a link wraps over a break).
+    // <a href="scheme:..."> elements become real PDF URI annotations and
+    // <a href="#name"> become GoTo annotations targeting the element with
+    // the matching id: after layout, each anchor's inline boxes become
+    // clickable rectangles (split across pages when a link wraps).
 
     struct LinkRect
     {
-        std::string uri;
+        std::string uri; // external: the URI; internal: the target id
         float x, y, width, height;
+        bool external;
+    };
+
+    // An id="..." target: document-space position to jump to.
+    struct AnchorTarget
+    {
+        std::string name;
+        float x, y;
     };
 
     std::vector<LinkRect> links;
+    std::vector<AnchorTarget> targets;
 
     static bool is_external_uri(const std::string& uri)
     {
@@ -1829,21 +1839,53 @@ class PdfContainer : public litehtml::document_container
         litehtml::position pos = item->pos();
         float abs_x = offset_x + px(pos.x);
         float abs_y = offset_y + px(pos.y);
-        const char* href = item->src_el() ? item->src_el()->get_attr("href") : nullptr;
-        if (href && item->src_el()->get_tagName() == std::string("a") && is_external_uri(href))
+        if (item->src_el())
         {
-            bool have_box = false;
-            item->for_inline_boxes([&](const litehtml::position& box, bool /*first*/, bool /*last*/) {
-                if (px(box.width) > 0 && px(box.height) > 0)
-                {
-                    links.push_back({href, abs_x + px(box.x), abs_y + px(box.y), px(box.width), px(box.height)});
-                    have_box = true;
-                }
-                return true;
-            });
-            if (!have_box && px(pos.width) > 0 && px(pos.height) > 0)
+            const char* id = item->src_el()->get_attr("id");
+            if (id && *id)
             {
-                links.push_back({href, abs_x, abs_y, px(pos.width), px(pos.height)});
+                bool known = false;
+                for (const auto& target : targets)
+                {
+                    known = target.name == id;
+                    if (known)
+                    {
+                        break;
+                    }
+                }
+                if (!known)
+                {
+                    targets.push_back({id, abs_x, abs_y});
+                }
+            }
+            const char* href = item->src_el()->get_tagName() == std::string("a")
+                                   ? item->src_el()->get_attr("href")
+                                   : nullptr;
+            if (href && *href)
+            {
+                std::string uri = href;
+                bool external = is_external_uri(uri);
+                bool internal = uri.size() > 1 && uri[0] == '#';
+                if (external || internal)
+                {
+                    std::vector<LinkRect> rects;
+                    item->for_inline_boxes([&](const litehtml::position& box, bool /*first*/, bool /*last*/) {
+                        if (px(box.width) > 0 && px(box.height) > 0)
+                        {
+                            rects.push_back({uri, abs_x + px(box.x), abs_y + px(box.y), px(box.width),
+                                             px(box.height), external});
+                        }
+                        return true;
+                    });
+                    if (rects.empty() && px(pos.width) > 0 && px(pos.height) > 0)
+                    {
+                        rects.push_back({uri, abs_x, abs_y, px(pos.width), px(pos.height), external});
+                    }
+                    for (const auto& rect : rects)
+                    {
+                        links.push_back(rect);
+                    }
+                }
             }
         }
         for (const auto& child : item->children())
@@ -2102,6 +2144,16 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
     DrawContext context;
     container.active_clips = &context.clips;
     int page_count = 0;
+    std::vector<HPDF_Page> page_handles;
+    // Internal links wait for all pages to exist: their annotations need
+    // destinations bound to (possibly earlier) pages.
+    struct PendingInternalLink
+    {
+        size_t page_index;
+        HPDF_Rect rect;
+        std::string target;
+    };
+    std::vector<PendingInternalLink> pending_internal;
     for (const auto& window : windows)
     {
         HPDF_Page page;
@@ -2163,9 +2215,48 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
             rect.top = top;
             rect.bottom = bottom;
             if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "  annot uri=%s top=%.1f bottom=%.1f\n", link.uri.c_str(), rect.top, rect.bottom);
-            HPDF_Page_CreateURILinkAnnot(page, rect, link.uri.c_str());
+            if (link.external)
+            {
+                HPDF_Page_CreateURILinkAnnot(page, rect, link.uri.c_str());
+            }
+            else
+            {
+                pending_internal.push_back({(size_t)page_count, rect, link.uri.substr(1)});
+            }
         }
+        page_handles.push_back(page);
         page_count++;
+    }
+
+    // Internal links: resolve #targets to destinations and wire them up.
+    std::map<std::string, HPDF_Destination> destinations;
+    for (const auto& target : container.targets)
+    {
+        if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "target '%s' y=%.1f\n", target.name.c_str(), target.y);
+        for (size_t i = 0; i < windows.size(); i++)
+        {
+            if (target.y >= windows[i].first && target.y < windows[i].second)
+            {
+                HPDF_Destination dst = HPDF_Page_CreateDestination(page_handles[i]);
+                if (dst)
+                {
+                    // Keep the reader's zoom, jump to the target's height.
+                    HPDF_Destination_SetFitH(dst, page_height - margin - (target.y - windows[i].first));
+                    destinations[target.name] = dst;
+                }
+                break;
+            }
+        }
+    }
+    if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "targets=%zu pending=%zu destinations=%zu\n", container.targets.size(), pending_internal.size(), destinations.size());
+    for (const auto& pending : pending_internal)
+    {
+        auto destination = destinations.find(pending.target);
+        if (destination == destinations.end())
+        {
+            continue;
+        }
+        HPDF_Page_CreateLinkAnnot(page_handles[pending.page_index], pending.rect, destination->second);
     }
 
     if (HPDF_SaveToFile(pdf, out_path) != HPDF_OK)
