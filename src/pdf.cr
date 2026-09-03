@@ -75,7 +75,7 @@ module Markd
       th { font-weight: bold; border: 1px solid #cccccc; background-color: #f2f2f2; padding: 4px 8px 4px 8px; text-align: left; }
       td { border: 1px solid #cccccc; padding: 4px 8px 4px 8px; }
       hr { border-bottom: 1px solid #bbbbbb; margin: 18px 0 18px 0; }
-      img { margin: 6px 0 6px 0; }
+      img { margin: 6px 0 6px 0; max-width: 100%; }
       .alert { border: 1px solid #bbbbbb; border-left: 4px solid #666666; padding: 8px 12px 4px 12px; margin: 9px 0 9px 0; }
       .alert p { margin: 0 0 6px 0; }
       .alert-title { font-weight: bold; }
@@ -218,7 +218,10 @@ module Markd
       rewritten = {} of String => String
       sources.each do |source|
         if replacement = image_source(source, base_dir, temp_dir, converted)
+          STDERR.puts "img #{source[0, 40]} -> #{replacement[0, 40]}" if ENV["LITEPDF_DEBUG"]?
           rewritten[source] = replacement
+        else
+          STDERR.puts "img #{source[0, 40]} -> FAILED" if ENV["LITEPDF_DEBUG"]?
         end
       end
       return html if rewritten.empty?
@@ -261,6 +264,7 @@ module Markd
         client.connect_timeout = 15.seconds
         begin
           response = client.get(uri.request_target)
+          STDERR.puts "fetch status=#{response.status}" if ENV["LITEPDF_DEBUG"]?
           case response.status
           when .redirection?
             location = response.headers["Location"]?
@@ -271,6 +275,9 @@ module Markd
           else
             return
           end
+        rescue e
+          STDERR.puts "fetch EXC #{e.class}: #{e.message}" if ENV["LITEPDF_DEBUG"]?
+          return
         ensure
           client.close
         end
@@ -293,12 +300,12 @@ module Markd
 
     private def self.sniff_image_ext(bytes : Bytes) : String?
       return if bytes.size < 12
-      return ".png" if bytes[0, 4] == "\x89PNG".bytes
+      return ".png" if bytes[0, 4] == "\x89PNG".to_slice
       return ".jpg" if bytes[0] == 0xFF && bytes[1] == 0xD8
-      return ".gif" if bytes[0, 3] == "GIF".bytes
-      return ".bmp" if bytes[0, 2] == "BM".bytes
-      return ".webp" if bytes[0, 4] == "RIFF".bytes && bytes[8, 4] == "WEBP".bytes
-      return ".tiff" if bytes[0, 4] == "II*\x00".bytes || bytes[0, 4] == "MM\x00*".bytes
+      return ".gif" if bytes[0, 3] == "GIF".to_slice
+      return ".bmp" if bytes[0, 2] == "BM".to_slice
+      return ".webp" if bytes[0, 4] == "RIFF".to_slice && bytes[8, 4] == "WEBP".to_slice
+      return ".tiff" if bytes[0, 4] == "II*\x00".to_slice || bytes[0, 4] == "MM\x00*".to_slice
       nil
     end
 
