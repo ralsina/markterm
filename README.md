@@ -38,7 +38,8 @@ It can also render Markdown to Markdown if you really need that :-)
 * Allow enabling/disabling images/html-style-links via CLI (partly done)
 * Use crystal-term/color to detect color capabilities
 * Wrap styled table cells at word boundaries when tables are squeezed
-* markpdf: page headers/footers, themes generated from base16 palettes
+* markpdf: apply base16 themes to code syntax highlighting, richer
+  header/footer templating (alignment, per-page sections)
 
 ## Usage as a program
 
@@ -83,7 +84,7 @@ default stylesheet, and you can add your own rules with `--css`.
 Markpdf - A tool to render markdown to PDF
 
   Usage:
-    markpdf [<file>] [-o <output>] [--page-size <size>] [--margin <margin>] [--css <css>] [--font <font>]... [--emoji-font <font>]
+    markpdf [<file>] [-o <output>] [-t <theme>] [--page-size <size>] [--margin <margin>] [--css <css>] [--font <font>]... [--emoji-font <font>] [--header <header>] [--footer <footer>]
     markpdf -h | --help
     markpdf --version
 
@@ -91,6 +92,7 @@ Options:
   -h --help               Show this screen.
   --version               Show version.
   -o <output>             Write the PDF to a file (defaults to standard output)
+  -t <theme>              Color theme (a base16/sixteen theme name)
   --page-size <size>      Page size: a4 or letter [default: a4]
   --margin <margin>       Page margin in millimeters [default: 20]
   --css <css>             Additional CSS file with extra styles
@@ -99,6 +101,9 @@ Options:
                           are used automatically when available.
   --emoji-font <font>     TTF font used for emoji and symbols the main fonts
                           lack (auto-detected from system fonts by default)
+  --header <header>       Page header text; "%p" is the page number, "%t" the
+                          total page count
+  --footer <footer>       Page footer text; supports the same placeholders
 
 If you use "-" as the file argument, markpdf will read from stdin.
 Images are resolved relative to the input file's directory.
@@ -109,6 +114,16 @@ matches the CSS `font-family` names against the fonts you pass with
 `--font` and against installed system fonts (`/usr/share/fonts`,
 `~/.fonts`, ...), falling back to the PDF base-14 fonts for Latin text
 when nothing matches.
+
+Links pointing at `http(s)://` or `mailto:` URIs become clickable PDF
+link annotations, and internal anchors (including footnote references
+and their back-links) jump to their targets.
+
+Example with a dark base16 theme, page numbers and a header:
+
+```bash
+markpdf notes.md -o notes.pdf -t "0x96f" --header "notes" --footer "%p / %t"
+```
 
 Building `markpdf` from source requires libharu (`pacman -S libharu`,
 `apt install libharu-dev`, ...) and a C++ toolchain: run `make -C ext`
