@@ -7,7 +7,7 @@ doc = <<-DOC
   Markpdf - A tool to render markdown to PDF
 
   Usage:
-    markpdf [<file>][-o <output>][-t <theme>][--code-theme <code-theme>][--page-size <size>][--margin <margin>][--css <css>][--font <font>]...[--emoji-font <font>][--header <header>][--footer <footer>]
+    markpdf [<file>] [options]
     markpdf -h | --help
     markpdf --version
 

@@ -786,22 +786,9 @@ struct DrawContext
     float y_offset = 0;    // document-space y drawn at the top margin of this page
     float x_offset = 0;    // left margin in document space (page window left edge)
     float top_margin = 0;  // page top margin in points
-    // Soft clip stack in document coordinates. Only set_clip/del_clip use
-    // it; page windows are enforced by the clip passed to document::draw.
-    std::vector<litehtml::position> clips;
-
-    bool visible(const litehtml::position& pos) const
-    {
-        for (const auto& clip : clips)
-        {
-            if (pos.right() < clip.left() || pos.left() > clip.right() ||
-                pos.bottom() < clip.top() || pos.top() > clip.bottom())
-            {
-                return false;
-            }
-        }
-        return true;
-    }
+    // Depth of clip paths pushed by set_clip (overflow: hidden); libharu
+    // clips are real, so partially visible glyphs get cut at the box edge.
+    int clip_depth = 0;
 
     float pdf_x(float document_x) const
     {
@@ -1293,7 +1280,7 @@ class PdfContainer : public litehtml::document_container
                    litehtml::web_color color, const litehtml::position& pos) override
     {
         DrawContext* context = ctx(hdc);
-        if (!context->page || !context->visible(pos))
+        if (!context->page)
         {
             return;
         }
@@ -1366,7 +1353,7 @@ class PdfContainer : public litehtml::document_container
     void draw_list_marker(litehtml::uint_ptr hdc, const litehtml::list_marker& marker) override
     {
         DrawContext* context = ctx(hdc);
-        if (!context->page || !context->visible(marker.pos))
+        if (!context->page)
         {
             return;
         }
@@ -1573,7 +1560,7 @@ class PdfContainer : public litehtml::document_container
     {
         DrawContext* context = ctx(hdc);
         HPDF_Image image = load_image(url.c_str(), base_url.c_str());
-        if (!image || !context->page || !context->visible(layer.border_box))
+        if (!image || !context->page)
         {
             return;
         }
@@ -1589,7 +1576,7 @@ class PdfContainer : public litehtml::document_container
     {
         if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "solid_fill CALLED\n");
         DrawContext* context = ctx(hdc);
-        if (!context->page || !context->visible(layer.border_box))
+        if (!context->page)
         {
             return;
         }
@@ -1754,28 +1741,35 @@ class PdfContainer : public litehtml::document_container
         baseurl = slash == std::string::npos ? std::string() : path.substr(0, slash);
     }
 
+    // set_clip/del_clip don't carry hdc, so the active context is
+    // swapped in while a document is being drawn.
+    DrawContext* active_context = nullptr;
+
     void set_clip(const litehtml::position& pos, const litehtml::border_radiuses&) override
     {
-        ctx_stack().push_back(pos);
+        DrawContext* context = active_context;
+        if (!context || !context->page || px(pos.width) <= 0 || px(pos.height) <= 0)
+        {
+            return;
+        }
+        float left = context->pdf_x(px(pos.x));
+        float top = context->pdf_y(px(pos.y));
+        HPDF_Page_GSave(context->page);
+        HPDF_Page_Rectangle(context->page, left, top - px(pos.height), px(pos.width), px(pos.height));
+        HPDF_Page_Clip(context->page);
+        HPDF_Page_EndPath(context->page);
+        context->clip_depth++;
     }
 
     void del_clip() override
     {
-        auto& clips = ctx_stack();
-        if (!clips.empty())
+        DrawContext* context = active_context;
+        if (!context || !context->page || context->clip_depth == 0)
         {
-            clips.pop_back();
+            return;
         }
-    }
-
-    // set_clip/del_clip don't carry hdc, so the clip stack lives on a
-    // member that is swapped in while a DrawContext is active.
-    std::vector<litehtml::position>* active_clips = nullptr;
-
-    std::vector<litehtml::position>& ctx_stack()
-    {
-        static std::vector<litehtml::position> empty;
-        return active_clips ? *active_clips : empty;
+        HPDF_Page_GRestore(context->page);
+        context->clip_depth--;
     }
 
     void get_viewport(litehtml::position& viewport) const override
@@ -2165,7 +2159,7 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
 
     if (getenv("LITEPDF_DEBUG")) { for (auto& w : windows) std::fprintf(stderr, "window %.1f..%.1f\n", w.first, w.second); }
     DrawContext context;
-    container.active_clips = &context.clips;
+    container.active_context = &context;
     int page_count = 0;
     int total_pages = (int)windows.size();
     // Headers/footers use the body font (the first one created).
@@ -2261,6 +2255,11 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
                                 (int)std::ceil(content_width),
                                 (int)std::ceil(window.second - window.first));
         doc->draw(reinterpret_cast<litehtml::uint_ptr>(&context), 0, 0, &clip);
+        while (context.clip_depth > 0)
+        {
+            HPDF_Page_GRestore(page);
+            context.clip_depth--;
+        }
         HPDF_Page_GRestore(page);
         // Header/footer go in the margins, outside the window clip.
         draw_page_text(g_header_template, true);
