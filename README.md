@@ -84,26 +84,27 @@ default stylesheet, and you can add your own rules with `--css`.
 Markpdf - A tool to render markdown to PDF
 
   Usage:
-    markpdf [<file>] [-o <output>] [-t <theme>] [--code-theme <code-theme>] [--page-size <size>] [--margin <margin>] [--css <css>] [--font <font>]... [--emoji-font <font>] [--header <header>] [--footer <footer>]
+    markpdf [<file>][-o <output>][-t <theme>][--code-theme <code-theme>][--page-size <size>][--margin <margin>][--css <css>][--font <font>]...[--emoji-font <font>][--header <header>][--footer <footer>]
     markpdf -h | --help
     markpdf --version
 
 Options:
-  -h --help               Show this screen.
-  --version               Show version.
-  -o <output>             Write the PDF to a file (defaults to standard output)
-  -t <theme>              Color theme (a base16/sixteen theme name)
-  --page-size <size>      Page size: a4 or letter [default: a4]
-  --margin <margin>       Page margin in millimeters [default: 20]
-  --css <css>             Additional CSS file with extra styles
-  --font <font>           TTF font file to embed (can be repeated). Fonts are
-                          matched by their internal family name; system fonts
-                          are used automatically when available.
-  --emoji-font <font>     TTF font used for emoji and symbols the main fonts
-                          lack (auto-detected from system fonts by default)
-  --header <header>       Page header text; "%p" is the page number, "%t" the
-                          total page count
-  --footer <footer>       Page footer text; supports the same placeholders
+  -h --help                  Show this screen.
+  -t <theme>                 Theme to use for coloring output
+  --code-theme <code-theme>  Theme to use for coloring code blocks
+  --version                  Show version.
+  -o <output>                Write the PDF to a file (defaults to standard output)
+  --page-size <size>         Page size: a4 or letter [default: a4]
+  --margin <margin>          Page margin in millimeters [default: 20]
+  --css <css>                Additional CSS file with extra styles
+  --font <font>              TTF font file to embed (can be repeated). Fonts are
+                             matched by their internal family name; system fonts
+                             are used automatically when available.
+  --emoji-font <font>        TTF font used for emoji and symbols the main fonts
+                             lack (auto-detected from system fonts by default)
+  --header <header>          Page header text; "%p" is the page number, "%t" the
+                             total page count
+  --footer <footer>          Page footer text; supports the same placeholders
 
 If you use "-" as the file argument, markpdf will read from stdin.
 Images are resolved relative to the input file's directory.
