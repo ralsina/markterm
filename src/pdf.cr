@@ -20,6 +20,7 @@ lib Litepdf
                                             errbuf_len : LibC::Int) : LibC::Int
   fun set_emoji_font = litepdf_set_emoji_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,
                                               errbuf_len : LibC::Int) : LibC::Int
+  fun set_page_text = litepdf_set_page_text(header : LibC::Char*, footer : LibC::Char*) : Void
 end
 
 module Markd
@@ -108,8 +109,12 @@ module Markd
     end
 
     # Render markdown source to a PDF file, returns the page count.
+    # header/footer templates support "%p" (page number) and "%t"
+    # (total pages); empty strings disable.
     def self.render(source : String, output_path : String, options : Markd::Options = Markd::Options.new,
-                    page_size : String = "a4", margin_mm : Float64 = 20.0, base_dir : String = ".") : Int32
+                    page_size : String = "a4", margin_mm : Float64 = 20.0, base_dir : String = ".",
+                    header : String = "", footer : String = "") : Int32
+      Litepdf.set_page_text(header, footer)
       html = document_html(Markd.to_html(source, options))
       size_code = PAGE_SIZES[page_size.downcase]?
       if size_code.nil?

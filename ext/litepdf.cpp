@@ -545,6 +545,11 @@ bool is_zero_width_codepoint(uint32_t codepoint)
 // The explicit emoji font path (--emoji-font); empty means auto-detect.
 std::string g_emoji_font_path;
 
+// Optional page header/footer templates. "%p" expands to the page
+// number and "%t" to the total page count.
+std::string g_header_template;
+std::string g_footer_template;
+
 // Provided font files (--font flags), then scanned system fonts.
 std::vector<FontFile> g_provided_fonts;
 std::vector<FontFile> g_system_fonts;
@@ -1958,6 +1963,15 @@ class PdfContainer : public litehtml::document_container
 extern "C"
 {
 
+// Set page header/footer templates drawn in the top/bottom margin of
+// every page. "%p" expands to the page number, "%t" to the total page
+// count. NULL or empty disables.
+void litepdf_set_page_text(const char* header, const char* footer)
+{
+    g_header_template = header ? header : "";
+    g_footer_template = footer ? footer : "";
+}
+
 // Register a TTF file as a candidate font for font-family matching.
 // Provided fonts take priority over scanned system fonts. Parses the
 // font's metadata; returns 1 on success, 0 and fills errbuf on failure.
@@ -2144,6 +2158,42 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
     DrawContext context;
     container.active_clips = &context.clips;
     int page_count = 0;
+    int total_pages = (int)windows.size();
+    // Headers/footers use the body font (the first one created).
+    const PdfFont* page_text_font = container.fonts.empty() ? nullptr : &container.fonts[0];
+    auto draw_page_text = [&](const std::string& templ, bool top)
+    {
+        if (templ.empty() || !page_text_font || !context.page)
+        {
+            return;
+        }
+        std::string text = templ;
+        std::string number = std::to_string(page_count + 1);
+        std::string total = std::to_string(total_pages);
+        for (size_t pos = text.find("%p"); pos != std::string::npos; pos = text.find("%p"))
+        {
+            text.replace(pos, 2, number);
+        }
+        for (size_t pos = text.find("%t"); pos != std::string::npos; pos = text.find("%t"))
+        {
+            text.replace(pos, 2, total);
+        }
+        const char* drawn = text.c_str();
+        std::string encoded;
+        if (!page_text_font->utf8)
+        {
+            encoded = to_cp1252(text.c_str());
+            drawn = encoded.c_str();
+        }
+        float size = std::max(7.0f, page_text_font->size * 0.85f);
+        HPDF_Page_SetFontAndSize(context.page, page_text_font->handle, size);
+        HPDF_Page_SetRGBFill(context.page, 0.45f, 0.45f, 0.45f);
+        float width = HPDF_Page_TextWidth(context.page, drawn);
+        float y = top ? page_height - margin * 0.35f : margin * 0.35f;
+        HPDF_Page_BeginText(context.page);
+        HPDF_Page_TextOut(context.page, (page_width - width) / 2.0f, y, drawn);
+        HPDF_Page_EndText(context.page);
+    };
     std::vector<HPDF_Page> page_handles;
     // Internal links wait for all pages to exist: their annotations need
     // destinations bound to (possibly earlier) pages.
@@ -2192,6 +2242,9 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
                                 (int)std::ceil(window.second - window.first));
         doc->draw(reinterpret_cast<litehtml::uint_ptr>(&context), 0, 0, &clip);
         HPDF_Page_GRestore(page);
+        // Header/footer go in the margins, outside the window clip.
+        draw_page_text(g_header_template, true);
+        draw_page_text(g_footer_template, false);
 
         // Link annotations for every anchor rectangle on this page's window.
         if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "page %d: links=%zu window=%.1f..%.1f\n", page_count, container.links.size(), window.first, window.second);
