@@ -1,0 +1,3 @@
+[submodule "ext/litehtml"]
+	path = ext/litehtml
+	url = https://github.com/litehtml/litehtml

@@ -10,6 +10,9 @@ RUN apk add --no-cache \
     libxml2-static \
     zlib-dev \
     zlib-static \
+    libpng-dev \
+    libpng-static \
+    libharu-dev \
     xz-dev \
     xz-static \
     gc-static \
@@ -19,4 +22,7 @@ RUN apk add --no-cache \
     readline-dev \
     readline-static \
     ncurses-static \
+    g++ \
+    git \
+    cmake \
     make
