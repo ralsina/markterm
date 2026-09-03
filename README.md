@@ -18,8 +18,8 @@ It can also render Markdown to Markdown if you really need that :-)
 * It will do the right thing if output is not a tty
 * Can be used as a library or as a program
 
-![markterm on a light terminal](https://ralsina.me/markterm/markterm-light.png)
-![markterm on a dark terminal](https://ralsina.me/markterm/markterm-dark.png)
+![markterm on a light terminal](https://ralsina.me/images/markterm-light.png)
+![markterm on a dark terminal](https://ralsina.me/images/markterm-dark.png)
 
 ## TODO
 
@@ -84,7 +84,7 @@ default stylesheet, and you can add your own rules with `--css`.
 Markpdf - A tool to render markdown to PDF
 
   Usage:
-    markpdf [<file>] [-o <output>] [-t <theme>] [--page-size <size>] [--margin <margin>] [--css <css>] [--font <font>]... [--emoji-font <font>] [--header <header>] [--footer <footer>]
+    markpdf [<file>] [-o <output>] [-t <theme>] [--code-theme <code-theme>] [--page-size <size>] [--margin <margin>] [--css <css>] [--font <font>]... [--emoji-font <font>] [--header <header>] [--footer <footer>]
     markpdf -h | --help
     markpdf --version
 
@@ -117,7 +117,8 @@ when nothing matches.
 
 Links pointing at `http(s)://` or `mailto:` URIs become clickable PDF
 link annotations, and internal anchors (including footnote references
-and their back-links) jump to their targets.
+and their back-links) jump to their targets. Fenced code blocks get
+tartrazine syntax highlighting (the `docopt` lexer included).
 
 Example with a dark base16 theme, page numbers and a header:
 

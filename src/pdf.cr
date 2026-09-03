@@ -1,3 +1,8 @@
+# Tartrazine must be required before markd: markd checks for the
+# constant at compile time to decide whether code blocks get
+# syntax-highlighted.
+require "tartrazine"
+require "tartrazine/formatters/html"
 require "markd"
 require "sixteen"
 require "crimage"
@@ -36,6 +41,10 @@ module Markd
 
     # Page sizes understood by the shim
     PAGE_SIZES = {"a4" => 0, "letter" => 1}
+
+    # Syntax highlighting theme used when nothing better is known: a
+    # classic light style that reads well on the default light page.
+    DEFAULT_CODE_THEME = "friendly"
 
     # Print-oriented default stylesheet, written against the CSS subset
     # litehtml supports (no CSS variables, no grid). Pico-inspired: clean
@@ -117,6 +126,16 @@ module Markd
     # Generate CSS rules from a base16/sixteen theme: the palette's
     # foreground and background plus accent colors for headings, links,
     # code and borders. Works for dark and light variants alike.
+    # Returns the theme name when tartrazine knows it (it maps many
+    # base16/sixteen names directly), nil otherwise.
+    def self.tartrazine_known_theme?(name : String?) : String?
+      return unless name
+      Tartrazine.theme(name)
+      name
+    rescue
+      nil
+    end
+
     def self.theme_css(name : String) : String
       theme = Sixteen.theme(name)
       base = ->(key : String) { "#" + theme[key].hex }
@@ -138,10 +157,14 @@ module Markd
 
     # Render markdown source to a PDF file, returns the page count.
     # header/footer templates support "%p" (page number) and "%t"
-    # (total pages); empty strings disable.
+    # (total pages); empty strings disable. code_theme picks the
+    # tartrazine theme for syntax highlighting: an explicit name, the
+    # -t theme name (when tartrazine knows it), or the light-friendly
+    # default.
     def self.render(source : String, output_path : String, options : Markd::Options = Markd::Options.new,
                     page_size : String = "a4", margin_mm : Float64 = 20.0, base_dir : String = ".",
-                    header : String = "", footer : String = "") : Int32
+                    header : String = "", footer : String = "", code_theme : String? = nil,
+                    theme : String? = nil) : Int32
       Litepdf.set_page_text(header, footer)
       # The page background comes from the CSS `body` rule so themes can
       # produce dark pages; the shim paints it before any content.
@@ -151,8 +174,14 @@ module Markd
       Dir.mkdir(temp_dir, 0o700)
       converted = [] of String
       begin
-        body_html = process_images(Markd.to_html(source, options), base_dir, temp_dir, converted)
-        html = document_html(body_html)
+        highlighted_theme = code_theme || tartrazine_known_theme?(theme) || DEFAULT_CODE_THEME
+        formatter = Tartrazine::Html.new(
+          theme: Tartrazine.theme(highlighted_theme),
+          line_numbers: false,
+          standalone: false,
+        )
+        body_html = process_images(Markd.to_html(source, options, formatter: formatter), base_dir, temp_dir, converted)
+        html = document_html(body_html, extra_css: formatter.style_defs)
         size_code = PAGE_SIZES[page_size.downcase]?
         if size_code.nil?
           raise Error.new("unknown page size '#{page_size}' (expected a4 or letter)")
@@ -301,7 +330,7 @@ module Markd
     end
 
     # Wrap rendered HTML in a document skeleton with the stylesheet.
-    def self.document_html(body_html : String, title : String? = nil) : String
+    def self.document_html(body_html : String, title : String? = nil, extra_css : String? = nil) : String
       <<-HTML
         <!DOCTYPE html>
         <html>
@@ -310,6 +339,7 @@ module Markd
         <title>#{title || document_title(body_html)}</title>
         <style>
         #{css}
+        #{extra_css}
         </style>
         </head>
         <body>
