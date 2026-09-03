@@ -2290,7 +2290,13 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
             if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "  annot uri=%s top=%.1f bottom=%.1f\n", link.uri.c_str(), rect.top, rect.bottom);
             if (link.external)
             {
-                HPDF_Page_CreateURILinkAnnot(page, rect, link.uri.c_str());
+                HPDF_Annotation annot = HPDF_Page_CreateURILinkAnnot(page, rect, link.uri.c_str());
+                // The PDF spec defaults annotations to a 1pt border drawn
+                // by the viewer; zero it so only our styling shows.
+                if (annot)
+                {
+                    HPDF_LinkAnnot_SetBorderStyle(annot, 0, 0, 0);
+                }
             }
             else
             {
@@ -2329,7 +2335,12 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         {
             continue;
         }
-        HPDF_Page_CreateLinkAnnot(page_handles[pending.page_index], pending.rect, destination->second);
+        HPDF_Annotation annot =
+            HPDF_Page_CreateLinkAnnot(page_handles[pending.page_index], pending.rect, destination->second);
+        if (annot)
+        {
+            HPDF_LinkAnnot_SetBorderStyle(annot, 0, 0, 0);
+        }
     }
 
     if (HPDF_SaveToFile(pdf, out_path) != HPDF_OK)
