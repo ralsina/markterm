@@ -34,7 +34,7 @@ shards:
 
   tartrazine:
     git: https://github.com/ralsina/tartrazine.git
-    version: 0.21.3
+    version: 0.22.0
 
   term-screen:
     git: https://github.com/crystal-term/screen.git

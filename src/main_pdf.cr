@@ -7,7 +7,7 @@ doc = <<-DOC
   Markpdf - A tool to render markdown to PDF
 
   Usage:
-    markpdf [<file>] [-o <output>] [-t <theme>] [--page-size <size>] [--margin <margin>] [--css <css>] [--font <font>]... [--emoji-font <font>] [--header <header>] [--footer <footer>]
+    markpdf [<file>] [-o <output>] [-t <theme>] [--code-theme <code-theme>] [--page-size <size>] [--margin <margin>] [--css <css>] [--font <font>]... [--emoji-font <font>] [--header <header>] [--footer <footer>]
     markpdf -h | --help
     markpdf --version
 
@@ -15,9 +15,13 @@ doc = <<-DOC
     -h --help               Show this screen.
     --version               Show version.
     -o <output>             Write the PDF to a file (defaults to standard output)
-    -t <theme>              Color theme (a base16/sixteen theme name)
+    -t <theme>              Color theme (a base16/sixteen theme name); also
+                            drives code highlighting when tartrazine knows it
     --page-size <size>      Page size: a4 or letter [default: a4]
     --margin <margin>       Page margin in millimeters [default: 20]
+    --code-theme <code-theme>  Tartrazine theme for syntax highlighting
+                            (default: friendly, or the -t theme when
+                            tartrazine knows it)
     --css <css>             Additional CSS file with extra styles
     --font <font>           TTF font file to embed (can be repeated). Fonts are
                             matched by their internal family name; system fonts
@@ -68,7 +72,7 @@ def register_fonts(font_paths : Array(String))
   end
 end
 
-def main(source, output, page_size, margin, css_path, font_paths, emoji_font, header, footer, theme)
+def main(source, output, page_size, margin, css_path, font_paths, emoji_font, header, footer, theme, code_theme)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
 
@@ -85,13 +89,15 @@ def main(source, output, page_size, margin, css_path, font_paths, emoji_font, he
 
   if output
     Markd::Pdf.render(input, output, options, page_size: page_size,
-      margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "")
+      margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "",
+      code_theme: code_theme, theme: theme)
   else
     # No output file: render to a temporary file and stream to stdout
     temp_path = File.tempname("markpdf", ".pdf")
     begin
       Markd::Pdf.render(input, temp_path, options, page_size: page_size,
-        margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "")
+        margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "",
+        code_theme: code_theme, theme: theme)
       STDOUT.write(File.read(temp_path).to_slice)
     ensure
       File.delete?(temp_path)
@@ -120,6 +126,7 @@ begin
     options["--header"].try &.as(String),
     options["--footer"].try &.as(String),
     options["-t"].try &.as(String),
+    options["--code-theme"].try &.as(String),
   )
 rescue error
   abort_with(error.message.to_s)
