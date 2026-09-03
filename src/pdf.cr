@@ -62,14 +62,15 @@ module Markd
       strong { font-weight: bold; }
       em { font-style: italic; }
       del { text-decoration: line-through; }
-      ul, ol { margin: 0 0 9px 0; }
+      ul, ol { margin: 0 0 9px 0; padding-left: 18px; }
+      ul ul, ol ol, ul ol, ol ul { margin: 0 0 9px 0; padding-left: 16px; }
       li { margin: 0 0 3px 0; }
       blockquote { border-left: 3px solid #cccccc; margin: 9px 0 9px 4px; padding: 2px 0 2px 12px; color: #444444; }
       blockquote p { margin: 0 0 6px 0; }
       pre { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #f6f6f6; border: 1px solid #e0e0e0;
             margin: 9px 0 9px 0; padding: 7px 9px 7px 9px; }
       code { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #f2f2f2; padding: 0px 2px 0px 2px; }
-      pre code { background-color: transparent; }
+      pre code { background-color: transparent; padding: 0; }
       table { border-spacing: 0; margin: 9px 0 9px 0; font-size: 10.5px; }
       th { font-weight: bold; border: 1px solid #cccccc; background-color: #f2f2f2; padding: 4px 8px 4px 8px; text-align: left; }
       td { border: 1px solid #cccccc; padding: 4px 8px 4px 8px; }
