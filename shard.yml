@@ -32,6 +32,8 @@ dependencies:
     github: hutou/tablo
   term-screen:
     github: crystal-term/screen
+  crimage:
+    github: naqvis/crimage
 
 development_dependencies:
   ameba:

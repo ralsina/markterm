@@ -168,5 +168,38 @@ describe Markd::Pdf do
         File.delete?(path)
       end
     end
+
+    it "converts other image formats to PNG" do
+      # A tiny 2x2 24-bit BMP
+      bmp = IO::Memory.new
+      bmp << "BM"
+      bmp.write_bytes(74u32)
+      bmp.write_bytes(0u16)
+      bmp.write_bytes(0u16)
+      bmp.write_bytes(54u32)
+      bmp.write_bytes(40u32)
+      bmp.write_bytes(2i32)
+      bmp.write_bytes(2i32)
+      bmp.write_bytes(1u16)
+      bmp.write_bytes(24u16)
+      bmp.write_bytes(0u32)
+      bmp.write_bytes(20u32)
+      bmp.write_bytes(0i32)
+      bmp.write_bytes(0i32)
+      2.times { bmp.write(Bytes[10, 100, 200, 0, 200, 100, 10, 0]) }
+      image_path = File.tempname("markpdf_spec", ".bmp")
+      File.write(image_path, bmp.to_slice, mode: "wb")
+      base_dir = File.dirname(image_path)
+      source = "![dot](#{File.basename(image_path)})\n"
+      path = temp_pdf_path
+      begin
+        pages = Markd::Pdf.render(source, path, base_dir: base_dir)
+        pages.should eq(1)
+        File.size(path).should be > 1000
+      ensure
+        File.delete?(image_path)
+        File.delete?(path)
+      end
+    end
   end
 end
