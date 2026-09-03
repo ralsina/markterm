@@ -60,7 +60,7 @@ module Markd
       pre { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #f6f6f6; border: 1px solid #e0e0e0;
             margin: 9px 0 9px 0; padding: 7px 9px 7px 9px; }
       code { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #f2f2f2; padding: 0px 2px 0px 2px; }
-      pre code { background-color: #f6f6f6; }
+      pre code { background-color: transparent; }
       table { border-spacing: 0; margin: 9px 0 9px 0; font-size: 10.5px; }
       th { font-weight: bold; border: 1px solid #cccccc; background-color: #f2f2f2; padding: 4px 8px 4px 8px; text-align: left; }
       td { border: 1px solid #cccccc; padding: 4px 8px 4px 8px; }
