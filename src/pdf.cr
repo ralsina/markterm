@@ -1,4 +1,5 @@
 require "markd"
+require "sixteen"
 
 require "./cli"
 
@@ -21,6 +22,7 @@ lib Litepdf
   fun set_emoji_font = litepdf_set_emoji_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,
                                               errbuf_len : LibC::Int) : LibC::Int
   fun set_page_text = litepdf_set_page_text(header : LibC::Char*, footer : LibC::Char*) : Void
+  fun set_page_background = litepdf_set_page_background(css_color : LibC::Char*) : Void
 end
 
 module Markd
@@ -108,6 +110,27 @@ module Markd
       end
     end
 
+    # Generate CSS rules from a base16/sixteen theme: the palette's
+    # foreground and background plus accent colors for headings, links,
+    # code and borders. Works for dark and light variants alike.
+    def self.theme_css(name : String) : String
+      theme = Sixteen.theme(name)
+      base = ->(key : String) { "#" + theme[key].hex }
+      <<-CSS
+        body { color: #{base.call("base05")}; background-color: #{base.call("base00")}; }
+        h1, h2, h3, h4, h5, h6 { color: #{base.call("base0D")}; }
+        a { color: #{base.call("base0C")}; }
+        code { background-color: #{base.call("base01")}; }
+        pre { background-color: #{base.call("base01")}; border-color: #{base.call("base02")}; }
+        th { background-color: #{base.call("base01")}; }
+        td, th { border-color: #{base.call("base02")}; }
+        blockquote { border-left-color: #{base.call("base03")}; color: #{base.call("base04")}; }
+        hr { border-bottom-color: #{base.call("base03")}; }
+      CSS
+    rescue error : Exception
+      raise Error.new("could not load theme '#{name}': #{error.message}")
+    end
+
     # Render markdown source to a PDF file, returns the page count.
     # header/footer templates support "%p" (page number) and "%t"
     # (total pages); empty strings disable.
@@ -115,6 +138,10 @@ module Markd
                     page_size : String = "a4", margin_mm : Float64 = 20.0, base_dir : String = ".",
                     header : String = "", footer : String = "") : Int32
       Litepdf.set_page_text(header, footer)
+      # The page background comes from the CSS `body` rule so themes can
+      # produce dark pages; the shim paints it before any content.
+      body_background = css.match(/body\s*\{[^}]*background-color\s*:\s*(#[0-9a-fA-F]{3,8}|[a-zA-Z]+)/)
+      Litepdf.set_page_background(body_background ? body_background[1] : "")
       html = document_html(Markd.to_html(source, options))
       size_code = PAGE_SIZES[page_size.downcase]?
       if size_code.nil?
