@@ -11,6 +11,7 @@ require "uri"
 require "base64"
 
 require "./cli"
+require "./pdf_styles"
 
 # Render markdown to PDF: markdown -> HTML (markd) -> litehtml layout ->
 # libharu PDF, via the C++ shim in ext/ (built with `make -C ext`).
@@ -53,64 +54,8 @@ module Markd
       stripped.downcase.starts_with?("<!doctype html") || stripped.downcase.starts_with?("<html")
     end
 
-    # Print-oriented default stylesheet, written against the CSS subset
-    # litehtml supports (no CSS variables, no grid). Pico-inspired: clean
-    # typographic scale, subtle rules, shaded code.
-    DEFAULT_CSS = <<-CSS
-      body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; font-size: 11px; line-height: 1.5; color: #1a1a1a; margin: 0; padding: 0; }
-      h1 { font-size: 25px; font-weight: bold; margin: 20px 0 12px 0; }
-      h2 { font-size: 19px; font-weight: bold; margin: 18px 0 10px 0; }
-      h3 { font-size: 15px; font-weight: bold; margin: 16px 0 8px 0; }
-      h4 { font-size: 12px; font-weight: bold; margin: 14px 0 8px 0; }
-      h5 { font-size: 11px; font-weight: bold; margin: 12px 0 6px 0; }
-      h6 { font-size: 11px; font-weight: bold; color: #555555; margin: 12px 0 6px 0; }
-      p { margin: 0 0 9px 0; }
-      a { color: #0645ad; }
-      strong { font-weight: bold; }
-      em { font-style: italic; }
-      del { text-decoration: line-through; }
-      ul, ol { margin: 0 0 9px 0; padding-left: 18px; }
-      ul ul, ol ol, ul ol, ol ul { margin: 0 0 9px 0; padding-left: 16px; }
-      li { margin: 0 0 3px 0; }
-      li.task-list-item { list-style-type: none; }
-      blockquote { border-left: 3px solid #cccccc; margin: 9px 0 9px 4px; padding: 2px 0 2px 12px; color: #444444; }
-      blockquote p { margin: 0 0 6px 0; }
-      pre { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #f6f6f6; border: 1px solid #e0e0e0;
-            margin: 9px 0 9px 0; padding: 7px 9px 7px 9px; overflow: hidden;
-            white-space: pre-wrap; }
-      table { overflow: hidden; }
-      code { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #f2f2f2; padding: 0px 2px 0px 2px; }
-      pre code { background-color: transparent; padding: 0; }
-      table { border-spacing: 0; margin: 9px 0 9px 0; font-size: 10.5px; }
-      th { font-weight: bold; border: 1px solid #cccccc; background-color: #f2f2f2; padding: 4px 8px 4px 8px; text-align: left; }
-      td { border: 1px solid #cccccc; padding: 4px 8px 4px 8px; }
-      hr { border-bottom: 1px solid #bbbbbb; margin: 18px 0 18px 0; }
-      img { margin: 6px 0 6px 0; max-width: 100%; }
-      .alert { border: 1px solid #bbbbbb; border-left: 4px solid #666666; padding: 8px 12px 4px 12px; margin: 9px 0 9px 0; }
-      .alert p { margin: 0 0 6px 0; }
-      .alert-title { font-weight: bold; }
-      .alert-note { border-left: 4px solid #2e6f9e; }
-      .alert-tip { border-left: 4px solid #2e9e5b; }
-      .alert-important { border-left: 4px solid #7e4fd0; }
-      .alert-warning { border-left: 4px solid #d0962e; }
-      .alert-caution { border-left: 4px solid #d0342c; }
-      .footnotes { border-top: 1px solid #bbbbbb; margin-top: 18px; font-size: 10px; color: #444444; }
-      CSS
-
-    @@css = DEFAULT_CSS
-
-    # Extend or replace the default stylesheet (e.g. from a --css flag).
-    def self.css=(user_css : String)
-      @@css = DEFAULT_CSS + "\n" + user_css
-    end
-
-    def self.css : String
-      @@css
-    end
-
-    def self.reset_css : Nil
-      @@css = DEFAULT_CSS
-    end
+    # The built-in stylesheets (including the default one) and the CSS
+    # layering machinery live in pdf_styles.cr, required above.
 
     # Register a TTF file as a font candidate for font-family matching.
     # Provided fonts take priority over the system fonts the shim scans
@@ -173,10 +118,22 @@ module Markd
     # tartrazine theme for syntax highlighting: an explicit name, the
     # -t theme name (when tartrazine knows it), or the light-friendly
     # default.
+    # Switch the base stylesheet when the render call names one; raises
+    # Error on an unknown name.
+    private def self.apply_render_style(requested : String?) : Nil
+      return if requested.nil? || requested == @@style
+      self.style = requested
+    end
+
     def self.render(source : String, output_path : String, options : Markd::Options = Markd::Options.new,
                     page_size : String = "a4", margin_mm : Float64 = 20.0, base_dir : String = ".",
                     header : String = "", footer : String = "", code_theme : String? = nil,
-                    theme : String? = nil, html_input : Bool = false) : Int32
+                    theme : String? = nil, html_input : Bool = false, style : String? = nil) : Int32
+      # A style argument switches the base stylesheet at render time and
+      # raises Error on an unknown name. CSS layered earlier (theme,
+      # user) is replaced by the bare style; set the layers afterwards
+      # if both are needed.
+      apply_render_style(style)
       Litepdf.set_page_text(header, footer)
       # The page background comes from the CSS `body` rule so themes can
       # produce dark pages; the shim paints it before any content. Complete
