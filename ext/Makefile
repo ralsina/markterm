@@ -63,7 +63,7 @@ $(TEXPRINTF_LIB): $(TEXPRINTF_OBJ)
 	$(AR) rcs $@ $^
 
 build/litepdf.o: litepdf.cpp | build
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(TEXPRINTF_INC) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -I build/include $(TEXPRINTF_INC) -c $< -o $@
 
 build/litehtml/%.o: litehtml/src/%.cpp | build
 	@mkdir -p $(dir $@)

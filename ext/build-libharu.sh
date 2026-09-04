@@ -38,3 +38,10 @@ cmake --build libharu/build
 
 find libharu/build -name 'libhpdf.a' -exec cp {} . \;
 test -f libhpdf.a
+
+# Export the headers too (libharu/build carries the generated
+# hpdf_config.h): the shim compiles against these so a build works on
+# machines without a system libharu.
+mkdir -p include
+cp -f libharu/include/*.h include/
+cp -f libharu/build/include/*.h include/
