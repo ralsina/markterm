@@ -46,6 +46,13 @@ module Markd
     # classic light style that reads well on the default light page.
     DEFAULT_CODE_THEME = "friendly"
 
+    # True when the source looks like a complete HTML document rather
+    # than markdown: such input skips the markdown pipeline entirely.
+    def self.html_document?(source : String) : Bool
+      stripped = source.lstrip
+      stripped.downcase.starts_with?("<!doctype html") || stripped.downcase.starts_with?("<html")
+    end
+
     # Print-oriented default stylesheet, written against the CSS subset
     # litehtml supports (no CSS variables, no grid). Pico-inspired: clean
     # typographic scale, subtle rules, shaded code.
@@ -167,12 +174,15 @@ module Markd
     def self.render(source : String, output_path : String, options : Markd::Options = Markd::Options.new,
                     page_size : String = "a4", margin_mm : Float64 = 20.0, base_dir : String = ".",
                     header : String = "", footer : String = "", code_theme : String? = nil,
-                    theme : String? = nil) : Int32
+                    theme : String? = nil, html_input : Bool = false) : Int32
       Litepdf.set_page_text(header, footer)
       # The page background comes from the CSS `body` rule so themes can
-      # produce dark pages; the shim paints it before any content.
+      # produce dark pages; the shim paints it before any content. Complete
+      # HTML documents bring their own styles, so the default stylesheet
+      # only applies to markdown and HTML fragments.
       body_background = css.match(/body\s*\{[^}]*background-color\s*:\s*(#[0-9a-fA-F]{3,8}|[a-zA-Z]+)/)
-      Litepdf.set_page_background(body_background ? body_background[1] : "")
+      is_html = html_input || html_document?(source)
+      Litepdf.set_page_background(is_html ? "" : (body_background ? body_background[1] : ""))
       temp_dir = File.join(Dir.tempdir, "markpdf-imgs-#{Process.pid}-#{Time.utc.to_unix_ms}")
       Dir.mkdir(temp_dir, 0o700)
       converted = [] of String
@@ -183,8 +193,14 @@ module Markd
           line_numbers: false,
           standalone: false,
         )
-        body_html = process_images(Markd.to_html(source, options, formatter: formatter), base_dir, temp_dir, converted)
-        html = document_html(body_html, extra_css: formatter.style_defs)
+        if is_html
+          # Complete HTML document: no markdown processing, no skeleton —
+          # the document keeps its own styles and title.
+          html = process_images(source, base_dir, temp_dir, converted)
+        else
+          body_html = process_images(Markd.to_html(source, options, formatter: formatter), base_dir, temp_dir, converted)
+          html = document_html(body_html, extra_css: formatter.style_defs)
+        end
         size_code = PAGE_SIZES[page_size.downcase]?
         if size_code.nil?
           raise Error.new("unknown page size '#{page_size}' (expected a4 or letter)")

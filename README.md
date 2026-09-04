@@ -37,7 +37,7 @@ It can also render Markdown to Markdown if you really need that :-)
 * Implement internal piping to $PAGER
 * Allow enabling/disabling images/html-style-links via CLI (partly done)
 * Use crystal-term/color to detect color capabilities
-* Wrap styled table cells at word boundaries when tables are squeezed
+* ✅ Wrap styled table cells at word boundaries when tables are squeezed
 * markpdf: richer header/footer templating (alignment, per-page
   sections, fonts)
 
@@ -116,10 +116,18 @@ matches the CSS `font-family` names against the fonts you pass with
 `~/.fonts`, ...), falling back to the PDF base-14 fonts for Latin text
 when nothing matches.
 
+Complete HTML documents are detected automatically and rendered
+directly — no markdown conversion — so markpdf doubles as a small
+HTML→PDF converter for the HTML subset litehtml supports.
+
 Links pointing at `http(s)://` or `mailto:` URIs become clickable PDF
 link annotations, and internal anchors (including footnote references
 and their back-links) jump to their targets. Fenced code blocks get
 tartrazine syntax highlighting (the `docopt` lexer included).
+
+Complete HTML documents are detected automatically and rendered
+directly — no markdown conversion — so markpdf doubles as a small
+HTML→PDF converter for the HTML subset litehtml supports.
 
 Example with a dark base16 theme, page numbers and a header:
 
