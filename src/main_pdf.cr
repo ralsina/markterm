@@ -111,14 +111,21 @@ end
 
 begin
   file = options["<file>"] || "-"
-  fonts = options["--font"] || [] of String
+  # docopt returns a String when --font occurs once, an Array when it
+  # repeats; normalize to an Array(String) either way.
+  font_option = options["--font"]?
+  fonts = case font_option
+          when Array then font_option.map &.as(String)
+          when String then [font_option]
+          else             [] of String
+          end
   main(
     file.as(String),
     options["-o"].try &.as(String),
     options["--page-size"].as(String),
     options["--margin"].as(String),
     options["--css"].try &.as(String),
-    fonts.as(Array),
+    fonts,
     options["--emoji-font"].try &.as(String),
     options["--header"].try &.as(String),
     options["--footer"].try &.as(String),
