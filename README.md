@@ -2,11 +2,17 @@
 
 [![CI](https://github.com/ralsina/markterm/actions/workflows/ci.yml/badge.svg)](https://github.com/ralsina/markterm/actions/workflows/ci.yml)
 
-Markterm is a library and program to render Markdown to
-a terminal. It's inspired by [Glow](https://github.com/charmbracelet/glow)
-and implemented using [Markd](https://github.com/icyleaf/markd)
+MARKTerm is a suite of tools to render Markdown anywhere, built on top
+of [Markd](https://github.com/icyleaf/markd):
 
-It can also render Markdown to Markdown if you really need that :-)
+* `markterm` renders Markdown to the terminal, with themes, images,
+  and HTML-style links. Inspired by
+  [Glow](https://github.com/charmbracelet/glow).
+* `markpdf` renders Markdown to small, fast, self-contained PDF files.
+* `markmark` renders Markdown to Markdown, for normalizing or
+  filtering documents.
+
+It can also be used as a Crystal library.
 
 ## Features
 
@@ -23,6 +29,29 @@ It can also render Markdown to Markdown if you really need that :-)
 
 ## TODO
 
+Still open:
+
+* markterm: implement internal piping to $PAGER
+* markterm: allow enabling/disabling images and html-style-links via
+  CLI (links: done via `-l`, images: not yet)
+* markterm: use crystal-term/color to detect color capabilities
+* markpdf: emoji and CJK font fallback (CID font embedding)
+* markpdf: richer header/footer templating (alignment, per-page
+  sections, fonts)
+
+Done recently (markpdf):
+
+* ✅ Built-in stylesheets (default, book, dark, sepia) with `--style`,
+  `--print-style` and repeatable `--css`
+* ✅ Pageless single-page output (`--pageless`)
+* ✅ PDF outline bookmarks from headings
+* ✅ Task-list checkboxes (☑/☐)
+* ✅ Wide tables scale to fit and split across pages at row boundaries
+* ✅ Collapse-style table borders and keep-with-next pagination
+* ✅ Superscript and subscript via inline HTML
+
+Done (markterm):
+
 * ✅ Configurable themes
 * ✅ Implement HTML-style links as supported in kitty/alacritty
 * ✅ Don't break paragraphs on soft breaks
@@ -34,12 +63,7 @@ It can also render Markdown to Markdown if you really need that :-)
 * ✅ Support being used in a pipeline
 * ✅ Task lists, GFM alerts, wrapped tables
 * ✅ Footnotes
-* Implement internal piping to $PAGER
-* Allow enabling/disabling images/html-style-links via CLI (partly done)
-* Use crystal-term/color to detect color capabilities
 * ✅ Wrap styled table cells at word boundaries when tables are squeezed
-* markpdf: richer header/footer templating (alignment, per-page
-  sections, fonts)
 
 ## Usage as a program
 
@@ -56,7 +80,7 @@ This is the help:
 Markterm - A tool to render markdown to the terminal
 
 Usage:
-  markterm <file> [-t <theme>][--code-theme <code-theme>][-l]
+  markterm <file> [-t <theme>][--code-theme <code-theme>][-l][-c][-w <width>]
   markterm -h | --help
   markterm --version
 
@@ -66,6 +90,8 @@ Options:
   --code-theme <code-theme>  Theme to use for coloring code blocks
   --version                  Show version.
   -l                         Force html-like links
+  -c --color                 Force color output even when piping
+  -w <width>                 Maximum line width for text wrapping (0 to disable, auto-detects if not specified)
 
 If you use "-" as the file argument, markterm will read from stdin.
 ```
@@ -119,6 +145,8 @@ Options:
   --footer <footer>          Page footer text; supports the same placeholders
 
 If you use "-" as the file argument, markpdf will read from stdin.
+Complete HTML documents (and .html files) are rendered directly,
+skipping the markdown conversion.
 Images are resolved relative to the input file's directory.
 ```
 
@@ -171,10 +199,6 @@ Links pointing at `http(s)://` or `mailto:` URIs become clickable PDF
 link annotations, and internal anchors (including footnote references
 and their back-links) jump to their targets. Fenced code blocks get
 tartrazine syntax highlighting (the `docopt` lexer included).
-
-Complete HTML documents are detected automatically and rendered
-directly — no markdown conversion — so markpdf doubles as a small
-HTML→PDF converter for the HTML subset litehtml supports.
 
 Example with a dark base16 theme, page numbers and a header:
 
