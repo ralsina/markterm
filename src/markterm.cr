@@ -2,6 +2,7 @@ require "./terminal"
 require "./styles"
 require "./text_renderer"
 require "./markmark"
+require "./math_render"
 require "colorize"
 require "markd"
 require "tablo"
@@ -559,6 +560,7 @@ module Markd
                    theme : String? = nil, code_theme : String? = nil,
                    force_links : Bool = false, max_width : Int32? = nil) : String
     return "" if source.empty?
+    source = MathRender.rewrite_markdown_math(source)
     document = Parser.parse(source, options)
     renderer = TermRenderer.new(options, theme, code_theme, force_links, max_width)
     renderer.render(document)

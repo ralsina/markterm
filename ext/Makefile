@@ -1,12 +1,21 @@
 # Builds the litepdf static library: the C++ shim plus the vendored
 # litehtml (including its bundled gumbo HTML parser). The result,
 # build/liblitepdf.a, is linked into the markpdf Crystal binary.
+#
+# Optional LaTeX math rendering: `make WITH_TEXMATH=1` builds the
+# vendored libtexprintf (ext/libtexprintf, a git submodule — init it
+# first). libtexprintf is GPL-3, so binaries built this way are
+# effectively GPL-3; without the flag math falls back to a plain
+# Unicode styling pass and the binary keeps its regular license.
 
 CXX ?= g++
 AR ?= ar
+CC ?= gcc
 
 CXXFLAGS ?= -std=c++17 -O2 -fPIC -MMD -MP
 INCLUDES = -I litehtml/include -I litehtml/include/litehtml -I litehtml/src -I litehtml/src/gumbo/include -I litehtml/src/gumbo/include/gumbo -I litehtml/src/gumbo
+
+WITH_TEXMATH ?= 0
 
 LITEHTML_SRC := $(filter-out litehtml/src/main.cpp,$(wildcard litehtml/src/*.cpp))
 GUMBO_SRC := $(wildcard litehtml/src/gumbo/*.cpp) $(wildcard litehtml/src/gumbo/*.c)
@@ -16,13 +25,35 @@ LITEHTML_OBJS := $(patsubst litehtml/src/%.cpp,build/litehtml/%.o,$(LITEHTML_SRC
 GUMBO_OBJS := $(patsubst litehtml/src/%.c,build/litehtml/%.o,$(filter %.c,$(GUMBO_SRC))) \
               $(patsubst litehtml/src/%.cpp,build/litehtml/%.o,$(filter %.cpp,$(GUMBO_SRC)))
 
+TEXPRINTF_DIR := libtexprintf
+# The library sources; main.c (utftex CLI), utf2unicode.c (standalone
+# tool with its own main) and testfonts.c (font test tool) are excluded.
+TEXPRINTF_SRC := $(filter-out $(TEXPRINTF_DIR)/src/main.c $(TEXPRINTF_DIR)/src/utf2unicode.c \
+                             $(TEXPRINTF_DIR)/src/testfonts.c,\
+                  $(wildcard $(TEXPRINTF_DIR)/src/*.c))
+TEXPRINTF_OBJ := $(patsubst $(TEXPRINTF_DIR)/src/%.c,build/libtexprintf/%.o,$(TEXPRINTF_SRC))
+
 LIB := build/liblitepdf.a
+
+ifeq ($(WITH_TEXMATH),1)
+  CXXFLAGS += -DWITH_TEXMATH=1 -I build/libtexprintf -I $(TEXPRINTF_DIR)/src
+  LIB_OBJS := $(SHIM_OBJ) $(LITEHTML_OBJS) $(GUMBO_OBJS) $(TEXPRINTF_OBJ)
+else
+  LIB_OBJS := $(SHIM_OBJ) $(LITEHTML_OBJS) $(GUMBO_OBJS)
+endif
+
+TEXPRINTF_LIB := build/libtexprintf.a
 
 .PHONY: all clean test
 
-all: $(LIB)
+all: $(LIB) $(TEXPRINTF_LIB)
 
-$(LIB): $(SHIM_OBJ) $(LITEHTML_OBJS) $(GUMBO_OBJS)
+$(LIB): $(LIB_OBJS)
+	$(AR) rcs $@ $^
+
+# Standalone static library for the terminal renderer (markterm), which
+# links libtexprintf directly.
+$(TEXPRINTF_LIB): $(TEXPRINTF_OBJ)
 	$(AR) rcs $@ $^
 
 build/litepdf.o: litepdf.cpp | build
@@ -35,6 +66,22 @@ build/litehtml/%.o: litehtml/src/%.cpp | build
 build/litehtml/%.o: litehtml/src/%.c | build
 	@mkdir -p $(dir $@)
 	$(CC) $(CXXFLAGS) $(INCLUDES) -I litehtml/src -c $< -o $@
+
+# The libtexprintf build generates two headers (errorflags.h,
+# errormessages.h) from error-marker comments in its sources; generate
+# them into build/libtexprintf and add that to the include path.
+build/libtexprintf/gen: $(wildcard $(TEXPRINTF_DIR)/src/gen_errorflags.sh) \
+                        $(wildcard $(TEXPRINTF_DIR)/src/boxes.c) \
+                        $(wildcard $(TEXPRINTF_DIR)/src/drawbox.c) \
+                        $(wildcard $(TEXPRINTF_DIR)/src/lexer.c) \
+                        $(wildcard $(TEXPRINTF_DIR)/src/parser.c)
+	@mkdir -p $(dir $@)
+	cd build/libtexprintf && $(SHELL) ../../$(TEXPRINTF_DIR)/src/gen_errorflags.sh ../../$(TEXPRINTF_DIR)/src/boxes.c ../../$(TEXPRINTF_DIR)/src/drawbox.c ../../$(TEXPRINTF_DIR)/src/lexer.c ../../$(TEXPRINTF_DIR)/src/parser.c
+	@touch $@
+
+build/libtexprintf/%.o: $(TEXPRINTF_DIR)/src/%.c | build build/libtexprintf/gen
+	@mkdir -p $(dir $@)
+	$(CC) $(CXXFLAGS) -I build/libtexprintf -I $(TEXPRINTF_DIR)/src -c $< -o $@
 
 build:
 	mkdir -p build

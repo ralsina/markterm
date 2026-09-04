@@ -12,6 +12,7 @@ require "base64"
 
 require "./cli"
 require "./pdf_styles"
+require "./math_render"
 
 # Render markdown to PDF: markdown -> HTML (markd) -> litehtml layout ->
 # libharu PDF, via the C++ shim in ext/ (built with `make -C ext`).
@@ -27,6 +28,8 @@ lib Litepdf
   fun render = litepdf_render(html : LibC::Char*, css : LibC::Char*, page_size : LibC::Int,
                               margin_pt : LibC::Float, out_path : LibC::Char*, base_dir : LibC::Char*,
                               errbuf : LibC::Char*, errbuf_len : LibC::Int, single_page : LibC::Int) : LibC::Int
+  fun render_math = litepdf_render_math(latex : LibC::Char*) : LibC::Char*
+  fun free_mem = litepdf_free(ptr : Void*) : Void
   fun register_font = litepdf_register_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,
                                             errbuf_len : LibC::Int) : LibC::Int
   fun set_emoji_font = litepdf_set_emoji_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,
@@ -161,7 +164,7 @@ module Markd
           # the document keeps its own styles and title.
           html = process_images(source, base_dir, temp_dir, converted)
         else
-          body_html = process_images(rewrite_task_lists(Markd.to_html(source, options, formatter: formatter)), base_dir, temp_dir, converted)
+          body_html = process_images(MathRender.rewrite_html(rewrite_task_lists(Markd.to_html(source, options, formatter: formatter))), base_dir, temp_dir, converted)
           html = document_html(body_html, extra_css: formatter.style_defs)
         end
         size_code = PAGE_SIZES[page_size.downcase]?

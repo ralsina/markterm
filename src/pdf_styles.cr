@@ -68,6 +68,9 @@ module Markd
         abbr { border-bottom: 1px dotted #888888; }
         mark { background-color: #fff3a3; }
         kbd { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #f2f2f2; border: 1px solid #cccccc; padding: 0px 3px 0px 3px; }
+        .math { font-family: "DejaVu Serif", Georgia, serif; font-style: italic; }
+        .math.block { display: block; text-align: center; margin: 6px 0 6px 0; }
+        pre.math { text-align: left; background-color: transparent; border: none; line-height: 1.1; margin: 6px auto 6px auto; }
         CSS
       "book" => <<-CSS,
         body { font-family: "DejaVu Serif", Georgia, serif; font-size: 12px; line-height: 1.6; color: #1a1a1a; margin: 0; padding: 0; }
@@ -115,6 +118,9 @@ module Markd
         abbr { border-bottom: 1px dotted #888888; }
         mark { background-color: #fff3a3; }
         kbd { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #f2f2f2; border: 1px solid #cccccc; padding: 0px 3px 0px 3px; }
+        .math { font-family: "DejaVu Serif", Georgia, serif; font-style: italic; }
+        .math.block { display: block; text-align: center; margin: 6px 0 6px 0; }
+        pre.math { text-align: left; background-color: transparent; border: none; line-height: 1.1; margin: 6px auto 6px auto; }
         CSS
       "dark" => <<-CSS,
         body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; font-size: 11px; line-height: 1.5; color: #e8e8e8; background-color: #121212; margin: 0; padding: 0; }
@@ -160,6 +166,9 @@ module Markd
         abbr { border-bottom: 1px dotted #888888; }
         mark { background-color: #6b5b1e; }
         kbd { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #1e1e1e; border: 1px solid #444444; padding: 0px 3px 0px 3px; }
+        .math { font-family: "DejaVu Serif", Georgia, serif; font-style: italic; }
+        .math.block { display: block; text-align: center; margin: 6px 0 6px 0; }
+        pre.math { text-align: left; background-color: transparent; border: none; line-height: 1.1; margin: 6px auto 6px auto; }
         CSS
       "sepia" => <<-CSS
         body { font-family: "DejaVu Serif", Georgia, serif; font-size: 12px; line-height: 1.6; color: #5b4636; background-color: #f4ecd8; margin: 0; padding: 0; }
@@ -205,6 +214,9 @@ module Markd
         abbr { border-bottom: 1px dotted #8a7a5a; }
         mark { background-color: #ecd98b; }
         kbd { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #ece1c6; border: 1px solid #d3c3a0; padding: 0px 3px 0px 3px; }
+        .math { font-family: "DejaVu Serif", Georgia, serif; font-style: italic; }
+        .math.block { display: block; text-align: center; margin: 6px 0 6px 0; }
+        pre.math { text-align: left; background-color: transparent; border: none; line-height: 1.1; margin: 6px auto 6px auto; }
         CSS
     }
 
