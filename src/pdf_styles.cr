@@ -80,7 +80,7 @@ module Markd
         del { text-decoration: line-through; }
         ul, ol { margin: 0 0 9px 0; padding-left: 18px; }
         ul ul, ol ol, ul ol, ol ul { margin: 0 0 9px 0; padding-left: 16px; }
-        li { margin: 0 0 3px 0; }
+        li { margin: 0 0 3px 0; text-align: justify; }
         li.task-list-item { list-style-type: none; }
         li p { margin: 0 0 3px 0; text-indent: 0; }
         blockquote { border-left: 3px solid #cccccc; margin: 9px 0 9px 0; padding: 2px 0 2px 12px; color: #444444; font-size: 11.5px; }
