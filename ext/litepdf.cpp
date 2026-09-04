@@ -1736,16 +1736,19 @@ class PdfContainer : public litehtml::document_container
                 HPDF_Page_LineTo(context->page, context->pdf_x(left) + inset, context->pdf_y(bottom));
                 break;
             case 1: // top
-                HPDF_Page_MoveTo(context->page, context->pdf_x(left), context->pdf_y(top) + inset);
-                HPDF_Page_LineTo(context->page, context->pdf_x(right), context->pdf_y(top) + inset);
+                // PDF y grows upward: the inset must SUBTRACT to fall
+                // inside the box; a border drawn outside the top edge is
+                // clipped away by overflow:hidden on tables.
+                HPDF_Page_MoveTo(context->page, context->pdf_x(left), context->pdf_y(top) - inset);
+                HPDF_Page_LineTo(context->page, context->pdf_x(right), context->pdf_y(top) - inset);
                 break;
             case 2: // right
                 HPDF_Page_MoveTo(context->page, context->pdf_x(right) - inset, context->pdf_y(top));
                 HPDF_Page_LineTo(context->page, context->pdf_x(right) - inset, context->pdf_y(bottom));
                 break;
             case 3: // bottom
-                HPDF_Page_MoveTo(context->page, context->pdf_x(left), context->pdf_y(bottom) - inset);
-                HPDF_Page_LineTo(context->page, context->pdf_x(right), context->pdf_y(bottom) - inset);
+                HPDF_Page_MoveTo(context->page, context->pdf_x(left), context->pdf_y(bottom) + inset);
+                HPDF_Page_LineTo(context->page, context->pdf_x(right), context->pdf_y(bottom) + inset);
                 break;
             }
             HPDF_Page_Stroke(context->page);
@@ -1854,13 +1857,19 @@ class PdfContainer : public litehtml::document_container
         float width = std::max(px(pos.width), 0.01f);
         float height = std::max(px(pos.height), 0.01f);
         HPDF_Page_GSave(context->page);
-        // Elements laid out wider than the content area (wide tables
-        // with overflow: hidden) are scaled to fit: the CTM shrinks
-        // everything drawn inside this clip, text and borders included.
-        if (width > px(content_width) + 1.0f)
+        // Elements laid out wider than the span from their left edge to
+        // the content area's right edge (wide tables with overflow:
+        // hidden) are scaled into that span: the CTM shrinks everything
+        // drawn inside this clip, text and borders included. The span
+        // ends at the content edge because the element is inset from it
+        // (body margin); scaling to the full content width would make
+        // the box overshoot the right margin, and the page clip would
+        // amputate its right border.
+        float available = px(content_width) - px(pos.x);
+        if (available > 1.0f && width > available + 1.0f)
         {
-            if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "CTM scale %.3f for wide clip\n", px(content_width) / width);
-            float scale = px(content_width) / width;
+            float scale = available / width;
+            if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "CTM scale %.3f for wide clip\n", scale);
             HPDF_Page_Concat(context->page, scale, 0, 0, scale, left * (1 - scale), top * (1 - scale));
         }
         HPDF_Page_Rectangle(context->page, left, top - height, width, height);

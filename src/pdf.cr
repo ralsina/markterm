@@ -57,7 +57,7 @@ module Markd
     # litehtml supports (no CSS variables, no grid). Pico-inspired: clean
     # typographic scale, subtle rules, shaded code.
     DEFAULT_CSS = <<-CSS
-      body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; font-size: 11px; line-height: 1.5; color: #1a1a1a; }
+      body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; font-size: 11px; line-height: 1.5; color: #1a1a1a; margin: 0; padding: 0; }
       h1 { font-size: 25px; font-weight: bold; margin: 20px 0 12px 0; }
       h2 { font-size: 19px; font-weight: bold; margin: 18px 0 10px 0; }
       h3 { font-size: 15px; font-weight: bold; margin: 16px 0 8px 0; }
@@ -72,12 +72,13 @@ module Markd
       ul, ol { margin: 0 0 9px 0; padding-left: 18px; }
       ul ul, ol ol, ul ol, ol ul { margin: 0 0 9px 0; padding-left: 16px; }
       li { margin: 0 0 3px 0; }
+      li.task-list-item { list-style-type: none; }
       blockquote { border-left: 3px solid #cccccc; margin: 9px 0 9px 4px; padding: 2px 0 2px 12px; color: #444444; }
       blockquote p { margin: 0 0 6px 0; }
       pre { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #f6f6f6; border: 1px solid #e0e0e0;
             margin: 9px 0 9px 0; padding: 7px 9px 7px 9px; overflow: hidden;
             white-space: pre-wrap; }
-      table { overflow: hidden; border: 1px solid #cccccc; }
+      table { overflow: hidden; }
       code { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #f2f2f2; padding: 0px 2px 0px 2px; }
       pre code { background-color: transparent; padding: 0; }
       table { border-spacing: 0; margin: 9px 0 9px 0; font-size: 10.5px; }
@@ -159,9 +160,7 @@ module Markd
         td, th { border-color: #{base.call("base02")}; }
         blockquote { border-left-color: #{base.call("base03")}; color: #{base.call("base04")}; }
         hr { border-bottom-color: #{base.call("base03")}; }
-        table { border-color: #{base.call("base02")}; }
-        th { border-color: #{base.call("base02")}; }
-        td { border-color: #{base.call("base02")}; }
+        td, th { border-color: #{base.call("base02")}; }
         CSS
 
     rescue error : Exception
@@ -201,7 +200,7 @@ module Markd
           # the document keeps its own styles and title.
           html = process_images(source, base_dir, temp_dir, converted)
         else
-          body_html = process_images(Markd.to_html(source, options, formatter: formatter), base_dir, temp_dir, converted)
+          body_html = process_images(rewrite_task_lists(Markd.to_html(source, options, formatter: formatter)), base_dir, temp_dir, converted)
           html = document_html(body_html, extra_css: formatter.style_defs)
         end
         size_code = PAGE_SIZES[page_size.downcase]?
@@ -225,6 +224,20 @@ module Markd
         rescue File::Error
         end
       end
+    end
+
+    # GFM task lists: markd emits an <input type="checkbox"> as the
+    # first child of the <li>, which litehtml drops entirely, leaving a
+    # plain bullet. Rewrite the two exact shapes markd produces
+    # (attribute order is fixed by its renderer) into a box glyph; the
+    # stylesheet suppresses the bullet, and the literal space markd
+    # emits after the input keeps the gap between box and text.
+    def self.rewrite_task_lists(html : String) : String
+      html
+        .gsub(%r{<li><input checked="" disabled="" type="checkbox">},
+          %(<li class="task-list-item"><span class="task-box">☑</span>))
+        .gsub(%r{<li><input disabled="" type="checkbox">},
+          %(<li class="task-list-item"><span class="task-box">☐</span>))
     end
 
     # Rewrite <img> sources the shim cannot load itself: remote URLs are
