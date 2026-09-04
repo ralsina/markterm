@@ -2,11 +2,11 @@
 # litehtml (including its bundled gumbo HTML parser). The result,
 # build/liblitepdf.a, is linked into the markpdf Crystal binary.
 #
-# Optional LaTeX math rendering: `make WITH_TEXMATH=1` builds the
-# vendored libtexprintf (ext/libtexprintf, a git submodule — init it
-# first). libtexprintf is GPL-3, so binaries built this way are
-# effectively GPL-3; without the flag math falls back to a plain
-# Unicode styling pass and the binary keeps its regular license.
+# LaTeX math rendering: the vendored libtexprintf (ext/libtexprintf,
+# a git submodule — init it first) renders display math as UTF-8 text
+# art. It is GPL-3, so binaries built this way are effectively GPL-3;
+# opt out with `make WITH_TEXMATH=0` (and WITH_TEXMATH=0 for shards
+# build) to fall back to a plain Unicode styling pass.
 
 CXX ?= g++
 AR ?= ar
@@ -15,7 +15,7 @@ CC ?= gcc
 CXXFLAGS ?= -std=c++17 -O2 -fPIC -MMD -MP
 INCLUDES = -I litehtml/include -I litehtml/include/litehtml -I litehtml/src -I litehtml/src/gumbo/include -I litehtml/src/gumbo/include/gumbo -I litehtml/src/gumbo
 
-WITH_TEXMATH ?= 0
+WITH_TEXMATH ?= 1
 
 LITEHTML_SRC := $(filter-out litehtml/src/main.cpp,$(wildcard litehtml/src/*.cpp))
 GUMBO_SRC := $(wildcard litehtml/src/gumbo/*.cpp) $(wildcard litehtml/src/gumbo/*.c)
@@ -35,10 +35,16 @@ TEXPRINTF_OBJ := $(patsubst $(TEXPRINTF_DIR)/src/%.c,build/libtexprintf/%.o,$(TE
 
 LIB := build/liblitepdf.a
 
-ifeq ($(WITH_TEXMATH),1)
-  CXXFLAGS += -DWITH_TEXMATH=1 -I build/libtexprintf -I $(TEXPRINTF_DIR)/src
+ifneq ($(WITH_TEXMATH),0)
+  # override: WITH_TEXMATH is often passed on the command line, where a
+  # plain += would be silently ignored. The libtexprintf includes are
+  # scoped to the shim rule below: adding them globally would shadow
+  # gumbo's own error.h.
+  override CXXFLAGS += -DWITH_TEXMATH=1
+  TEXPRINTF_INC := -I build/libtexprintf -I $(TEXPRINTF_DIR)/src
   LIB_OBJS := $(SHIM_OBJ) $(LITEHTML_OBJS) $(GUMBO_OBJS) $(TEXPRINTF_OBJ)
 else
+  TEXPRINTF_INC :=
   LIB_OBJS := $(SHIM_OBJ) $(LITEHTML_OBJS) $(GUMBO_OBJS)
 endif
 
@@ -57,7 +63,7 @@ $(TEXPRINTF_LIB): $(TEXPRINTF_OBJ)
 	$(AR) rcs $@ $^
 
 build/litepdf.o: litepdf.cpp | build
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(TEXPRINTF_INC) -c $< -o $@
 
 build/litehtml/%.o: litehtml/src/%.cpp | build
 	@mkdir -p $(dir $@)
