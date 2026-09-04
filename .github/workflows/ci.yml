@@ -20,9 +20,13 @@ jobs:
       - name: Install system libraries
         run: |
           apt-get update -qq
-          apt-get install -y -qq libreadline-dev libxml2-dev libharu-dev libpng-dev zlib1g-dev g++ make
+          apt-get install -y -qq libreadline-dev libxml2-dev libpng-dev zlib1g-dev cmake g++ make
       - name: Build the C shim (markpdf)
-        run: make -C ext
+        # build-libharu.sh compiles a static libhpdf (with the project's
+        # CID fixes) into ext/build; Ubuntu ships no libharu package.
+        run: |
+          ext/build-libharu.sh
+          make -C ext
       - name: Install dependencies
         run: shards install
       - name: Build all binaries
