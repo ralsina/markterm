@@ -233,7 +233,10 @@ markpdf notes.md -o notes.pdf -t "0x96f" --header "notes" --footer "%p / %t"
 
 Building `markpdf` from source requires libharu (`pacman -S libharu`,
 `apt install libharu-dev`, ...) and a C++ toolchain: run `make -C ext`
-once to build the shim, then `shards build`.
+once to build the shim, then `shards build`. See
+[BUILDING.md](BUILDING.md) for all build modes — including the GPL-3
+math build and the license-clean alternative — plus tests and static
+release binaries.
 
 ## Usage as a library
 
