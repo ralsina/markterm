@@ -11,6 +11,7 @@
 #include "litehtml/render_item.h"
 
 #include <hpdf.h>
+#include <hpdf_error.h>
 
 #include <algorithm>
 #include <cctype>
@@ -779,6 +780,70 @@ struct PdfFont
     std::shared_ptr<Coverage> coverage;
 };
 
+// Last libharu error, captured by the error handler so failure messages
+// can say what actually went wrong instead of "something failed".
+int g_hpdf_error = 0;
+int g_hpdf_error_detail = 0;
+std::string g_last_op = "starting up";
+
+void hpdf_error_handler(HPDF_STATUS error_no, HPDF_STATUS detail_no, void* /*user_data*/)
+{
+    g_hpdf_error = (int)error_no;
+    g_hpdf_error_detail = (int)detail_no;
+    if (getenv("LITEPDF_DEBUG"))
+    {
+        std::fprintf(stderr, "libharu error 0x%04lX (detail %ld) while: %s\n",
+                     (unsigned long)error_no, (unsigned long)detail_no, g_last_op.c_str());
+    }
+}
+
+const char* hpdf_error_name(int code)
+{
+    switch (code)
+    {
+    case 0: return "none";
+    case HPDF_FAILED_TO_ALLOC_MEM: return "out of memory";
+    case HPDF_INVALID_DOCUMENT: return "invalid document";
+    case HPDF_INVALID_DOCUMENT_STATE: return "invalid document state";
+    case HPDF_INVALID_PARAMETER: return "invalid parameter";
+    case HPDF_INVALID_IMAGE: return "invalid image";
+    case HPDF_INVALID_COLOR_SPACE: return "invalid color space";
+    case HPDF_INVALID_ENCODING_NAME: return "invalid encoding name";
+    case HPDF_INVALID_FONT_NAME: return "invalid font name";
+    case HPDF_INVALID_FONTDEF_DATA: return "invalid font data";
+    case HPDF_UNSUPPORTED_FONT_TYPE: return "unsupported font type";
+    case HPDF_UNSUPPORTED_FUNC: return "unsupported function";
+    case HPDF_UNSUPPORTED_JPEG_FORMAT: return "unsupported JPEG format";
+    case HPDF_UNSUPPORTED_TYPE1_FONT: return "unsupported Type1 font";
+    case HPDF_PAGE_INVALID_FONT: return "invalid page font";
+    case HPDF_PAGE_INVALID_GMODE: return "unbalanced GSave/GRestore";
+    case HPDF_PAGE_CANNOT_RESTORE_GSTATE: return "GRestore without matching GSave";
+    case HPDF_EXCEED_GSTATE_LIMIT: return "too many nested graphics states";
+    case HPDF_PAGE_OUT_OF_RANGE: return "value out of range";
+    default: return nullptr;
+    }
+}
+
+std::string describe_hpdf_error()
+{
+    if (g_hpdf_error == 0)
+    {
+        return "no libharu error recorded";
+    }
+    std::string out = "libharu error 0x";
+    char buffer[16];
+    std::snprintf(buffer, sizeof(buffer), "%04X", g_hpdf_error);
+    out += buffer;
+    if (const char* name = hpdf_error_name(g_hpdf_error))
+    {
+        out += " (";
+        out += name;
+        out += ")";
+    }
+    out += " [while " + g_last_op + "]";
+    return out;
+}
+
 struct DrawContext
 {
     HPDF_Page page = nullptr;
@@ -1286,6 +1351,7 @@ class PdfContainer : public litehtml::document_container
         }
         const PdfFont& f = font(hFont);
         set_fill(hdc, color);
+        g_last_op = std::string("draw_text '") + std::string(text).substr(0, 20) + "'";
         if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "draw_text '%s' x=%.1f y=%.1f w=%.1f h=%.1f\n", text, px(pos.x), px(pos.y), px(pos.width), px(pos.height));
         float baseline = context->pdf_y(pos.y + pos.height - f.descent);
         // Draw segment by segment; emoji-range codepoints the primary font
@@ -1298,11 +1364,16 @@ class PdfContainer : public litehtml::document_container
             {
                 continue;
             }
+            g_last_op = "segment: SetFontAndSize";
             HPDF_Page_SetFontAndSize(context->page, segment_font->handle, segment_font->size);
             std::string piece = segment_font->utf8 ? segment.text : to_cp1252(segment.text.c_str());
+            g_last_op = "segment: BeginText";
             HPDF_Page_BeginText(context->page);
+            g_last_op = "segment: TextOut";
             HPDF_Page_TextOut(context->page, cursor, baseline, piece.c_str());
+            g_last_op = "segment: EndText";
             HPDF_Page_EndText(context->page);
+            g_last_op = "segment: measure";
             set_measure_font(*segment_font);
             cursor += measure_page ? HPDF_Page_TextWidth(measure_page, piece.c_str()) : 0.0f;
         }
@@ -1357,6 +1428,7 @@ class PdfContainer : public litehtml::document_container
         {
             return;
         }
+        g_last_op = "draw_list_marker";
         litehtml::list_style_type type = marker.marker_type;
         float size = std::max(3.0f, px(marker.pos.height) * 0.22f);
         float center_x = context->pdf_x(px(marker.pos.x) + px(marker.pos.width) * 0.5f);
@@ -1368,7 +1440,16 @@ class PdfContainer : public litehtml::document_container
         case litehtml::list_style_type_circle:
         case litehtml::list_style_type_square:
         {
+            // SetLineWidth before constructing the path: libharu requires
+            // page graphics mode for it.
+            bool stroked = type == litehtml::list_style_type_circle;
+            if (stroked)
+            {
+                HPDF_Page_SetLineWidth(context->page, std::max(0.6f, size / 6));
+            }
+            g_last_op = "marker: set_fill";
             set_fill(hdc, marker.color);
+            g_last_op = "marker: shape";
             if (type == litehtml::list_style_type_square)
             {
                 HPDF_Page_Rectangle(context->page, center_x - size / 2, context->pdf_y(top) - size / 2, size, size);
@@ -1377,9 +1458,9 @@ class PdfContainer : public litehtml::document_container
             {
                 HPDF_Page_Circle(context->page, center_x, context->pdf_y(top), size / 2);
             }
-            if (type == litehtml::list_style_type_circle)
+            g_last_op = "marker: paint";
+            if (stroked)
             {
-                HPDF_Page_SetLineWidth(context->page, std::max(0.6f, size / 6));
                 HPDF_Page_Stroke(context->page);
             }
             else
@@ -1747,15 +1828,20 @@ class PdfContainer : public litehtml::document_container
 
     void set_clip(const litehtml::position& pos, const litehtml::border_radiuses&) override
     {
+        // Every set_clip must pair with the del_clip GRestore, even for
+        // degenerate boxes, or the GSave/GRestore stack underflows and
+        // poisons the document (later HPDF_AddPage calls return null).
         DrawContext* context = active_context;
-        if (!context || !context->page || px(pos.width) <= 0 || px(pos.height) <= 0)
+        if (!context || !context->page)
         {
             return;
         }
         float left = context->pdf_x(px(pos.x));
         float top = context->pdf_y(px(pos.y));
+        float width = std::max(px(pos.width), 0.01f);
+        float height = std::max(px(pos.height), 0.01f);
         HPDF_Page_GSave(context->page);
-        HPDF_Page_Rectangle(context->page, left, top - px(pos.height), px(pos.width), px(pos.height));
+        HPDF_Page_Rectangle(context->page, left, top - height, width, height);
         HPDF_Page_Clip(context->page);
         HPDF_Page_EndPath(context->page);
         context->clip_depth++;
@@ -2053,6 +2139,9 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         }
         return -1;
     }
+    HPDF_SetErrorHandler(pdf, hpdf_error_handler);
+    g_hpdf_error = 0;
+    g_last_op = "creating document";
     HPDF_SetCompressionMode(pdf, HPDF_COMP_ALL);
     HPDF_UseUTFEncodings(pdf);
 
@@ -2074,6 +2163,7 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
     }
 
     const char* user_css = css ? css : "";
+    g_last_op = "parsing HTML";
     std::shared_ptr<litehtml::document> doc;
     try
     {
@@ -2220,7 +2310,8 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         }
         if (!page)
         {
-            std::snprintf(errbuf, errbuf_len, "failed to create page %d", page_count + 1);
+            std::snprintf(errbuf, errbuf_len, "failed to create page %d: %s",
+                          page_count + 1, describe_hpdf_error().c_str());
             HPDF_Free(pdf);
             return -1;
         }
@@ -2237,6 +2328,7 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
             HPDF_Page_Rectangle(page, 0, 0, page_width, page_height);
             HPDF_Page_Fill(page);
         }
+        g_last_op = "drawing page " + std::to_string(page_count + 1);
         context.page = page;
         context.page_height = page_height;
         context.y_offset = window.first;
@@ -2342,9 +2434,11 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         }
     }
 
+    g_last_op = "saving " + std::string(out_path);
     if (HPDF_SaveToFile(pdf, out_path) != HPDF_OK)
     {
-        std::snprintf(errbuf, errbuf_len, "failed to write %s", out_path);
+        std::snprintf(errbuf, errbuf_len, "failed to write %s: %s", out_path,
+                      describe_hpdf_error().c_str());
         HPDF_Free(pdf);
         return -1;
     }
