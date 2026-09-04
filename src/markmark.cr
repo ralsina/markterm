@@ -127,7 +127,11 @@ module Markd
           # ones need a blank line to stay separate paragraphs
           print "\n\n" if node.prev?
         else
-          print "\n"
+          # A blank line between sibling paragraphs (single newlines
+          # would glue them into one on re-parse); a lone newline for
+          # the first paragraph positions the line and triggers
+          # container prefixes like the blockquote's "> ".
+          print node.prev? ? "\n\n" : "\n"
         end
       end
     end
