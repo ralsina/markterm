@@ -62,6 +62,16 @@ tasks:
     phony: true
     always_run: true
 
+  litehtml-test:
+    default: false
+    dependencies:
+      - ext/litehtml
+      - ext/check-litehtml.sh
+    commands: |
+      ext/check-litehtml.sh
+    phony: true
+    always_run: true
+
   lint:
     default: false
     dependencies:
