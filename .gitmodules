@@ -1,3 +1,4 @@
 [submodule "ext/litehtml"]
 	path = ext/litehtml
-	url = https://github.com/litehtml/litehtml
+	url = https://github.com/ralsina/litehtml.git
+	branch = prune-clipped-subtrees
