@@ -38,8 +38,8 @@ It can also render Markdown to Markdown if you really need that :-)
 * Allow enabling/disabling images/html-style-links via CLI (partly done)
 * Use crystal-term/color to detect color capabilities
 * Wrap styled table cells at word boundaries when tables are squeezed
-* markpdf: apply base16 themes to code syntax highlighting, richer
-  header/footer templating (alignment, per-page sections)
+* markpdf: richer header/footer templating (alignment, per-page
+  sections, fonts)
 
 ## Usage as a program
 
