@@ -74,6 +74,45 @@ describe Markd::Pdf do
     end
   end
 
+  describe ".rewrite_task_lists" do
+    it "rewrites a checked task item into a ballot box with check" do
+      html = %(<li><input checked="" disabled="" type="checkbox"> done thing</li>)
+      Markd::Pdf.rewrite_task_lists(html).should eq(
+        %(<li class="task-list-item"><span class="task-box">☑</span> done thing</li>))
+    end
+
+    it "rewrites an unchecked task item into an empty ballot box" do
+      html = %(<li><input disabled="" type="checkbox"> open thing</li>)
+      Markd::Pdf.rewrite_task_lists(html).should eq(
+        %(<li class="task-list-item"><span class="task-box">☐</span> open thing</li>))
+    end
+
+    it "leaves plain list items untouched" do
+      html = "<ul>\n<li>plain item</li>\n</ul>"
+      Markd::Pdf.rewrite_task_lists(html).should eq(html)
+    end
+
+    it "handles a mixed list with nested plain items" do
+      html = "<ul>\n" \
+             "<li><input checked=\"\" disabled=\"\" type=\"checkbox\"> done</li>\n" \
+             "<li><input disabled=\"\" type=\"checkbox\"> open\n" \
+             "<ul>\n<li>nested plain</li>\n</ul>\n</li>\n</ul>"
+      rewritten = Markd::Pdf.rewrite_task_lists(html)
+      rewritten.should contain(%(<li class="task-list-item"><span class="task-box">☑</span> done</li>))
+      rewritten.should contain(%(<li class="task-list-item"><span class="task-box">☐</span> open))
+      rewritten.should contain("<li>nested plain</li>")
+    end
+
+    it "rewrites the markup markd emits for gfm task lists" do
+      markdown = "- [x] done thing\n- [ ] open thing\n"
+      options = Markd::Options.new
+      options.gfm = true
+      html = Markd::Pdf.rewrite_task_lists(Markd.to_html(markdown, options))
+      html.should contain(%(<span class="task-box">☑</span> done thing))
+      html.should contain(%(<span class="task-box">☐</span> open thing))
+    end
+  end
+
   describe ".render" do
     it "renders a short document to a single-page PDF" do
       path = temp_pdf_path
