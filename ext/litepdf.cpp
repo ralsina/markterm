@@ -2358,7 +2358,7 @@ int litepdf_set_emoji_font(const char* ttf_path, char* errbuf, int errbuf_len)
 // uniform page margin. Returns the number of pages, or -1 and fills
 // errbuf on failure.
 int litepdf_render(const char* html, const char* css, int page_size, float margin_pt, const char* out_path,
-                   const char* base_dir, char* errbuf, int errbuf_len)
+                   const char* base_dir, char* errbuf, int errbuf_len, int single_page)
 {
     if (errbuf && errbuf_len > 0)
     {
@@ -2386,8 +2386,8 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         container.base_dir = ".";
     }
 
-    // First page doubles as the font measurement page; it becomes page 1
-    // of the output and the first page window is drawn onto it.
+    // The first page doubles as the font measurement page; it becomes
+    // page 1 of the output and the first page window is drawn onto it.
     container.measure_page = HPDF_AddPage(pdf);
     if (!container.measure_page)
     {
@@ -2419,7 +2419,7 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
     float page_width = page_size == 1 ? 612.0f : 595.276f;
     float page_height = page_size == 1 ? 792.0f : 841.89f;
     float margin = margin_pt;
-    if (margin * 2 >= page_width || margin * 2 >= page_height)
+    if (margin * 2 >= page_width || (!single_page && margin * 2 >= page_height))
     {
         margin = page_width * 0.05f;
     }
@@ -2476,9 +2476,24 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         prev_was_heading = heading_flows.count(candidates[i]) > 0;
     }
     float total_flow_height = container.flow_y(total_height);
+    if (single_page)
+    {
+        // Pageless mode: one page as tall as the whole flow. The width
+        // still comes from the page size; margins stay as configured.
+        // (Viewers based on the original PDF 1.x limit dislike pages
+        // above 14400 pt; that is inherent to the mode.)
+        total_flow_height = std::max(total_flow_height, 1.0f);
+        page_height = total_flow_height + margin * 2;
+    }
 
     if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "total_height=%.1f flow_height=%.1f content_height=%.1f candidates=%zu headings=%zu wide_tables=%zu\n", total_height, total_flow_height, content_height, candidates.size(), raw_headings.size(), container.wide_tables.size());
     std::vector<std::pair<float, float>> windows;
+    if (single_page)
+    {
+        // One window: the whole flow, no breaks.
+        windows.emplace_back(0.0f, total_flow_height);
+    }
+    else
     {
         float start = 0;
         while (start < total_flow_height)
@@ -2656,9 +2671,13 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
             context.clip_depth--;
         }
         HPDF_Page_GRestore(page);
-        // Header/footer go in the margins, outside the window clip.
-        draw_page_text(g_header_template, true);
-        draw_page_text(g_footer_template, false);
+        // Header/footer go in the margins, outside the window clip; a
+        // pageless document has no pages to decorate.
+        if (!single_page)
+        {
+            draw_page_text(g_header_template, true);
+            draw_page_text(g_footer_template, false);
+        }
 
         // Link annotations for every anchor rectangle on this page's window.
         if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "page %d: links=%zu window=%.1f..%.1f\n", page_count, container.links.size(), window.first, window.second);
