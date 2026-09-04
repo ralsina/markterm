@@ -35,6 +35,68 @@ float px(litehtml::pixel_t value)
     return value.value();
 }
 
+// A table laid out wider than its available span: it draws inside a
+// uniform scale-to-fit CTM (see PdfContainer::set_clip), so its drawn
+// height is scale times its layout height. Pagination compensates by
+// treating the table as occupying the scaled height in "flow space".
+struct WideTable
+{
+    float top;    // layout y of the table's border box (document space)
+    float height; // layout height of the border box
+    float scale;  // the scale-to-fit factor applied when drawing
+};
+
+// Document y -> flow y: the y the content would occupy if every wide
+// table were squeezed to its drawn height. Points inside a table map
+// linearly across the table's compressed range.
+float flow_y_in(const std::vector<WideTable>& tables, float document_y)
+{
+    float shift = 0;
+    const WideTable* inside = nullptr;
+    for (const auto& table : tables)
+    {
+        if (table.top + table.height <= document_y)
+        {
+            shift += (1.0f - table.scale) * table.height;
+        }
+        else if (document_y > table.top)
+        {
+            inside = &table;
+        }
+        else
+        {
+            break;
+        }
+    }
+    if (inside)
+    {
+        return inside->top - shift + inside->scale * (document_y - inside->top);
+    }
+    return document_y - shift;
+}
+
+// Flow y -> document y (inverse of flow_y_in): maps a pagination
+// window boundary back to the layout coordinates litehtml culls against.
+float flow_to_doc_in(const std::vector<WideTable>& tables, float flow_y)
+{
+    float shift = 0;
+    for (const auto& table : tables)
+    {
+        float top_flow = table.top - shift;
+        float height_flow = table.scale * table.height;
+        if (flow_y < top_flow)
+        {
+            return flow_y + shift;
+        }
+        if (flow_y <= top_flow + height_flow)
+        {
+            return table.top + (flow_y - top_flow) / table.scale;
+        }
+        shift += (1.0f - table.scale) * table.height;
+    }
+    return flow_y + shift;
+}
+
 // ---------------------------------------------------------------------------
 // TrueType font registry: provided font files and system-installed fonts.
 // Metadata (family, weight, italic) is read from the font's name and OS/2
@@ -848,12 +910,31 @@ struct DrawContext
 {
     HPDF_Page page = nullptr;
     float page_height = 0; // PDF page height in points
-    float y_offset = 0;    // document-space y drawn at the top margin of this page
+    float y_offset = 0;    // flow-space y drawn at the top margin of this page
     float x_offset = 0;    // left margin in document space (page window left edge)
     float top_margin = 0;  // page top margin in points
     // Depth of clip paths pushed by set_clip (overflow: hidden); libharu
     // clips are real, so partially visible glyphs get cut at the box edge.
     int clip_depth = 0;
+    // Wide tables of the document (sorted by top, non-overlapping).
+    const std::vector<WideTable>* wide_tables = nullptr;
+
+    // A scale-to-fit clip pushed by set_clip: content drawn inside maps
+    // to the page relative to the table's top, compressed by the scale
+    // (the CTM applies the same factor, so pdf_y itself only anchors).
+    struct ScaledRegion
+    {
+        float doc_top;  // table top in document space
+        float page_top; // the table top's page y (the CTM anchor)
+        float scale;
+        int depth; // clip_depth at push time
+    };
+    std::vector<ScaledRegion> scaled_regions;
+
+    float flow_y(float document_y) const
+    {
+        return wide_tables ? flow_y_in(*wide_tables, document_y) : document_y;
+    }
 
     float pdf_x(float document_x) const
     {
@@ -861,9 +942,17 @@ struct DrawContext
     }
 
     // Convert the top of a box in document space to a PDF y coordinate.
+    // Inside a scale-to-fit region the CTM owns the compression, so this
+    // only anchors to the region top; outside it maps through flow
+    // space, where wide tables occupy their scaled height.
     float pdf_y(float document_y) const
     {
-        return page_height - top_margin - (document_y - y_offset);
+        if (!scaled_regions.empty())
+        {
+            const ScaledRegion& region = scaled_regions.back();
+            return region.page_top - (document_y - region.doc_top);
+        }
+        return page_height - top_margin - (flow_y(document_y) - y_offset);
     }
 };
 
@@ -1866,9 +1955,9 @@ class PdfContainer : public litehtml::document_container
         // the box overshoot the right margin, and the page clip would
         // amputate its right border.
         float available = px(content_width) - px(pos.x);
-        if (available > 1.0f && width > available + 1.0f)
+        float scale = (available > 1.0f && width > available + 1.0f) ? available / width : 1.0f;
+        if (scale < 1.0f)
         {
-            float scale = available / width;
             if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "CTM scale %.3f for wide clip\n", scale);
             HPDF_Page_Concat(context->page, scale, 0, 0, scale, left * (1 - scale), top * (1 - scale));
         }
@@ -1876,6 +1965,12 @@ class PdfContainer : public litehtml::document_container
         HPDF_Page_Clip(context->page);
         HPDF_Page_EndPath(context->page);
         context->clip_depth++;
+        if (scale < 1.0f)
+        {
+            // pdf_y inside this clip anchors to the table top; the CTM
+            // applies the compression.
+            context->scaled_regions.push_back({px(pos.y), top, scale, context->clip_depth});
+        }
     }
 
     void del_clip() override
@@ -1887,6 +1982,13 @@ class PdfContainer : public litehtml::document_container
         }
         HPDF_Page_GRestore(context->page);
         context->clip_depth--;
+        // Drop scaled regions whose clip just closed; regions from
+        // enclosing clips stay active.
+        while (!context->scaled_regions.empty() &&
+               context->scaled_regions.back().depth > context->clip_depth)
+        {
+            context->scaled_regions.pop_back();
+        }
     }
 
     void get_viewport(litehtml::position& viewport) const override
@@ -1958,6 +2060,37 @@ class PdfContainer : public litehtml::document_container
     // into it at draw time, so the draw clip must cover them.
     std::vector<std::pair<float, float>> table_spans;
 
+    // Wide tables that draw inside a scale-to-fit CTM, in document
+    // coordinates. finalize_wide_tables sorts them and drops nested or
+    // degenerate entries; pagination maps heights through flow space.
+    std::vector<WideTable> wide_tables;
+
+    void finalize_wide_tables()
+    {
+        std::sort(wide_tables.begin(), wide_tables.end(),
+                  [](const WideTable& a, const WideTable& b) { return a.top < b.top; });
+        std::vector<WideTable> kept;
+        for (const auto& table : wide_tables)
+        {
+            if (table.scale >= 1.0f || table.height <= 0)
+            {
+                continue;
+            }
+            if (!kept.empty() && table.top < kept.back().top + kept.back().height)
+            {
+                continue; // nested inside a previous wide table
+            }
+            kept.push_back(table);
+        }
+        wide_tables.swap(kept);
+    }
+
+    // Document y -> flow y for this document's wide tables.
+    float flow_y(float document_y) const
+    {
+        return flow_y_in(wide_tables, document_y);
+    }
+
     static bool is_external_uri(const std::string& uri)
     {
         return uri.find("://") != std::string::npos || uri.rfind("mailto:", 0) == 0;
@@ -1978,6 +2111,20 @@ class PdfContainer : public litehtml::document_container
             if (tag_name == "table" && px(pos.width) > px(content_width) + 1.0f)
             {
                 table_spans.push_back({abs_x, abs_x + px(pos.width)});
+            }
+            if (tag_name == "table")
+            {
+                // Record wide tables with the same geometry (border box)
+                // and scale formula set_clip uses, so pagination's flow
+                // space matches what drawing compresses.
+                litehtml::position box = pos;
+                box += item->get_paddings();
+                box += item->get_borders();
+                float available = px(content_width) - px(box.x);
+                if (available > 1.0f && px(box.width) > available + 1.0f)
+                {
+                    wide_tables.push_back({px(box.y), px(box.height), available / px(box.width)});
+                }
             }
             if (tag_name.size() == 2 && tag_name[0] == 'h' && tag_name[1] >= '1' && tag_name[1] <= '6')
             {
@@ -2267,23 +2414,33 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
     std::set<int> raw_candidates;
     container.collect_breaks(doc->root_render(), 0, 0, false, raw_candidates);
     container.collect_links(doc->root_render(), 0, 0);
+    container.finalize_wide_tables();
     if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "links collected: %zu\n", container.links.size());
-    std::vector<int> candidates(raw_candidates.begin(), raw_candidates.end());
+    // Pagination runs in flow space: wide tables draw vertically
+    // compressed by their scale-to-fit factor, so they must reserve
+    // their scaled height, not their layout height — otherwise pages
+    // reserve room the scaled drawing never fills.
+    std::vector<float> candidates;
+    for (int candidate : raw_candidates)
+    {
+        candidates.push_back(container.flow_y((float)candidate));
+    }
     if (candidates.empty() || candidates[0] > 0)
     {
         candidates.insert(candidates.begin(), 0);
     }
+    float total_flow_height = container.flow_y(total_height);
 
-    if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "total_height=%.1f content_height=%.1f candidates=%zu\n", total_height, content_height, candidates.size());
+    if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "total_height=%.1f flow_height=%.1f content_height=%.1f candidates=%zu wide_tables=%zu\n", total_height, total_flow_height, content_height, candidates.size(), container.wide_tables.size());
     std::vector<std::pair<float, float>> windows;
     {
         float start = 0;
-        while (start < total_height)
+        while (start < total_flow_height)
         {
             float limit = start + content_height;
-            if (limit >= total_height)
+            if (limit >= total_flow_height)
             {
-                windows.emplace_back(start, total_height);
+                windows.emplace_back(start, total_flow_height);
                 break;
             }
             // Largest candidate <= limit; fall back to a forced mid-cut if
@@ -2293,7 +2450,7 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
             {
                 if (*it <= limit && *it > start)
                 {
-                    next = (float)*it;
+                    next = *it;
                     break;
                 }
             }
@@ -2308,6 +2465,7 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
 
     if (getenv("LITEPDF_DEBUG")) { for (auto& w : windows) std::fprintf(stderr, "window %.1f..%.1f\n", w.first, w.second); }
     DrawContext context;
+    context.wide_tables = &container.wide_tables;
     container.active_context = &context;
     int page_count = 0;
     int total_pages = (int)windows.size();
@@ -2414,8 +2572,10 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
                 clip_width = right;
             }
         }
-        litehtml::position clip(0, (int)std::floor(window.first), clip_width,
-                                (int)std::ceil(window.second - window.first));
+        litehtml::position clip(0, (int)std::floor(flow_to_doc_in(container.wide_tables, window.first)),
+                                clip_width,
+                                (int)std::ceil(flow_to_doc_in(container.wide_tables, window.second) -
+                                               flow_to_doc_in(container.wide_tables, window.first)));
         doc->draw(reinterpret_cast<litehtml::uint_ptr>(&context), 0, 0, &clip);
         while (context.clip_depth > 0)
         {
@@ -2431,8 +2591,10 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "page %d: links=%zu window=%.1f..%.1f\n", page_count, container.links.size(), window.first, window.second);
         for (const auto& link : container.links)
         {
-            float top_doc = link.y;
-            float bottom_doc = link.y + link.height;
+            // Link rects were collected in document space; map them into
+            // flow space so they land where the content actually draws.
+            float top_doc = container.flow_y(link.y);
+            float bottom_doc = container.flow_y(link.y + link.height);
             if (bottom_doc <= window.first || top_doc >= window.second)
             {
                 continue;
@@ -2475,13 +2637,14 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "target '%s' y=%.1f\n", target.name.c_str(), target.y);
         for (size_t i = 0; i < windows.size(); i++)
         {
-            if (target.y >= windows[i].first && target.y < windows[i].second)
+            float target_flow = container.flow_y(target.y);
+            if (target_flow >= windows[i].first && target_flow < windows[i].second)
             {
                 HPDF_Destination dst = HPDF_Page_CreateDestination(page_handles[i]);
                 if (dst)
                 {
                     // Keep the reader's zoom, jump to the target's height.
-                    HPDF_Destination_SetFitH(dst, page_height - margin - (target.y - windows[i].first));
+                    HPDF_Destination_SetFitH(dst, page_height - margin - (target_flow - windows[i].first));
                     destinations[target.name] = dst;
                 }
                 break;
