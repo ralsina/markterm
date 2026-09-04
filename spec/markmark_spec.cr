@@ -25,6 +25,17 @@ describe "MarkRenderer round-trips" do
     Markd.to_md(source, options).should eq("```crystal\nputs 1\n```")
   end
 
+  it "round-trips fenced code blocks without language" do
+    # regression: an empty fence language used to crash with
+    # Index out of bounds (empty string is truthy and splits to [])
+    source = "```\nplain fenced block\n```"
+    Markd.to_md(source, options).should eq("```\nplain fenced block\n```")
+  end
+
+  it "round-trips indented code blocks" do
+    Markd.to_md("    indented code block\n", options).should contain("indented code block")
+  end
+
   it "round-trips bullet lists" do
     result = Markd.to_md("- one\n- two", options)
     result.should contain("one")

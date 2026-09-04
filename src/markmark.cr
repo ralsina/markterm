@@ -25,12 +25,10 @@ module Markd
     end
 
     def code_block(node : Node, entering : Bool, formatter : T?) : Nil forall T
-      languages = node.fence_language ? node.fence_language.split : nil
-      if languages
-        print "\n\n```#{languages[0]}\n"
-      else
-        print "\n\n```\n"
-      end
+      # markd hands plain fences and indented blocks an empty fence
+      # language (truthy, splits to an empty array): guard the index.
+      language = node.fence_language.try(&.split).try(&.first?)
+      print "\n\n```#{language}\n"
       print node.text
       print "```\n\n"
     end
