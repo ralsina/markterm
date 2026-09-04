@@ -105,6 +105,19 @@ describe "Table rendering" do
     result.should contain("Name")
   end
 
+  it "draws borders with line-drawing characters" do
+    markdown = "| Name | Age |\n|------|-----|\n| Alice | 30 |"
+    options = Markd::Options.new
+    options.gfm = true
+    result = Markd.to_term(markdown, options)
+    result.should contain("┌")
+    result.should contain("┼")
+    result.should contain("└")
+    result.should contain("─")
+    result.should_not contain("|")
+    result.should_not contain("+")
+  end
+
   it "renders markdown table in MarkRenderer" do
     markdown = "| Name | Age |\n|------|-----|\n| Alice | 30 |"
     options = Markd::Options.new
@@ -124,6 +137,24 @@ describe "Table rendering" do
     options.gfm = true
     result = Markd.to_md("hello ~~gone~~ world", options)
     result.should eq("hello ~~gone~~ world")
+  end
+end
+
+describe "Block spacing" do
+  it "separates consecutive paragraphs with a blank line" do
+    result = Markd.to_term("first paragraph\n\nsecond paragraph")
+    result.strip.should contain("first paragraph\n\n  second paragraph")
+  end
+
+  it "keeps a single blank line between a heading and a paragraph" do
+    result = Markd.to_term("# Title\n\nbody text")
+    plain = result.gsub(/\e\[[0-9;]*[mGKH]/, "")
+    plain.strip.should eq("# Title\n\n  body text")
+  end
+
+  it "keeps list items tight" do
+    result = Markd.to_term("- one\n- two")
+    result.strip.should contain("•  one\n  •  two")
   end
 end
 

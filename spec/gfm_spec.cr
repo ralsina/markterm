@@ -46,7 +46,7 @@ describe "GFM rendering (to_term)" do
     result.should contain("Name")
     result.should contain("Alice")
     result.should contain("Bob")
-    result.should contain("|")
+    result.should contain("│")
   end
 
   it "wraps wide tables to max_width" do
