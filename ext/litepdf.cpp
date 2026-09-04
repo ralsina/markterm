@@ -2476,14 +2476,28 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         prev_was_heading = heading_flows.count(candidates[i]) > 0;
     }
     float total_flow_height = container.flow_y(total_height);
+    // Device scale for pageless output: libharu hard-limits page
+    // dimensions to HPDF_MAX_PAGE_HEIGHT (14400pt), so documents longer
+    // than that get the whole page — content included — scaled down
+    // uniformly. Vector text stays crisp; readers zoom to comfort.
+    float page_scale = 1.0f;
     if (single_page)
     {
         // Pageless mode: one page as tall as the whole flow. The width
         // still comes from the page size; margins stay as configured.
-        // (Viewers based on the original PDF 1.x limit dislike pages
-        // above 14400 pt; that is inherent to the mode.)
         total_flow_height = std::max(total_flow_height, 1.0f);
         page_height = total_flow_height + margin * 2;
+        if (page_height > (float)HPDF_MAX_PAGE_HEIGHT)
+        {
+            page_scale = (float)HPDF_MAX_PAGE_HEIGHT / page_height;
+            if (page_width * page_scale < HPDF_MIN_PAGE_WIDTH + 1.0f)
+            {
+                std::snprintf(errbuf, errbuf_len,
+                              "document too long for pageless mode (would scale below the minimum page width)");
+                HPDF_Free(pdf);
+                return -1;
+            }
+        }
     }
 
     if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "total_height=%.1f flow_height=%.1f content_height=%.1f candidates=%zu headings=%zu wide_tables=%zu\n", total_height, total_flow_height, content_height, candidates.size(), raw_headings.size(), container.wide_tables.size());
@@ -2620,8 +2634,22 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
             HPDF_Free(pdf);
             return -1;
         }
-        HPDF_Page_SetWidth(page, page_width);
-        HPDF_Page_SetHeight(page, page_height);
+        if (HPDF_Page_SetWidth(page, page_width * page_scale) != HPDF_OK ||
+            HPDF_Page_SetHeight(page, page_height * page_scale) != HPDF_OK)
+        {
+            std::snprintf(errbuf, errbuf_len, "failed to set page size: %s",
+                          describe_hpdf_error().c_str());
+            HPDF_Free(pdf);
+            return -1;
+        }
+        // A pageless page scaled down for the 14400pt limit wraps all
+        // drawing in a matching CTM: coordinates, line widths and
+        // everything else keep working in full-scale document space.
+        if (page_scale < 1.0f)
+        {
+            HPDF_Page_GSave(page);
+            HPDF_Page_Concat(page, page_scale, 0, 0, page_scale, 0, 0);
+        }
         // Themed page background: fill the whole page before clipping.
         if (g_page_background.size() >= 7 && g_page_background[0] == '#')
         {
@@ -2671,6 +2699,12 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
             context.clip_depth--;
         }
         HPDF_Page_GRestore(page);
+        if (page_scale < 1.0f)
+        {
+            // Pop the pageless scale-down CTM: annotations below are in
+            // device space and get scaled explicitly instead.
+            HPDF_Page_GRestore(page);
+        }
         // Header/footer go in the margins, outside the window clip; a
         // pageless document has no pages to decorate.
         if (!single_page)
@@ -2698,10 +2732,12 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
                 continue;
             }
             HPDF_Rect rect;
-            rect.left = margin + link.x;
-            rect.right = margin + link.x + link.width;
-            rect.top = top;
-            rect.bottom = bottom;
+            // Annotation rectangles live in device space: apply the
+            // pageless scale-down explicitly.
+            rect.left = (margin + link.x) * page_scale;
+            rect.right = (margin + link.x + link.width) * page_scale;
+            rect.top = top * page_scale;
+            rect.bottom = bottom * page_scale;
             if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "  annot uri=%s top=%.1f bottom=%.1f\n", link.uri.c_str(), rect.top, rect.bottom);
             if (link.external)
             {
@@ -2736,7 +2772,7 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
                 if (dst)
                 {
                     // Keep the reader's zoom, jump to the target's height.
-                    HPDF_Destination_SetFitH(dst, page_height - margin - (target_flow - windows[i].first));
+                    HPDF_Destination_SetFitH(dst, (page_height - margin - (target_flow - windows[i].first)) * page_scale);
                     destinations[target.name] = dst;
                 }
                 break;
@@ -2811,7 +2847,7 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
             HPDF_Destination dst = HPDF_Page_CreateDestination(page_handles[page_idx]);
             if (dst)
             {
-                HPDF_Destination_SetFitH(dst, page_height - margin - (heading.y - windows[page_idx].first));
+                HPDF_Destination_SetFitH(dst, (page_height - margin - (heading.y - windows[page_idx].first)) * page_scale);
             }
 
             HPDF_Outline parent = nullptr;

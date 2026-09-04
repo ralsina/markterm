@@ -134,7 +134,8 @@ Options:
                              declaration wins (may be repeated)
   --pageless                 Single-page output: one page as tall as the document,
                              no headers/footers — good for on-screen reading,
-                             wrong for printing
+                             wrong for printing. Very long documents scale down
+                             to fit the PDF page-size limit.
   --font <font>              TTF font file to embed (can be repeated). Fonts are
                              matched by their internal family name; system fonts
                              are used automatically when available.
@@ -183,7 +184,9 @@ code blocks unless you pass `--code-theme` or `-t` explicitly.
 For on-screen reading, `--pageless` skips pagination entirely: the
 output is a single page as tall as the document (the `--page-size`
 still sets its width, `--margin` the outer whitespace). Headers,
-footers and page numbers do not apply in this mode.
+footers and page numbers do not apply in this mode. Documents longer
+than the PDF page-dimension limit (14,400 pt ≈ 20 printed pages) are
+scaled down uniformly — zoom in your viewer; text stays vector-crisp.
 
 Text uses embedded TrueType fonts with full Unicode support: the shim
 matches the CSS `font-family` names against the fonts you pass with

@@ -38,7 +38,8 @@ doc = <<-DOC
     --footer <footer>          Page footer text; supports the same placeholders
     --pageless                 Single-page output: one page as tall as the document,
                                no headers/footers — good for on-screen reading,
-                               wrong for printing
+                               wrong for printing. Very long documents scale
+                               down to fit the PDF page-size limit.
 
   If you use "-" as the file argument, markpdf will read from stdin.
   Complete HTML documents (and .html files) are rendered directly,
