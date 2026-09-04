@@ -30,6 +30,8 @@ doc = <<-DOC
     --footer <footer>          Page footer text; supports the same placeholders
 
   If you use "-" as the file argument, markpdf will read from stdin.
+  Complete HTML documents (and .html files) are rendered directly,
+  skipping the markdown conversion.
   Images are resolved relative to the input file's directory.
   DOC
 
@@ -69,7 +71,7 @@ def register_fonts(font_paths : Array(String))
   end
 end
 
-def main(source, output, page_size, margin, css_path, font_paths, emoji_font, header, footer, theme, code_theme)
+def main(source, output, page_size, margin, css_path, font_paths, emoji_font, header, footer, theme, code_theme, html_input)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
 
@@ -85,14 +87,14 @@ def main(source, output, page_size, margin, css_path, font_paths, emoji_font, he
   options.gfm = true
 
   if output
-    Markd::Pdf.render(input, output, options, page_size: page_size,
+    Markd::Pdf.render(input, output, options, page_size: page_size, html_input: html_input,
       margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "",
       code_theme: code_theme, theme: theme)
   else
     # No output file: render to a temporary file and stream to stdout
     temp_path = File.tempname("markpdf", ".pdf")
     begin
-      Markd::Pdf.render(input, temp_path, options, page_size: page_size,
+      Markd::Pdf.render(input, temp_path, options, page_size: page_size, html_input: html_input,
         margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "",
         code_theme: code_theme, theme: theme)
       STDOUT.write(File.read(temp_path).to_slice)
@@ -115,7 +117,7 @@ begin
   # repeats; normalize to an Array(String) either way.
   font_option = options["--font"]?
   fonts = case font_option
-          when Array then font_option.map &.as(String)
+          when Array  then font_option.map &.as(String)
           when String then [font_option]
           else             [] of String
           end
@@ -131,6 +133,7 @@ begin
     options["--footer"].try &.as(String),
     options["-t"].try &.as(String),
     options["--code-theme"].try &.as(String),
+    (file.as(String).ends_with?(".html") || file.as(String).ends_with?(".htm")),
   )
 rescue error
   abort_with(error.message.to_s)

@@ -35,6 +35,15 @@ describe Markd::Pdf do
     end
   end
 
+  describe ".html_document?" do
+    it "detects complete HTML documents" do
+      Markd::Pdf.html_document?("<!DOCTYPE html>\n<html><body>x</body></html>").should be_true
+      Markd::Pdf.html_document?("  <html><body>x</body></html>").should be_true
+      Markd::Pdf.html_document?("# markdown\n\ntext").should be_false
+      Markd::Pdf.html_document?("<p>fragment</p>").should be_false
+    end
+  end
+
   describe ".css=" do
     it "appends user css to the default stylesheet" do
       Markd::Pdf.css = "p { color: red; }"
@@ -114,6 +123,47 @@ describe Markd::Pdf do
         pages = Markd::Pdf.render(source, path)
         pages.should eq(1)
         File.size(path).should be > 1000
+      ensure
+        File.delete?(path)
+      end
+    end
+
+    it "renders complete HTML documents without markdown processing" do
+      # Blank lines and 4-space-indented markup would be mangled by the
+      # markdown pipeline; HTML input skips it entirely.
+      source = <<-HTML
+        <!DOCTYPE html>
+        <html>
+
+        <body>
+
+            <div class="section">
+
+                <h2>Indented section</h2>
+
+                <p>Paragraph with 3 * 4 and # not-a-heading.</p>
+
+            </div>
+
+        </body>
+
+        </html>
+        HTML
+      path = temp_pdf_path
+      begin
+        pages = Markd::Pdf.render(source, path, html_input: true)
+        pages.should eq(1)
+      ensure
+        File.delete?(path)
+      end
+    end
+
+    it "wraps HTML fragments in the document skeleton" do
+      path = temp_pdf_path
+      begin
+        pages = Markd::Pdf.render("<p>fragment</p>", path, html_input: true)
+        pages.should eq(1)
+        File.size(path).should be > 100
       ensure
         File.delete?(path)
       end
