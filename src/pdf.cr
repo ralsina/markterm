@@ -26,7 +26,7 @@ require "./pdf_styles"
 lib Litepdf
   fun render = litepdf_render(html : LibC::Char*, css : LibC::Char*, page_size : LibC::Int,
                               margin_pt : LibC::Float, out_path : LibC::Char*, base_dir : LibC::Char*,
-                              errbuf : LibC::Char*, errbuf_len : LibC::Int) : LibC::Int
+                              errbuf : LibC::Char*, errbuf_len : LibC::Int, single_page : LibC::Int) : LibC::Int
   fun register_font = litepdf_register_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,
                                             errbuf_len : LibC::Int) : LibC::Int
   fun set_emoji_font = litepdf_set_emoji_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,
@@ -112,12 +112,6 @@ module Markd
       raise Error.new("could not load theme '#{name}': #{error.message}")
     end
 
-    # Render markdown source to a PDF file, returns the page count.
-    # header/footer templates support "%p" (page number) and "%t"
-    # (total pages); empty strings disable. code_theme picks the
-    # tartrazine theme for syntax highlighting: an explicit name, the
-    # -t theme name (when tartrazine knows it), or the light-friendly
-    # default.
     # Switch the base stylesheet when the render call names one; raises
     # Error on an unknown name.
     private def self.apply_render_style(requested : String?) : Nil
@@ -125,10 +119,20 @@ module Markd
       self.style = requested
     end
 
+    # Render markdown source to a PDF file, returns the page count.
+    # header/footer templates support "%p" (page number) and "%t"
+    # (total pages); empty strings disable. code_theme picks the
+    # tartrazine theme for syntax highlighting: an explicit name, the
+    # -t theme name (when tartrazine knows it), or the light-friendly
+    # default. pageless produces a single page as tall as the document
+    # (good for on-screen viewing, wrong for printing); headers and
+    # footers are ignored in that mode.
+
     def self.render(source : String, output_path : String, options : Markd::Options = Markd::Options.new,
                     page_size : String = "a4", margin_mm : Float64 = 20.0, base_dir : String = ".",
                     header : String = "", footer : String = "", code_theme : String? = nil,
-                    theme : String? = nil, html_input : Bool = false, style : String? = nil) : Int32
+                    theme : String? = nil, html_input : Bool = false, style : String? = nil,
+                    pageless : Bool = false) : Int32
       # A style argument switches the base stylesheet at render time and
       # raises Error on an unknown name. CSS layered earlier (theme,
       # user) is replaced by the bare style; set the layers afterwards
@@ -168,7 +172,7 @@ module Markd
 
         errbuf = Bytes.new(512)
         pages = Litepdf.render(html, nil, size_code, margin_pt.to_f32,
-          output_path, base_dir, errbuf, errbuf.size)
+          output_path, base_dir, errbuf, errbuf.size, pageless ? 1 : 0)
         if pages < 0
           message = String.new(errbuf).strip
           raise Error.new(message.empty? ? "PDF rendering failed" : message)

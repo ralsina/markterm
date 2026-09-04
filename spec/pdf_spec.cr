@@ -196,6 +196,28 @@ describe Markd::Pdf do
       end
     end
 
+    it "renders pageless output as a single tall page" do
+      path = temp_pdf_path
+      begin
+        pages = Markd::Pdf.render(sample_markdown, path, pageless: true)
+        pages.should eq(1)
+        content = File.read(path)
+        content[0, 5].should eq("%PDF-")
+        box_at = content.index("/MediaBox")
+        fail "no MediaBox found in the pageless PDF" unless box_at
+        # "/MediaBox [ 0 0 width height ]": origin x/y, then width, height.
+        numbers = content.byte_slice(box_at + 9, 64).split.compact_map(&.to_f?)
+        fail "unexpected MediaBox layout" unless numbers.size >= 4
+        width = numbers[2]
+        height = numbers[3]
+        width.should be > 400  # A4/letter width
+        height.should be < 842 # the short sample pads nothing: no A4 minimum
+        height.should be > 50
+      ensure
+        File.delete?(path)
+      end
+    end
+
     it "renders a short document to a single-page PDF" do
       path = temp_pdf_path
       begin

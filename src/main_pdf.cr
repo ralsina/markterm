@@ -36,6 +36,9 @@ doc = <<-DOC
     --header <header>          Page header text; "%p" is the page number, "%t" the
                                total page count
     --footer <footer>          Page footer text; supports the same placeholders
+    --pageless                 Single-page output: one page as tall as the document,
+                               no headers/footers — good for on-screen reading,
+                               wrong for printing
 
   If you use "-" as the file argument, markpdf will read from stdin.
   Complete HTML documents (and .html files) are rendered directly,
@@ -97,7 +100,7 @@ def pick_code_theme(code_theme : String?, theme : String?, style : String)
   code_theme
 end
 
-def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input)
+def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
 
@@ -118,14 +121,14 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
   if output
     Markd::Pdf.render(input, output, options, page_size: page_size, html_input: html_input,
       margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "",
-      code_theme: code_theme, theme: theme)
+      code_theme: code_theme, theme: theme, pageless: pageless)
   else
     # No output file: render to a temporary file and stream to stdout
     temp_path = File.tempname("markpdf", ".pdf")
     begin
       Markd::Pdf.render(input, temp_path, options, page_size: page_size, html_input: html_input,
         margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "",
-        code_theme: code_theme, theme: theme)
+        code_theme: code_theme, theme: theme, pageless: pageless)
       STDOUT.write(File.read(temp_path).to_slice)
     ensure
       File.delete?(temp_path)
@@ -195,6 +198,7 @@ begin
     options["--code-theme"].try &.as(String),
     style,
     (file.as(String).ends_with?(".html") || file.as(String).ends_with?(".htm")),
+    options["--pageless"] == true,
   )
 rescue error
   abort_with(error.message.to_s)
