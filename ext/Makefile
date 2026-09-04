@@ -5,7 +5,7 @@
 CXX ?= g++
 AR ?= ar
 
-CXXFLAGS ?= -std=c++17 -O2 -fPIC
+CXXFLAGS ?= -std=c++17 -O2 -fPIC -MMD -MP
 INCLUDES = -I litehtml/include -I litehtml/include/litehtml -I litehtml/src -I litehtml/src/gumbo/include -I litehtml/src/gumbo/include/gumbo -I litehtml/src/gumbo
 
 LITEHTML_SRC := $(filter-out litehtml/src/main.cpp,$(wildcard litehtml/src/*.cpp))
@@ -48,3 +48,6 @@ build/litepdf_test.o: litepdf_test.cpp | build
 
 clean:
 	rm -rf build
+
+# Header dependency tracking
+-include $(SHIM_OBJ:.o=.d) $(LITEHTML_OBJS:.o=.d) $(GUMBO_OBJS:.o=.d)
