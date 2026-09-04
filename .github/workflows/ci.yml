@@ -15,13 +15,17 @@ jobs:
     container: crystallang/crystal:${{ matrix.crystal }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Install system libraries
         run: |
           apt-get update -qq
-          apt-get install -y -qq libreadline-dev libxml2-dev
+          apt-get install -y -qq libreadline-dev libxml2-dev libharu-dev libpng-dev zlib1g-dev g++ make
+      - name: Build the C shim (markpdf)
+        run: make -C ext
       - name: Install dependencies
         run: shards install
-      - name: Build both binaries
+      - name: Build all binaries
         run: shards build
       - name: Lint
         # ameba (dev dependency) requires a newer Crystal than the
