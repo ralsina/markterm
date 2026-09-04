@@ -1841,6 +1841,15 @@ class PdfContainer : public litehtml::document_container
         float width = std::max(px(pos.width), 0.01f);
         float height = std::max(px(pos.height), 0.01f);
         HPDF_Page_GSave(context->page);
+        // Elements laid out wider than the content area (wide tables
+        // with overflow: hidden) are scaled to fit: the CTM shrinks
+        // everything drawn inside this clip, text and borders included.
+        if (width > px(content_width) + 1.0f)
+        {
+            if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "CTM scale %.3f for wide clip\n", px(content_width) / width);
+            float scale = px(content_width) / width;
+            HPDF_Page_Concat(context->page, scale, 0, 0, scale, left * (1 - scale), top * (1 - scale));
+        }
         HPDF_Page_Rectangle(context->page, left, top - height, width, height);
         HPDF_Page_Clip(context->page);
         HPDF_Page_EndPath(context->page);
@@ -1913,6 +1922,20 @@ class PdfContainer : public litehtml::document_container
     std::vector<LinkRect> links;
     std::vector<AnchorTarget> targets;
 
+    // Headings for the PDF outline (bookmarks): level 1-6, title, position.
+    struct HeadingEntry
+    {
+        int level;
+        std::string title;
+        float y;
+    };
+    std::vector<HeadingEntry> headings;
+
+    // Tables wider than the content area: (left, right edge) in doc coords.
+    // Their cells are laid out beyond the content width and scaled back
+    // into it at draw time, so the draw clip must cover them.
+    std::vector<std::pair<float, float>> table_spans;
+
     static bool is_external_uri(const std::string& uri)
     {
         return uri.find("://") != std::string::npos || uri.rfind("mailto:", 0) == 0;
@@ -1929,6 +1952,20 @@ class PdfContainer : public litehtml::document_container
         float abs_y = offset_y + px(pos.y);
         if (item->src_el())
         {
+            const std::string tag_name = item->src_el()->get_tagName();
+            if (tag_name == "table" && px(pos.width) > px(content_width) + 1.0f)
+            {
+                table_spans.push_back({abs_x, abs_x + px(pos.width)});
+            }
+            if (tag_name.size() == 2 && tag_name[0] == 'h' && tag_name[1] >= '1' && tag_name[1] <= '6')
+            {
+                std::string title;
+                item->src_el()->get_text(title);
+                if (!title.empty())
+                {
+                    headings.push_back({tag_name[1] - '0', title, abs_y});
+                }
+            }
             const char* id = item->src_el()->get_attr("id");
             if (id && *id)
             {
@@ -2343,8 +2380,19 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
                             page_width - margin * 2, window_height);
         HPDF_Page_Clip(page);
         HPDF_Page_EndPath(page);
-        litehtml::position clip(0, (int)std::floor(window.first),
-                                (int)std::ceil(content_width),
+        // The clip x-range must also cover overflowing tables: their
+        // cells are laid out beyond the content width but get scaled
+        // into it by the CTM at draw time.
+        litehtml::pixel_t clip_width = (litehtml::pixel_t)std::ceil(content_width);
+        for (const auto& span : container.table_spans)
+        {
+            litehtml::pixel_t right = (litehtml::pixel_t)std::ceil(px(span.second));
+            if (right > clip_width)
+            {
+                clip_width = right;
+            }
+        }
+        litehtml::position clip(0, (int)std::floor(window.first), clip_width,
                                 (int)std::ceil(window.second - window.first));
         doc->draw(reinterpret_cast<litehtml::uint_ptr>(&context), 0, 0, &clip);
         while (context.clip_depth > 0)
@@ -2431,6 +2479,87 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         if (annot)
         {
             HPDF_LinkAnnot_SetBorderStyle(annot, 0, 0, 0);
+        }
+    }
+
+    // PDF outline (bookmarks) from headings, nested by heading level.
+    if (!container.headings.empty())
+    {
+        HPDF_Encoder utf8 = HPDF_GetEncoder(pdf, "UTF-8");
+        HPDF_Outline level_stack[7] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+        g_last_op = "creating outline";
+        for (const auto& heading : container.headings)
+        {
+            int page_idx = -1;
+            for (size_t i = 0; i < windows.size(); i++)
+            {
+                if (heading.y >= windows[i].first && heading.y < windows[i].second)
+                {
+                    page_idx = (int)i;
+                    break;
+                }
+            }
+            if (page_idx < 0)
+            {
+                continue;
+            }
+
+            std::string title;
+            bool previous_space = true;
+            for (char character : heading.title)
+            {
+                if (std::isspace((unsigned char)character))
+                {
+                    if (!previous_space)
+                    {
+                        title += ' ';
+                    }
+                    previous_space = true;
+                }
+                else
+                {
+                    title += character;
+                    previous_space = false;
+                }
+            }
+            while (!title.empty() && title.back() == ' ')
+            {
+                title.pop_back();
+            }
+            if (title.empty())
+            {
+                continue;
+            }
+
+            HPDF_Destination dst = HPDF_Page_CreateDestination(page_handles[page_idx]);
+            if (dst)
+            {
+                HPDF_Destination_SetFitH(dst, page_height - margin - (heading.y - windows[page_idx].first));
+            }
+
+            HPDF_Outline parent = nullptr;
+            for (int lvl = heading.level - 1; lvl >= 1; lvl--)
+            {
+                if (level_stack[lvl])
+                {
+                    parent = level_stack[lvl];
+                    break;
+                }
+            }
+            HPDF_Outline outline = HPDF_CreateOutline(pdf, parent, title.c_str(), utf8);
+            if (outline)
+            {
+                if (dst)
+                {
+                    HPDF_Outline_SetDestination(outline, dst);
+                }
+                HPDF_Outline_SetOpened(outline, heading.level <= 2);
+                level_stack[heading.level] = outline;
+                for (int lvl = heading.level + 1; lvl <= 6; lvl++)
+                {
+                    level_stack[lvl] = nullptr;
+                }
+            }
         }
     }
 
