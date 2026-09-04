@@ -129,9 +129,16 @@ module MathRender
     s.chars.map { |character| SUBSCRIPT[character]? || character }.join if s.size <= 4
   end
 
-  # Display art comes from the shim's litepdf_render_math, which links
-  # libtexprintf when the native build enabled WITH_TEXMATH and returns
-  # NULL otherwise (the Unicode styling pass is the fallback).
+  # The math glue lives in liblitepdf (ext/litepdf_math.c): render_math
+  # links libtexprintf when the native build enabled WITH_TEXMATH and
+  # returns NULL otherwise (the Unicode styling pass is the fallback).
+  @[Link("litepdf", ldflags: "-L #{__DIR__}/../ext/build -lm")]
+  lib Litepdf
+    fun render_math = litepdf_render_math(latex : LibC::Char*) : LibC::Char*
+    fun free_mem = litepdf_free(ptr : Void*) : Void
+  end
+
+  # Display art comes from the shim's litepdf_render_math.
   def self.display_art(latex : String) : String?
     ptr = Litepdf.render_math(latex)
     return unless ptr

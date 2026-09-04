@@ -13,6 +13,7 @@ AR ?= ar
 CC ?= gcc
 
 CXXFLAGS ?= -std=c++17 -O2 -fPIC -MMD -MP
+CFLAGS ?= -O2 -fPIC -MMD -MP
 INCLUDES = -I litehtml/include -I litehtml/include/litehtml -I litehtml/src -I litehtml/src/gumbo/include -I litehtml/src/gumbo/include/gumbo -I litehtml/src/gumbo
 
 WITH_TEXMATH ?= 1
@@ -32,20 +33,21 @@ TEXPRINTF_SRC := $(filter-out $(TEXPRINTF_DIR)/src/main.c $(TEXPRINTF_DIR)/src/u
                              $(TEXPRINTF_DIR)/src/testfonts.c,\
                   $(wildcard $(TEXPRINTF_DIR)/src/*.c))
 TEXPRINTF_OBJ := $(patsubst $(TEXPRINTF_DIR)/src/%.c,build/libtexprintf/%.o,$(TEXPRINTF_SRC))
+MATH_OBJ := build/litepdf_math.o
 
 LIB := build/liblitepdf.a
 
 ifneq ($(WITH_TEXMATH),0)
   # override: WITH_TEXMATH is often passed on the command line, where a
   # plain += would be silently ignored. The libtexprintf includes are
-  # scoped to the shim rule below: adding them globally would shadow
-  # gumbo's own error.h.
+  # scoped to the objects that need them: adding them globally would
+  # shadow gumbo's own error.h.
   override CXXFLAGS += -DWITH_TEXMATH=1
-  TEXPRINTF_INC := -I build/libtexprintf -I $(TEXPRINTF_DIR)/src
-  LIB_OBJS := $(SHIM_OBJ) $(LITEHTML_OBJS) $(GUMBO_OBJS) $(TEXPRINTF_OBJ)
+  MATH_CFLAGS = -DWITH_TEXMATH=1 -I build/libtexprintf -I $(TEXPRINTF_DIR)/src
+  LIB_OBJS := $(SHIM_OBJ) $(LITEHTML_OBJS) $(GUMBO_OBJS) $(TEXPRINTF_OBJ) $(MATH_OBJ)
 else
-  TEXPRINTF_INC :=
-  LIB_OBJS := $(SHIM_OBJ) $(LITEHTML_OBJS) $(GUMBO_OBJS)
+  MATH_CFLAGS :=
+  LIB_OBJS := $(SHIM_OBJ) $(LITEHTML_OBJS) $(GUMBO_OBJS) $(MATH_OBJ)
 endif
 
 TEXPRINTF_LIB := build/libtexprintf.a
@@ -63,7 +65,10 @@ $(TEXPRINTF_LIB): $(TEXPRINTF_OBJ)
 	$(AR) rcs $@ $^
 
 build/litepdf.o: litepdf.cpp | build
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -I build/include $(TEXPRINTF_INC) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -I build/include -c $< -o $@
+
+build/litepdf_math.o: litepdf_math.c | build
+	$(CC) $(CFLAGS) $(MATH_CFLAGS) -c $< -o $@
 
 build/litehtml/%.o: litehtml/src/%.cpp | build
 	@mkdir -p $(dir $@)
@@ -103,4 +108,4 @@ clean:
 	rm -rf build
 
 # Header dependency tracking
--include $(SHIM_OBJ:.o=.d) $(LITEHTML_OBJS:.o=.d) $(GUMBO_OBJS:.o=.d)
+-include $(SHIM_OBJ:.o=.d) $(LITEHTML_OBJS:.o=.d) $(GUMBO_OBJS:.o=.d) $(MATH_OBJ:.o=.d)

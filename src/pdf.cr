@@ -28,8 +28,6 @@ lib Litepdf
   fun render = litepdf_render(html : LibC::Char*, css : LibC::Char*, page_size : LibC::Int,
                               margin_pt : LibC::Float, out_path : LibC::Char*, base_dir : LibC::Char*,
                               errbuf : LibC::Char*, errbuf_len : LibC::Int, single_page : LibC::Int) : LibC::Int
-  fun render_math = litepdf_render_math(latex : LibC::Char*) : LibC::Char*
-  fun free_mem = litepdf_free(ptr : Void*) : Void
   fun register_font = litepdf_register_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,
                                             errbuf_len : LibC::Int) : LibC::Int
   fun set_emoji_font = litepdf_set_emoji_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,

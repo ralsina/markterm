@@ -10,14 +10,6 @@
 #include "litehtml.h"
 #include "litehtml/render_item.h"
 
-#ifdef WITH_TEXMATH
-// Optional GPL-3 LaTeX-to-Unicode-art renderer (ext/libtexprintf);
-// only linked when the shim is built with WITH_TEXMATH=1.
-extern "C" {
-#include "texprintf.h"
-}
-#endif
-
 #include <hpdf.h>
 #include <hpdf_error.h>
 
@@ -2358,52 +2350,6 @@ int litepdf_set_emoji_font(const char* ttf_path, char* errbuf, int errbuf_len)
     }
     g_emoji_font_path = ttf_path ? ttf_path : "";
     return 1;
-}
-
-// Render a LaTeX expression to UTF-8 text art (one line per row),
-// using the optional GPL-3 libtexprintf. Returns a malloc'd string the
-// caller must release with litepdf_free, or NULL when the build lacks
-// math support or the expression failed to convert.
-char* litepdf_render_math(const char* latex)
-{
-#ifdef WITH_TEXMATH
-    if (!latex || !*latex)
-    {
-        return nullptr;
-    }
-    static bool root_font_set = false;
-    if (!root_font_set)
-    {
-        // Plain text letters: the embedded mono fonts lack the plane-1
-        // math alphanumeric codepoints that the mathnormal style emits.
-        SetRootFont("text");
-        root_font_set = true;
-    }
-    // texstring mutates its input in place (it terminates commands with
-    // NULs while scanning): hand it a writable copy, never the buffer
-    // the caller owns.
-    std::string writable(latex);
-    char* art = texstring(writable.data());
-    if (!art || texerror_state() != 0)
-    {
-        if (art)
-        {
-            texfree(art);
-        }
-        return nullptr;
-    }
-    char* copy = strdup(art); // hand over a buffer the caller can plain-free
-    texfree(art);
-    return copy;
-#else
-    (void)latex;
-    return nullptr;
-#endif
-}
-
-void litepdf_free(void* ptr)
-{
-    free(ptr);
 }
 
 // Render HTML to a PDF file. css is the author stylesheet (the caller
