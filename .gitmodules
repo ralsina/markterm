@@ -2,3 +2,6 @@
 	path = ext/litehtml
 	url = https://github.com/ralsina/litehtml.git
 	branch = prune-clipped-subtrees
+[submodule "ext/libtexprintf"]
+	path = ext/libtexprintf
+	url = https://github.com/bartp5/libtexprintf

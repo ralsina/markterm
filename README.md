@@ -49,6 +49,8 @@ Done recently (markpdf):
 * ✅ Wide tables scale to fit and split across pages at row boundaries
 * ✅ Collapse-style table borders and keep-with-next pagination
 * ✅ Superscript and subscript via inline HTML
+* ✅ Math: styled Unicode pass (always) + optional libtexprintf text
+  art for display math (GPL build flag)
 
 Done (markterm):
 
@@ -187,6 +189,26 @@ still sets its width, `--margin` the outer whitespace). Headers,
 footers and page numbers do not apply in this mode. Documents longer
 than the PDF page-dimension limit (14,400 pt ≈ 20 printed pages) are
 scaled down uniformly — zoom in your viewer; text stays vector-crisp.
+
+#### Math
+
+Markdown math (`$E = mc^2$` inline, `$$…$$` display) is rendered as
+styled Unicode: italic serif with real sub/superscripts and LaTeX
+commands mapped to symbols (∫ ∑ ∞ π ± ≤ …). For display math you can
+get true text-art rendering (integral signs with limits, fraction
+bars) by enabling the optional GPL-3 [libtexprintf](https://github.com/bartp5/libtexprintf)
+library — it lives in `ext/libtexprintf` as a git submodule:
+
+```bash
+git submodule update --init ext/libtexprintf
+make -C ext WITH_TEXMATH=1
+WITH_TEXMATH=1 shards build
+```
+
+Note the license trade-off: libtexprintf is GPL-3, and statically
+linking it makes the resulting markpdf binary effectively GPL-3. The
+default build does not use it, keeps your existing license, and renders
+math with the Unicode styling pass.
 
 Text uses embedded TrueType fonts with full Unicode support: the shim
 matches the CSS `font-family` names against the fonts you pass with
