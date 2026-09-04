@@ -2379,7 +2379,11 @@ char* litepdf_render_math(const char* latex)
         SetRootFont("text");
         root_font_set = true;
     }
-    char* art = texstring(latex);
+    // texstring mutates its input in place (it terminates commands with
+    // NULs while scanning): hand it a writable copy, never the buffer
+    // the caller owns.
+    std::string writable(latex);
+    char* art = texstring(writable.data());
     if (!art || texerror_state() != 0)
     {
         if (art)
