@@ -239,14 +239,32 @@ module Markd
         return data_uri_image(source, temp_dir, converted)
       end
       if source.starts_with?("http://") || source.starts_with?("https://")
+        return svg_image(source, source, temp_dir, converted) if source.downcase.includes?(".svg")
         bytes = fetch_image(source)
         return unless bytes
         return passthrough_or_convert(bytes, temp_dir, converted)
       end
       path = File.expand_path(source, base_dir)
       return unless File.file?(path)
-      return if {".png", ".jpg", ".jpeg"}.includes?(File.extname(path).downcase)
+      return path if {".png", ".jpg", ".jpeg"}.includes?(File.extname(path).downcase)
+      return svg_image(path, path, temp_dir, converted) if path.downcase.ends_with?(".svg")
       convert_to_png(path, temp_dir, converted)
+    end
+
+    # Rasterize an SVG with an external tool (rsvg-convert, ImageMagick),
+    # mirroring how markterm optionally uses timg for terminal images.
+    private def self.svg_image(source : String, local_path : String, temp_dir : String,
+                               converted : Array(String)) : String?
+      tool = ["rsvg-convert", "magick", "convert"].find { |name| Process.find_executable(name) }
+      return unless tool
+      png_path = File.join(temp_dir, "img#{converted.size}.png")
+      ok = Process.run(tool, [local_path, "-o", png_path], output: Process::Redirect::Close,
+        error: Process::Redirect::Close).success?
+      return unless ok && File.file?(png_path) && File.size(png_path) > 0
+      converted << png_path
+      png_path
+    rescue
+      nil
     end
 
     private def self.data_uri_image(source : String, temp_dir : String, converted : Array(String)) : String?
