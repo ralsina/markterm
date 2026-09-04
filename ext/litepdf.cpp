@@ -1045,6 +1045,8 @@ class PdfContainer : public litehtml::document_container
                 fm->descent = font.descent;
                 fm->x_height = font.x_height;
                 fm->ch_width = font.ch_width;
+                fm->super_shift = size * 0.33f;
+                fm->sub_shift = size * 0.33f;
                 fm->draw_spaces = true;
             }
             return handle;
@@ -1084,6 +1086,10 @@ class PdfContainer : public litehtml::document_container
             fm->descent = font.descent;
             fm->x_height = font.x_height;
             fm->ch_width = font.ch_width;
+            // litehtml never fills these; without them super/sub stay on
+            // the baseline. Browsers shift by roughly a third of an em.
+            fm->super_shift = size * 0.33f;
+            fm->sub_shift = size * 0.33f;
             fm->draw_spaces = true;
         }
         return handle;
@@ -1698,6 +1704,10 @@ class PdfContainer : public litehtml::document_container
             return;
         }
         const litehtml::border* sides[4] = {&borders.left, &borders.top, &borders.right, &borders.bottom};
+        if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "borders at %.0f,%.0f w=%.0f h=%.0f: L=%d/%.1f T=%d/%.1f R=%d/%.1f B=%d/%.1f\n",
+            px(draw_pos.x), px(draw_pos.y), px(draw_pos.width), px(draw_pos.height),
+            (int)borders.left.style, px(borders.left.width), (int)borders.top.style, px(borders.top.width),
+            (int)borders.right.style, px(borders.right.width), (int)borders.bottom.style, px(borders.bottom.width));
         float left = px(draw_pos.x);
         float top = px(draw_pos.y);
         float right = left + px(draw_pos.width);
