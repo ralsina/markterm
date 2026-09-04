@@ -13,7 +13,23 @@ if [ -f libhpdf.a ]; then
   exit 0
 fi
 
-git clone --depth 1 --branch v2.4.6 https://github.com/libharu/libharu.git
+# Clone once; keep an existing checkout so local patches (e.g. the CID
+# font fixes) survive.
+[ -d libharu ] || git clone --depth 1 --branch v2.4.6 https://github.com/libharu/libharu.git
+
+# Font embedding fixes (see libharu-cid-fixes.patch): the Identity-H
+# encoder wrote a nonstandard CIDSystemInfo ordering ("Adobe-Identity-H")
+# that readers reject, and the ToUnicode CMap generator emitted an
+# invalid empty range block when the range count was a multiple of 100.
+# The patch is applied on top of a fresh clone; an already-patched
+# checkout skips it.
+if [ -d libharu/.git ]; then
+  if git -C libharu apply --check ../libharu-cid-fixes.patch 2>/dev/null; then
+    git -C libharu apply ../libharu-cid-fixes.patch
+  else
+    echo "libharu-cid-fixes.patch already applied"
+  fi
+fi
 cmake -S libharu -B libharu/build \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DBUILD_SHARED_LIBS=OFF \

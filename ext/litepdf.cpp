@@ -899,7 +899,10 @@ class PdfContainer : public litehtml::document_container
         }
         else
         {
-            const char* name = HPDF_LoadTTFontFromFile(pdf, file.path.c_str(), 0);
+            // Embed the font: with embedding off the Type0/Identity-H font
+            // has no FontFile2, strict viewers refuse it, and text
+            // extraction degrades to CID 0 mappings.
+            const char* name = HPDF_LoadTTFontFromFile(pdf, file.path.c_str(), HPDF_TRUE);
             if (!name)
             {
                 HPDF_ResetError(pdf);
