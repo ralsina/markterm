@@ -2196,8 +2196,11 @@ class PdfContainer : public litehtml::document_container
     {
         // li is atomic too: the marker sits outside the item's content box,
         // so a break between marker and text would orphan the bullet.
-        static const std::set<std::string> atomic_tags = {"h1", "h2", "h3", "h4", "h5", "h6", "table",  "tr",
-                                                          "pre", "img", "td", "th", "figure", "svg", "hr",
+        // Tables are NOT atomic: their rows are break candidates, so a
+        // table splits across pages at a row boundary. Rows and cells
+        // stay atomic — breaks land between rows, never inside one.
+        static const std::set<std::string> atomic_tags = {"h1", "h2", "h3", "h4", "h5", "h6",
+                                                          "pre", "img", "figure", "svg", "hr",
                                                           "li"};
         return atomic_tags.count(tag) > 0;
     }
@@ -2219,6 +2222,7 @@ class PdfContainer : public litehtml::document_container
         litehtml::position pos = item->pos();
         float abs_x = offset_x + px(pos.x);
         float abs_y = offset_y + px(pos.y);
+        std::string tag = item->src_el() ? item->src_el()->get_tagName() : "";
         if (getenv("LITEPDF_WALK")) std::fprintf(stderr, "walk tag=%s y=%.1f h=%.1f atomic=%d\n",
             item->src_el() ? item->src_el()->get_tagName() : "?", abs_y, px(pos.height), (int)inside_atomic);
         // Candidates use the margin/border-box top: breaking there keeps
@@ -2227,10 +2231,24 @@ class PdfContainer : public litehtml::document_container
         {
             candidates.insert((int)std::floor(offset_y + px(item->top())));
         }
+        // Tables report one box per row: their tops become candidates so
+        // a long table splits across pages at a row boundary.
+        if (tag == "table")
+        {
+            std::vector<litehtml::position> row_boxes;
+            item->get_row_boxes(row_boxes);
+            for (const auto& box : row_boxes)
+            {
+                if (px(box.height) > 0)
+                {
+                    candidates.insert((int)std::floor(abs_y + px(box.y)));
+                }
+            }
+        }
         if (item->src_el())
         {
-            const char* tag = item->src_el()->get_tagName();
-            if (tag[0] == 'h' && tag[1] >= '1' && tag[1] <= '6' && tag[2] == '\0')
+            const char* tag_chars = item->src_el()->get_tagName();
+            if (tag_chars[0] == 'h' && tag_chars[1] >= '1' && tag_chars[1] <= '6' && tag_chars[2] == '\0')
             {
                 heading_candidates.insert((int)std::floor(offset_y + px(item->top())));
             }
