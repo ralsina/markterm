@@ -1,0 +1,104 @@
+From 08a0553c503560605ddea2bb1bc94fc99d0c5d9b Mon Sep 17 00:00:00 2001
+From: Roberto Alsina <roberto.alsina@gmail.com>
+Date: Fri, 4 Sep 2026 09:23:32 -0300
+Subject: [PATCH] Fix CIDSystemInfo ordering and ToUnicode CMap flushing
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The Identity-H UTF encoder carries "Identity-H" as its ordering
+string, which leaked into the embedded CIDFont's CIDSystemInfo —
+readers expect Adobe-Identity there and poppler refuses the font
+entirely ('Unknown CID font collection: Adobe-Identity-H').
+
+The ToUnicode CMap generator flushed range blocks every 100 entries
+without checking whether more ranges followed; with a range count
+that is an exact multiple of 100 it emitted an empty '0 begincidrange'
+block and dropped the closing endcidrange (poppler: 'Invalid
+begincidrange operator').
+---
+ src/hpdf_font_cid.c | 37 +++++++++++++++++++++++++++----------
+ 1 file changed, 27 insertions(+), 10 deletions(-)
+
+diff --git a/src/hpdf_font_cid.c b/src/hpdf_font_cid.c
+index 0b76a36..2250e53 100644
+--- a/src/hpdf_font_cid.c
++++ b/src/hpdf_font_cid.c
+@@ -329,8 +329,13 @@ CIDFontType0_New (HPDF_Font parent, HPDF_Xref xref)
+ 
+     ret += HPDF_Dict_Add (cid_system_info, "Registry",
+             HPDF_String_New (parent->mmgr, encoder_attr->registry, NULL));
++    /* The Identity-H UTF encoder carries "Identity-H" as its ordering,
++     * but the embedded CIDFont's CIDSystemInfo must say "Identity"
++     * (PDF 32000-1:2008, 9.7.5.2); readers reject Adobe-Identity-H. */
++    const char* cid_ordering = (HPDF_StrCmp (encoder_attr->ordering,
++            "Identity-H") == 0) ? "Identity" : encoder_attr->ordering;
+     ret += HPDF_Dict_Add (cid_system_info, "Ordering",
+-            HPDF_String_New (parent->mmgr, encoder_attr->ordering, NULL));
++            HPDF_String_New (parent->mmgr, cid_ordering, NULL));
+     ret += HPDF_Dict_AddNumber (cid_system_info, "Supplement",
+             encoder_attr->suppliment);
+ 
+@@ -491,8 +496,13 @@ CIDFontType2_New (HPDF_Font parent, HPDF_Xref xref)
+ 
+     ret += HPDF_Dict_Add (cid_system_info, "Registry",
+             HPDF_String_New (parent->mmgr, encoder_attr->registry, NULL));
++    /* The Identity-H UTF encoder carries "Identity-H" as its ordering,
++     * but the embedded CIDFont's CIDSystemInfo must say "Identity"
++     * (PDF 32000-1:2008, 9.7.5.2); readers reject Adobe-Identity-H. */
++    const char* cid_ordering = (HPDF_StrCmp (encoder_attr->ordering,
++            "Identity-H") == 0) ? "Identity" : encoder_attr->ordering;
+     ret += HPDF_Dict_Add (cid_system_info, "Ordering",
+-            HPDF_String_New (parent->mmgr, encoder_attr->ordering, NULL));
++            HPDF_String_New (parent->mmgr, cid_ordering, NULL));
+     ret += HPDF_Dict_AddNumber (cid_system_info, "Supplement",
+             encoder_attr->suppliment);
+ 
+@@ -1035,12 +1045,14 @@ CreateCMap  (HPDF_Encoder   encoder,
+     /* add cid-range */
+     phase = attr->cmap_range->count / 100;
+     odd = attr->cmap_range->count % 100;
+-    if (phase > 0)
+-        pbuf = HPDF_IToA (buf, 100, eptr);
+-    else
+-        pbuf = HPDF_IToA (buf, odd, eptr);
+-    HPDF_StrCpy (pbuf, " begincidrange\r\n", eptr);
+-    ret += HPDF_Stream_WriteStr (cmap->stream, buf);
++    if (attr->cmap_range->count > 0) {
++        if (phase > 0)
++            pbuf = HPDF_IToA (buf, 100, eptr);
++        else
++            pbuf = HPDF_IToA (buf, odd, eptr);
++        HPDF_StrCpy (pbuf, " begincidrange\r\n", eptr);
++        ret += HPDF_Stream_WriteStr (cmap->stream, buf);
++    }
+ 
+     for (i = 0; i < attr->cmap_range->count; i++) {
+         HPDF_CidRange_Rec *range = HPDF_List_ItemAt (attr->cmap_range, i);
+@@ -1052,7 +1064,10 @@ CreateCMap  (HPDF_Encoder   encoder,
+ 
+         ret += HPDF_Stream_WriteStr (cmap->stream, buf);
+ 
+-        if ((i + 1) %100 == 0) {
++        if ((i + 1) %100 == 0 && (i + 1) < attr->cmap_range->count) {
++            /* flush only when more ranges follow; a flush after the
++             * last item used to emit an empty "0 begincidrange" block
++             * when the count was a multiple of 100 */
+             phase--;
+             pbuf = (char *)HPDF_StrCpy (buf, "endcidrange\r\n\r\n", eptr);
+ 
+@@ -1070,8 +1085,10 @@ CreateCMap  (HPDF_Encoder   encoder,
+             return NULL;
+     }
+ 
+-    if (odd > 0)
++    if (attr->cmap_range->count > 0)
+         pbuf = (char *)HPDF_StrCpy (buf, "endcidrange\r\n", eptr);
++    else
++        pbuf = buf;
+ 
+     pbuf = (char *)HPDF_StrCpy (pbuf, "endcmap\r\n", eptr);
+     pbuf = (char *)HPDF_StrCpy (pbuf, "CMapName currentdict /CMap "
+-- 
+2.55.0
+
