@@ -2853,52 +2853,58 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         g_last_op = "creating outline";
         for (const auto& heading : container.headings)
         {
-            int page_idx = -1;
-            for (size_t i = 0; i < windows.size(); i++)
-            {
-                if (heading.y >= windows[i].first && heading.y < windows[i].second)
-                {
-                    page_idx = (int)i;
-                    break;
-                }
-            }
-            if (page_idx < 0)
-            {
-                continue;
-            }
+    int page_idx = -1;
+    // Headings are collected in document space; windows live in flow
+    // space (wide tables compressed). Map before matching, exactly like
+    // the link and anchor paths, and keep the page-relative offset for
+    // the destination.
+    float heading_flow = container.flow_y(heading.y);
+    for (size_t i = 0; i < windows.size(); i++)
+    {
+        if (heading_flow >= windows[i].first && heading_flow < windows[i].second)
+        {
+            page_idx = (int)i;
+            heading_flow -= windows[i].first;
+            break;
+        }
+    }
+    if (page_idx < 0)
+    {
+        continue;
+    }
 
-            std::string title;
-            bool previous_space = true;
-            for (char character : heading.title)
+    std::string title;
+    bool previous_space = true;
+    for (char character : heading.title)
+    {
+        if (std::isspace((unsigned char)character))
+        {
+            if (!previous_space)
             {
-                if (std::isspace((unsigned char)character))
-                {
-                    if (!previous_space)
-                    {
-                        title += ' ';
-                    }
-                    previous_space = true;
-                }
-                else
-                {
-                    title += character;
-                    previous_space = false;
-                }
+                title += ' ';
             }
-            while (!title.empty() && title.back() == ' ')
-            {
-                title.pop_back();
-            }
-            if (title.empty())
-            {
-                continue;
-            }
+            previous_space = true;
+        }
+        else
+        {
+            title += character;
+            previous_space = false;
+        }
+    }
+    while (!title.empty() && title.back() == ' ')
+    {
+        title.pop_back();
+    }
+    if (title.empty())
+    {
+        continue;
+    }
 
-            HPDF_Destination dst = HPDF_Page_CreateDestination(page_handles[page_idx]);
-            if (dst)
-            {
-                HPDF_Destination_SetFitH(dst, (page_height - margin - (heading.y - windows[page_idx].first)) * page_scale);
-            }
+    HPDF_Destination dst = HPDF_Page_CreateDestination(page_handles[page_idx]);
+    if (dst)
+    {
+        HPDF_Destination_SetFitH(dst, (page_height - margin - heading_flow) * page_scale);
+    }
 
             HPDF_Outline parent = nullptr;
             for (int lvl = heading.level - 1; lvl >= 1; lvl--)
