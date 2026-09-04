@@ -220,10 +220,10 @@ module Markd
       rewritten = {} of String => String
       sources.each do |source|
         if replacement = image_source(source, base_dir, temp_dir, converted)
-          STDERR.puts "img #{source[0, 40]} -> #{replacement[0, 40]}" if ENV["LITEPDF_DEBUG"]?
+          STDERR.puts "img #{source[0, 40]} -> #{replacement} (converted: #{converted.size})" if ENV["LITEPDF_DEBUG"]?
           rewritten[source] = replacement
         else
-          STDERR.puts "img #{source[0, 40]} -> FAILED" if ENV["LITEPDF_DEBUG"]?
+          STDERR.puts "img #{source[0, 40]} -> FAILED (converted: #{converted.size})" if ENV["LITEPDF_DEBUG"]?
         end
       end
       return html if rewritten.empty?
@@ -239,7 +239,7 @@ module Markd
         return data_uri_image(source, temp_dir, converted)
       end
       if source.starts_with?("http://") || source.starts_with?("https://")
-        return svg_image(source, source, temp_dir, converted) if source.downcase.includes?(".svg")
+        return rasterize_image(source, source, temp_dir, converted) if source.downcase.includes?(".svg")
         bytes = fetch_image(source)
         return unless bytes
         return passthrough_or_convert(bytes, temp_dir, converted)
@@ -247,22 +247,32 @@ module Markd
       path = File.expand_path(source, base_dir)
       return unless File.file?(path)
       return path if {".png", ".jpg", ".jpeg"}.includes?(File.extname(path).downcase)
-      return svg_image(path, path, temp_dir, converted) if path.downcase.ends_with?(".svg")
+      return rasterize_image(path, path, temp_dir, converted) if path.downcase.ends_with?(".svg")
       convert_to_png(path, temp_dir, converted)
     end
 
-    # Rasterize an SVG with an external tool (rsvg-convert, ImageMagick),
-    # mirroring how markterm optionally uses timg for terminal images.
-    private def self.svg_image(source : String, local_path : String, temp_dir : String,
-                               converted : Array(String)) : String?
-      tool = ["rsvg-convert", "magick", "convert"].find { |name| Process.find_executable(name) }
-      return unless tool
+    # Rasterize an image with an external tool (rsvg-convert for SVGs,
+    # ImageMagick for WebP and anything else the in-process decoder
+    # rejects), mirroring how markterm optionally uses timg for terminal
+    # images. Tools disagree on how to name the output file (rsvg-convert
+    # takes -o, ImageMagick expects it as the last argument), so each
+    # candidate gets its own CLI and the first that succeeds wins.
+    private def self.rasterize_image(source : String, local_path : String, temp_dir : String,
+                                     converted : Array(String)) : String?
       png_path = File.join(temp_dir, "img#{converted.size}.png")
-      ok = Process.run(tool, [local_path, "-o", png_path], output: Process::Redirect::Close,
-        error: Process::Redirect::Close).success?
-      return unless ok && File.file?(png_path) && File.size(png_path) > 0
-      converted << png_path
-      png_path
+      svg = local_path.downcase.ends_with?(".svg")
+      candidates = svg ? ["rsvg-convert", "magick", "convert"] : ["magick", "convert"]
+      candidates.each do |name|
+        tool = Process.find_executable(name) || next
+        args = name == "rsvg-convert" ? [local_path, "-o", png_path] : [local_path, png_path]
+        ok = Process.run(tool, args, output: Process::Redirect::Close,
+          error: Process::Redirect::Close).success?
+        if ok && File.file?(png_path) && File.size(png_path) > 0
+          converted << png_path
+          return png_path
+        end
+      end
+      nil
     rescue
       nil
     end
@@ -345,7 +355,9 @@ module Markd
       converted << png_path
       png_path
     rescue
-      nil
+      # CrImage could not decode it (WebP, exotic formats): try the
+      # external rasterizer before giving up on the image.
+      rasterize_image(source_path, source_path, temp_dir, converted)
     end
 
     private def self.convert_to_png_bytes(bytes : Bytes, temp_dir : String,
