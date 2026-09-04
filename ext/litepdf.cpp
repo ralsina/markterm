@@ -1817,27 +1817,29 @@ class PdfContainer : public litehtml::document_container
             HPDF_Page_SetLineWidth(context->page, px(side->width));
             HPDF_Page_SetRGBStroke(context->page, side->color.red / 255.0f, side->color.green / 255.0f,
                                    side->color.blue / 255.0f);
-            float inset = px(side->width) / 2;
+            // Borders draw centered on the box edge, collapse-style:
+            // adjacent cells share the edge, so their borders overlap
+            // into one connected line instead of parallel hairlines
+            // with the background showing between them. The half that
+            // falls outside the box stays visible because set_clip
+            // inflates its rectangle for exactly this reason.
             switch (i)
             {
             case 0: // left
-                HPDF_Page_MoveTo(context->page, context->pdf_x(left) + inset, context->pdf_y(top));
-                HPDF_Page_LineTo(context->page, context->pdf_x(left) + inset, context->pdf_y(bottom));
+                HPDF_Page_MoveTo(context->page, context->pdf_x(left), context->pdf_y(top));
+                HPDF_Page_LineTo(context->page, context->pdf_x(left), context->pdf_y(bottom));
                 break;
             case 1: // top
-                // PDF y grows upward: the inset must SUBTRACT to fall
-                // inside the box; a border drawn outside the top edge is
-                // clipped away by overflow:hidden on tables.
-                HPDF_Page_MoveTo(context->page, context->pdf_x(left), context->pdf_y(top) - inset);
-                HPDF_Page_LineTo(context->page, context->pdf_x(right), context->pdf_y(top) - inset);
+                HPDF_Page_MoveTo(context->page, context->pdf_x(left), context->pdf_y(top));
+                HPDF_Page_LineTo(context->page, context->pdf_x(right), context->pdf_y(top));
                 break;
             case 2: // right
-                HPDF_Page_MoveTo(context->page, context->pdf_x(right) - inset, context->pdf_y(top));
-                HPDF_Page_LineTo(context->page, context->pdf_x(right) - inset, context->pdf_y(bottom));
+                HPDF_Page_MoveTo(context->page, context->pdf_x(right), context->pdf_y(top));
+                HPDF_Page_LineTo(context->page, context->pdf_x(right), context->pdf_y(bottom));
                 break;
             case 3: // bottom
-                HPDF_Page_MoveTo(context->page, context->pdf_x(left), context->pdf_y(bottom) + inset);
-                HPDF_Page_LineTo(context->page, context->pdf_x(right), context->pdf_y(bottom) + inset);
+                HPDF_Page_MoveTo(context->page, context->pdf_x(left), context->pdf_y(bottom));
+                HPDF_Page_LineTo(context->page, context->pdf_x(right), context->pdf_y(bottom));
                 break;
             }
             HPDF_Page_Stroke(context->page);
@@ -1961,7 +1963,7 @@ class PdfContainer : public litehtml::document_container
             if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "CTM scale %.3f for wide clip\n", scale);
             HPDF_Page_Concat(context->page, scale, 0, 0, scale, left * (1 - scale), top * (1 - scale));
         }
-        HPDF_Page_Rectangle(context->page, left, top - height, width, height);
+        HPDF_Page_Rectangle(context->page, left - 1.0f, top - height - 1.0f, width + 2.0f, height + 2.0f);
         HPDF_Page_Clip(context->page);
         HPDF_Page_EndPath(context->page);
         context->clip_depth++;
@@ -2208,7 +2210,7 @@ class PdfContainer : public litehtml::document_container
     // (litehtml accumulates x/y offsets while drawing), so the walk must
     // accumulate them too to get document-space coordinates.
     void collect_breaks(const std::shared_ptr<litehtml::render_item>& item, float offset_x, float offset_y,
-                        bool inside_atomic, std::set<int>& candidates)
+                        bool inside_atomic, std::set<int>& candidates, std::set<int>& heading_candidates)
     {
         if (!item)
         {
@@ -2225,6 +2227,14 @@ class PdfContainer : public litehtml::document_container
         {
             candidates.insert((int)std::floor(offset_y + px(item->top())));
         }
+        if (item->src_el())
+        {
+            const char* tag = item->src_el()->get_tagName();
+            if (tag[0] == 'h' && tag[1] >= '1' && tag[1] <= '6' && tag[2] == '\0')
+            {
+                heading_candidates.insert((int)std::floor(offset_y + px(item->top())));
+            }
+        }
         bool atomic = inside_atomic;
         if (item->src_el())
         {
@@ -2240,7 +2250,7 @@ class PdfContainer : public litehtml::document_container
         });
         for (const auto& child : item->children())
         {
-            collect_breaks(child, abs_x, abs_y, atomic, candidates);
+            collect_breaks(child, abs_x, abs_y, atomic, candidates, heading_candidates);
         }
     }
 };
@@ -2412,7 +2422,8 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
     // Page windows: greedy over safe break candidates.
     float content_height = page_height - margin * 2;
     std::set<int> raw_candidates;
-    container.collect_breaks(doc->root_render(), 0, 0, false, raw_candidates);
+    std::set<int> raw_headings;
+    container.collect_breaks(doc->root_render(), 0, 0, false, raw_candidates, raw_headings);
     container.collect_links(doc->root_render(), 0, 0);
     container.finalize_wide_tables();
     if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "links collected: %zu\n", container.links.size());
@@ -2429,9 +2440,26 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
     {
         candidates.insert(candidates.begin(), 0);
     }
+    // Keep-with-next: breaking at the element right after a heading
+    // strands the heading at the bottom of a page (a widow title), so
+    // such candidates are avoided unless nothing better fits. The flag
+    // chains across consecutive headings (h2 followed by h3 followed by
+    // text: no break between any of them).
+    std::set<float> heading_flows;
+    for (int heading : raw_headings)
+    {
+        heading_flows.insert(container.flow_y((float)heading));
+    }
+    std::vector<bool> avoid(candidates.size(), false);
+    bool prev_was_heading = false;
+    for (size_t i = 0; i < candidates.size(); i++)
+    {
+        avoid[i] = prev_was_heading;
+        prev_was_heading = heading_flows.count(candidates[i]) > 0;
+    }
     float total_flow_height = container.flow_y(total_height);
 
-    if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "total_height=%.1f flow_height=%.1f content_height=%.1f candidates=%zu wide_tables=%zu\n", total_height, total_flow_height, content_height, candidates.size(), container.wide_tables.size());
+    if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "total_height=%.1f flow_height=%.1f content_height=%.1f candidates=%zu headings=%zu wide_tables=%zu\n", total_height, total_flow_height, content_height, candidates.size(), raw_headings.size(), container.wide_tables.size());
     std::vector<std::pair<float, float>> windows;
     {
         float start = 0;
@@ -2443,20 +2471,47 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
                 windows.emplace_back(start, total_flow_height);
                 break;
             }
-            // Largest candidate <= limit; fall back to a forced mid-cut if
-            // nothing fits (a single element taller than a page).
+            // Largest non-avoid candidate <= limit; if every candidate
+            // that fits is a keep-with-next boundary, take the largest
+            // such break anyway (a stranded heading beats splitting an
+            // element mid-line); force a cut only when nothing fits.
             float next = -1;
-            for (auto it = candidates.rbegin(); it != candidates.rend(); ++it)
+            bool next_is_avoid = true;
+            for (ptrdiff_t i = (ptrdiff_t)candidates.size() - 1; i >= 0; i--)
             {
-                if (*it <= limit && *it > start)
+                float point = candidates[(size_t)i];
+                if (point > limit || point <= start)
                 {
-                    next = *it;
+                    continue;
+                }
+                if (!avoid[(size_t)i])
+                {
+                    next = point;
+                    next_is_avoid = false;
                     break;
                 }
+                if (next < 0)
+                {
+                    next = point;
+                }
             }
-            if (next <= start)
+            if (next < 0)
             {
                 next = limit;
+            }
+            else if (next_is_avoid)
+            {
+                // Walk back to the heading itself: break before it so it
+                // starts the next page together with its content.
+                for (ptrdiff_t i = (ptrdiff_t)candidates.size() - 1; i >= 0; i--)
+                {
+                    float point = candidates[(size_t)i];
+                    if (point < next && point > start)
+                    {
+                        next = point;
+                        break;
+                    }
+                }
             }
             windows.emplace_back(start, next);
             start = next;
