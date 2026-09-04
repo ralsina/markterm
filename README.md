@@ -77,14 +77,16 @@ There is a similar `markmark` binary that will render markdown to markdown.
 The `markpdf` binary renders markdown to PDF. It converts the markdown to
 HTML with markd, lays it out with [litehtml](https://github.com/litehtml/litehtml),
 and writes the PDF through [libharu](https://github.com/libharu/libharu),
-via the C++ shim in `ext/`. Styling is CSS: `markpdf` ships a print-oriented
-default stylesheet, and you can add your own rules with `--css`.
+via the C++ shim in `ext/`. Styling is CSS: `markpdf` ships a roster of
+built-in stylesheets (pick one with `--style`), and you can add your own
+rules on top with `--css`.
 
 ```docopt
 Markpdf - A tool to render markdown to PDF
 
   Usage:
     markpdf [<file>] [options]
+    markpdf --list-styles
     markpdf -h | --help
     markpdf --version
 
@@ -96,7 +98,14 @@ Options:
   -o <output>                Write the PDF to a file (defaults to standard output)
   --page-size <size>         Page size: a4 or letter [default: a4]
   --margin <margin>          Page margin in millimeters [default: 20]
-  --css <css>                Additional CSS file with extra styles
+  --style <style>            Built-in stylesheet setting layout and typography
+                             (themes set colors instead): see --list-styles
+                             [default: default]
+  --list-styles              List the built-in stylesheets and exit
+  --print-style              Print the built-in stylesheet named by --style to
+                             standard output and exit
+  --css <css>                Extra CSS file layered on top of the style; last
+                             declaration wins (may be repeated)
   --font <font>              TTF font file to embed (can be repeated). Fonts are
                              matched by their internal family name; system fonts
                              are used automatically when available.
@@ -109,6 +118,36 @@ Options:
 If you use "-" as the file argument, markpdf will read from stdin.
 Images are resolved relative to the input file's directory.
 ```
+
+#### Styles
+
+Built-in stylesheets set layout and typography; `-t` themes set colors.
+The rendered stylesheet is layered **style → theme → `--css`**, each
+later layer winning on equal specificity. `--css` may be repeated.
+
+| style   | look                                              |
+|---------|---------------------------------------------------|
+| default | clean sans-serif print style                      |
+| book    | serif, justified, indented — long prose / e-readers |
+| dark    | dark page, light text — screen reading            |
+| sepia   | warm paper tones, serif — e-reader default look   |
+
+See them, print one out, tweak it, and feed it back:
+
+```console
+$ markpdf --list-styles
+default  clean sans-serif print style (current)
+book     serif, justified, indented — for long prose / e-readers
+dark     dark page, light text — for screen reading
+sepia    warm paper tones, serif — e-reader default look
+
+$ markpdf --print-style --style book > my-book.css
+$ $EDITOR my-book.css
+$ markpdf book.md --style book --css my-book.css -o book.pdf
+```
+
+The dark style automatically uses a dark syntax-highlighting theme for
+code blocks unless you pass `--code-theme` or `-t` explicitly.
 
 Text uses embedded TrueType fonts with full Unicode support: the shim
 matches the CSS `font-family` names against the fonts you pass with

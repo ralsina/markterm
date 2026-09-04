@@ -113,7 +113,89 @@ describe Markd::Pdf do
     end
   end
 
+  describe ".style_names" do
+    it "includes the four built-in styles" do
+      Markd::Pdf.style_names.should eq(["default", "book", "dark", "sepia"])
+    end
+  end
+
+  describe ".style_css" do
+    it "returns the stylesheet of a known style" do
+      Markd::Pdf.style_css("book").should contain("DejaVu Serif")
+    end
+
+    it "raises on an unknown style" do
+      expect_raises(Markd::Pdf::Error, "unknown style") do
+        Markd::Pdf.style_css("nope")
+      end
+    end
+  end
+
+  describe ".style=" do
+    it "switches the base stylesheet" do
+      Markd::Pdf.style = "book"
+      Markd::Pdf.style.should eq("book")
+      Markd::Pdf.css.should contain("DejaVu Serif")
+    ensure
+      Markd::Pdf.style = "default"
+    end
+
+    it "raises on an unknown style" do
+      expect_raises(Markd::Pdf::Error, "unknown style") do
+        Markd::Pdf.style = "nope"
+      end
+    end
+  end
+
+  describe ".reset_css" do
+    it "resets to the selected style" do
+      Markd::Pdf.style = "dark"
+      Markd::Pdf.css = "p { color: red; }"
+      Markd::Pdf.reset_css
+      Markd::Pdf.css.should eq(Markd::Pdf.style_css("dark"))
+    ensure
+      Markd::Pdf.style = "default"
+    end
+  end
+
+  describe ".css=" do
+    it "layers the style first and user css last" do
+      Markd::Pdf.style = "book"
+      Markd::Pdf.css = "p { color: red; }"
+      base = Markd::Pdf.css.index(Markd::Pdf.style_css("book"))
+      extra = Markd::Pdf.css.index("p { color: red; }")
+      if base.nil? || extra.nil?
+        fail "expected both the style base and the user layer in the css"
+      end
+      base.should be < extra
+    ensure
+      Markd::Pdf.style = "default"
+    end
+  end
+
   describe ".render" do
+    it "renders with a built-in style" do
+      path = temp_pdf_path
+      begin
+        pages = Markd::Pdf.render(sample_markdown, path, style: "book")
+        pages.should eq(1)
+        File.read(path)[0, 5].should eq("%PDF-")
+      ensure
+        File.delete?(path)
+      end
+    end
+
+    it "raises for an unknown style" do
+      path = temp_pdf_path
+      begin
+        expect_raises(Markd::Pdf::Error, "unknown style") do
+          Markd::Pdf.render(sample_markdown, path, style: "nope")
+        end
+      ensure
+        File.delete?(path)
+      end
+    end
+
     it "renders a short document to a single-page PDF" do
       path = temp_pdf_path
       begin
