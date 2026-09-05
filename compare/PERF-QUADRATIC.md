@@ -15,7 +15,7 @@ Scaling curve, Sherlock Holmes truncated to prefixes
 (`compare/.bench-book.md`, single runs):
 
 | input | lines | time |
-|---|---|---|
+| --- | --- | --- |
 | 25% | 3,054 | 645 ms |
 | 50% | 6,109 | 2,051 ms |
 | 100% | 12,218 | 6,415 ms |
@@ -27,7 +27,7 @@ the bench measured 6.05 s (12k lines) vs 53.5 s (37k lines): 3× input,
 
 `perf record` on the book render:
 
-```
+```text
 74.92%  litehtml::render_item::draw_children(...)
 ```
 
@@ -57,7 +57,9 @@ elements whose boxes miss the clip, but culling is a per-element
 that lie entirely below the window. So each page costs O(total
 elements) even though it draws O(one page) of them:
 
-    total = pages × elements = O(N²)   (pages ∝ N for fixed page size)
+```text
+total = pages × elements = O(N²)   (pages ∝ N for fixed page size)
+```
 
 HPDF work and layout are linear; the walk is the quadratic term.
 

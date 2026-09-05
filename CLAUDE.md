@@ -1,11 +1,12 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when
+working with code in this repository.
 
 ## Build and Development Commands
 
 ```bash
-# Build both binaries (markterm and markmark)
+# Build all three binaries (markterm, markmark, markpdf)
 shards build
 
 # Run tests
@@ -23,28 +24,39 @@ ameba --fix
 ```
 
 If you have [hace](https://github.com/ralsina/hace) installed, you can use:
+
 - `hace build` - build the project
 - `hace test` - run tests
 - `hace lint` - format and lint
 
 ## Architecture
 
-MARKTerm is a Crystal library and CLI tool for rendering Markdown to terminal output with syntax highlighting and theme support.
+MARKTerm is a Crystal library and CLI tool for rendering Markdown to
+terminal output with syntax highlighting and theme support.
 
-### Two Binaries
+### Three Binaries
 
 - **markterm** (`src/main.cr`) - Renders Markdown to terminal output
-- **markmark** (`src/main_mark.cr`) - Renders Markdown back to Markdown format
+- **markmark** (`src/main_mark.cr`) - Renders Markdown back to Markdown
+  format
+- **markpdf** (`src/main_pdf.cr`) - Renders Markdown or HTML to PDF
 
 ### Core Components
 
-- `src/markterm.cr` - `Markd::TermRenderer`: Custom Markd renderer that outputs styled terminal text. Handles all markdown elements (headings, code blocks, links, images) with theme support.
+- `src/markterm.cr` - `Markd::TermRenderer`: Custom Markd renderer that
+  outputs styled terminal text. Handles all markdown elements (headings,
+  code blocks, links, images) with theme support.
 
-- `src/markmark.cr` - `Markd::MarkRenderer`: Renderer that converts Markdown back to Markdown format, useful for reformatting.
+- `src/markmark.cr` - Renderer that converts Markdown back to Markdown
+  format, useful for reformatting.
 
-- `src/terminal.cr` - Terminal utilities: capability detection (links, images), automatic light/dark theme detection, image rendering via `timg`, terminal color querying.
+- `src/terminal.cr` - Terminal utilities: capability detection (links,
+  images), automatic light/dark theme detection, image rendering via
+  `timg`, terminal color querying.
 
-- `src/styles.cr` - Styling system: `Terminal::Style` class for text attributes, `Terminal::StyleStack` for managing nested styles, theme management with built-in light/dark themes and base16 support.
+- `src/styles.cr` - Styling system: `Terminal::Style` class for text
+  attributes, `Terminal::StyleStack` for managing nested styles, theme
+  management with built-in light/dark themes and base16 support.
 
 ### Library Usage
 

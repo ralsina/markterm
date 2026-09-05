@@ -5,7 +5,7 @@ This document demonstrates GFM table support in markterm.
 ## Basic Table
 
 | Name | Age | City |
-|------|-----|------|
+| ------ | ----- | ------ |
 | Alice | 30 | New York |
 | Bob | 25 | Los Angeles |
 | Charlie | 35 | Chicago |
@@ -13,7 +13,7 @@ This document demonstrates GFM table support in markterm.
 ## Aligned Columns
 
 | Left | Center | Right |
-|:-----|:------:|------:|
+| :----- | :------: | ------: |
 | Left-aligned | Centered | Right-aligned |
 | 100 | 200 | 300 |
 | Apple | Banana | Cherry |
@@ -21,7 +21,7 @@ This document demonstrates GFM table support in markterm.
 ## Feature Comparison
 
 | Feature | Status | Priority |
-|:--------|:------:|---------:|
+| :-------- | :------: | ---------: |
 | Tables | Done | High |
 | Strikethrough | Done | Medium |
 | Task lists | Todo | Low |
@@ -32,7 +32,7 @@ This document demonstrates GFM table support in markterm.
 Tables can contain various markdown elements:
 
 | Type | Example |
-|------|---------|
+| ------ | --------- |
 | Code | `inline code` |
 | Bold | **bold text** |
 | Italic | *italic text* |
@@ -41,7 +41,7 @@ Tables can contain various markdown elements:
 ## Quick Reference
 
 | Syntax | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `\|` | Column separator |
 | `---` | Header separator |
 | `:---` | Left align |

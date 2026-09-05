@@ -1,7 +1,7 @@
 # Hyphenation pattern data
 
 Plain TeX pattern files from the `hyph-utf8` collection
-(https://github.com/hyphenation/tex-hyphen), fetched from
+(<https://github.com/hyphenation/tex-hyphen>), fetched from
 `hyph-utf8/tex/generic/hyph-utf8/patterns/txt/`. The `.pat.txt`
 files hold the patterns, the `.hyp.txt` files hold exceptions
 (words whose only allowed breaks are the ones written in the file,

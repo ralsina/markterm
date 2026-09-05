@@ -14,8 +14,10 @@ repos:
       rev: 3.0.0
       hooks:
           - id: shellcheck
-          - id: markdownlint
-            exclude: '^content'
+    - repo: https://github.com/DavidAnson/markdownlint-cli2
+      rev: v0.23.2
+      hooks:
+          - id: markdownlint-cli2
     - repo: https://github.com/mrtazz/checkmake
       rev: 0.2.2
       hooks:
