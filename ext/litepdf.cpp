@@ -920,6 +920,11 @@ struct DrawContext
     int clip_depth = 0;
     // Wide tables of the document (sorted by top, non-overlapping).
     const std::vector<WideTable>* wide_tables = nullptr;
+    // This page's window in flow space: borders snapped to these edges
+    // (see draw_borders) must survive the page clip.
+    float window_first = 0;
+    float window_second = 0;
+    bool paginated = false;
 
     // A scale-to-fit clip pushed by set_clip: content drawn inside maps
     // to the page relative to the table's top, compressed by the scale
@@ -1543,6 +1548,21 @@ class PdfContainer : public litehtml::document_container
         set_fill(hdc, color);
         g_last_op = std::string("draw_text '") + std::string(text).substr(0, 20) + "'";
         if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "draw_text '%s' x=%.1f y=%.1f w=%.1f h=%.1f\n", text, px(pos.x), px(pos.y), px(pos.width), px(pos.height));
+        // Draw-time pruning: line boxes can straddle a page cut by a
+        // fraction while every glyph sits beyond it, which the physical
+        // clip hides but the page's text layer still contains — ghost
+        // copies of the boundary row's first line. Skip runs whose
+        // glyph box lies entirely outside the window (mapped through
+        // flow space: wide tables draw with doc-space positions).
+        if (context->paginated)
+        {
+            float text_top = context->flow_y(px(pos.y));
+            float text_bottom = context->flow_y(px(pos.y + pos.height));
+            if (text_top >= context->window_second || text_bottom <= context->window_first)
+            {
+                return;
+            }
+        }
         float baseline = context->pdf_y(pos.y + pos.height - f.descent);
         // Draw segment by segment; emoji-range codepoints the primary font
         // lacks come from the emoji font at the shared baseline.
@@ -1893,6 +1913,40 @@ class PdfContainer : public litehtml::document_container
         float top = px(draw_pos.y);
         float right = left + px(draw_pos.width);
         float bottom = top + px(draw_pos.height);
+        // A page cut between table rows lands 1px below the next row's
+        // border-box top, but litehtml draws the two rows' shared border
+        // edge overlapping by a pixel: clipping alone strands the
+        // continuation row's top border just above the page (invisible)
+        // and leaves the page's last table row without a closing rule.
+        // Snap cell border edges that sit within a few pixels of a
+        // window edge onto the edge itself, so both sides of the cut get
+        // exactly one rule. The cell_edges set keeps this away from
+        // non-table borders.
+        if (context->paginated)
+        {
+            auto known_cell_edge = [&](float value)
+            {
+                auto it = cell_edges.lower_bound((int)std::floor(value - 1.5f));
+                return it != cell_edges.end() && *it <= value + 1.5f;
+            };
+            auto snap = [&](float value, float lo, float hi, float target)
+            {
+                return (value >= lo && value <= hi && known_cell_edge(value)) ? target : value;
+            };
+            // A row's top border just above a window start, or just
+            // before a window end, belongs to the rule at that edge.
+            top = snap(top, context->window_first - 6.0f, context->window_first,
+                       context->window_first + 0.4f);
+            top = snap(top, context->window_second - 6.0f, context->window_second,
+                       context->window_second - 0.4f);
+            // A row's bottom border just after a window start is a
+            // straddler stub; just around a window end it is the
+            // fragment's closing rule.
+            bottom = snap(bottom, context->window_first, context->window_first + 6.0f,
+                          context->window_first + 0.4f);
+            bottom = snap(bottom, context->window_second - 6.0f, context->window_second + 6.0f,
+                          context->window_second - 0.4f);
+        }
 
         for (int i = 0; i < 4; i++)
         {
@@ -2158,6 +2212,10 @@ class PdfContainer : public litehtml::document_container
     // coordinates. finalize_wide_tables sorts them and drops nested or
     // degenerate entries; pagination maps heights through flow space.
     std::vector<WideTable> wide_tables;
+    // Border-box top/bottom y of every table row, in flow space. Marks
+    // which border edges belong to table cells, so draw_borders only
+    // snaps those onto page window edges (see draw_borders).
+    std::multiset<int> cell_edges;
 
     void finalize_wide_tables()
     {
@@ -2304,25 +2362,30 @@ class PdfContainer : public litehtml::document_container
     // render_item positions are relative to the parent's content box
     // (litehtml accumulates x/y offsets while drawing), so the walk must
     // accumulate them too to get document-space coordinates.
-    // Distance from a table row box top down to the row's first drawn
-    // pixels: the top border and padding of the table's first cell (all
-    // cells share the style, so the first one stands for every row).
-    float first_cell_top_inset(const std::shared_ptr<litehtml::render_item>& item) const
+    // Border-box insets of the table's first cell (all cells share the
+    // style): a row box from get_row_boxes is the cell's content box, so
+    // the cell's drawn border box starts this far above it and ends this
+    // far below it.
+    struct CellInsets { float top; float bottom; };
+
+    CellInsets first_cell_insets(const std::shared_ptr<litehtml::render_item>& item) const
     {
         for (const auto& child : item->children())
         {
             std::string child_tag = child->src_el() ? child->src_el()->get_tagName() : "";
             if (child_tag == "td" || child_tag == "th")
             {
-                return px(child->get_borders().top) + px(child->get_paddings().top);
+                const litehtml::margins& borders = child->get_borders();
+                const litehtml::margins& paddings = child->get_paddings();
+                return {px(borders.top + paddings.top), px(borders.bottom + paddings.bottom)};
             }
-            float nested = first_cell_top_inset(child);
-            if (nested > 0)
+            CellInsets nested = first_cell_insets(child);
+            if (nested.top > 0 || nested.bottom > 0)
             {
                 return nested;
             }
         }
-        return 0.0f;
+        return {0.0f, 0.0f};
     }
 
     void collect_breaks(const std::shared_ptr<litehtml::render_item>& item, float offset_x, float offset_y,
@@ -2346,23 +2409,27 @@ class PdfContainer : public litehtml::document_container
         }
         // Tables report one box per row: their tops become candidates so
         // a long table splits across pages at a row boundary. Each box is
-        // the row's first cell's content-box top, which sits below the
-        // cell's top border and padding; bias the candidate up by that
-        // inset plus 1px, so the break lands just above the row's border
-        // box. The row is then culled whole from the earlier page (no
-        // border slivers, no clipped ghost text), and the previous row's
-        // bottom border — the collapsed shared edge — is drawn on the
-        // continuation page, giving the first row there a top border.
+        // the row's first cell's content box; the cut lands 1px below the
+        // cell's border-box top, so the previous row's bottom border (the
+        // collapsed shared edge) is fully on the earlier page and this
+        // row's boxes are culled from it. litehtml draws the two rows'
+        // shared edge overlapping by a pixel, so clipping alone still
+        // strands one row's rule on the wrong side; draw_borders snaps
+        // those onto the window edges. Row border-box edges are recorded
+        // here for it.
         if (tag == "table")
         {
-            float cell_inset = first_cell_top_inset(item);
+            CellInsets insets = first_cell_insets(item);
             std::vector<litehtml::position> row_boxes;
             item->get_row_boxes(row_boxes);
             for (const auto& box : row_boxes)
             {
                 if (px(box.height) > 0)
                 {
-                    candidates.insert((int)std::floor(abs_y + px(box.y) - cell_inset) - 1);
+                    float content_top = abs_y + px(box.y);
+                    candidates.insert((int)std::floor(content_top - insets.top) + 1);
+                    cell_edges.insert((int)std::lround(content_top - insets.top));
+                    cell_edges.insert((int)std::lround(content_top + px(box.height) + insets.bottom));
                 }
             }
         }
@@ -2858,6 +2925,9 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         context.page = page;
         context.page_height = page_height;
         context.y_offset = window.first;
+        context.window_first = window.first;
+        context.window_second = window.second;
+        context.paginated = windows.size() > 1;
         context.x_offset = margin;
         context.top_margin = margin;
         // Physically clip drawing to this page's window (content area
