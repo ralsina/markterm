@@ -21,7 +21,7 @@ dependencies:
   # task lists) that icyleaf/master has
   markd:
     github: ralsina/markd
-    commit: 333befc4717fabcc6e5b61fe4d698254e46cc7e5
+    commit: abda7a54467d33bdc728b0973f2bfc9f9ff12ec5
   # Kept in-tree (path dependency) so it can be extracted into its
   # own repository later without changing the require.
   hyphen:
