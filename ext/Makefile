@@ -64,7 +64,7 @@ $(LIB): $(LIB_OBJS)
 $(TEXPRINTF_LIB): $(TEXPRINTF_OBJ)
 	$(AR) rcs $@ $^
 
-build/litepdf.o: litepdf.cpp | build
+build/litepdf.o: litepdf.cpp | build build/libhpdf.a
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -I build/include -c $< -o $@
 
 build/litepdf_math.o: litepdf_math.c | build
@@ -97,9 +97,16 @@ build/libtexprintf/%.o: $(TEXPRINTF_DIR)/src/%.c | build build/libtexprintf/gen
 build:
 	mkdir -p build
 
+# libharu: built from source (the CID font fixes in
+# libharu-cid-fixes.patch are required for correct embedded-CID fonts;
+# distro packages ship unpatched builds). The script is idempotent and
+# re-applies the patch when it changes.
+build/libhpdf.a: build-libharu.sh libharu-cid-fixes.patch | build
+	./build-libharu.sh
+
 # Standalone test driver: ./build/litepdf_test file.html [file.css] out.pdf
 test: $(LIB) build/litepdf_test.o
-	$(CXX) $(CXXFLAGS) $(INCLUDES) build/litepdf_test.o $(LIB) -L/usr/lib -lhpdf -o build/litepdf_test
+	$(CXX) $(CXXFLAGS) $(INCLUDES) build/litepdf_test.o $(LIB) -Lbuild -lhpdf -o build/litepdf_test
 
 build/litepdf_test.o: litepdf_test.cpp | build
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
