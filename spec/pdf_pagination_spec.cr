@@ -22,6 +22,61 @@ private def pdftotext_path : String?
   Process.find_executable("pdftotext")
 end
 
+# Rasterize one page to grayscale PGM (plain header, raw bytes — no
+# image library needed) and return width, height and the pixel bytes.
+private def page_pixels(pdftoppm : String, pdf_path : String, page : Int32) : {Int32, Int32, Bytes}
+  prefix = File.tempname("markpdf_spec_cut")
+  Process.run(pdftoppm, ["-gray", "-r", "50", "-f", page.to_s, "-l", page.to_s,
+                         pdf_path, prefix], error: IO::Memory.new)
+  pgm_path = "#{prefix}-#{page}.pgm"
+  io = File.open(pgm_path, "rb")
+  begin
+    magic = io.read_string(2)
+    fail("unexpected raster format #{magic.inspect}") unless magic == "P5"
+    width = next_pgm_int(io) || 0
+    height = next_pgm_int(io) || 0
+    next_pgm_int(io) # maxval; pdftoppm writes 255 and a single newline
+    pixels = Bytes.new(width * height)
+    io.read_fully(pixels)
+    {width, height, pixels}
+  ensure
+    io.close
+    File.delete?(pgm_path)
+  end
+end
+
+private def next_pgm_int(io : IO) : Int32?
+  value = 0
+  seen = false
+  loop do
+    byte = io.read_byte
+    break if byte.nil?
+    if byte.chr.ascii_whitespace?
+      break if seen
+      next
+    end
+    seen = true
+    value = value * 10 + (byte - 48)
+  end
+  seen ? value : nil
+end
+
+# Ink count (pixels clearly darker than the white page) per scanline.
+# The table's rules are its best-inked scanlines: a rule runs unbroken
+# across the table width, which no text row approaches.
+private def scanline_ink(pixels : Bytes, width : Int32, height : Int32) : Array(Int32)
+  ink = Array(Int32).new(height, 0)
+  height.times do |row|
+    count = 0
+    row_pixels = pixels + (row * width)
+    width.times do |column|
+      count += 1 if row_pixels[column] < 235 # the #cccccc rules antialias light
+    end
+    ink[row] = count
+  end
+  ink
+end
+
 private def page_text(pdftotext : String, pdf_path : String, page : Int32) : String
   output = IO::Memory.new
   Process.run(pdftotext, ["-f", page.to_s, "-l", page.to_s, "-layout", pdf_path, "-"],
@@ -156,6 +211,59 @@ describe "markpdf pagination drawing" do
 
       page_texts = (1..pages).map { |page| page_text(pdftotext, path, page) }
       should_draw_items_in_order(page_texts, 200, "Paragraph")
+    ensure
+      File.delete?(path)
+    end
+  end
+
+  # The page cut through a table must look cut, not ragged: the row
+  # that ends the page gets a closing rule at the cut and the
+  # continuation row on the next page keeps its top rule. Checked
+  # geometrically on a raster: a horizontal rule within a few pixels
+  # of the bottom content edge on page 1, and of the top content edge
+  # on page 2. The default 20mm margin is 39px at 50dpi.
+  it "draws table rules at the page cut and on the continuation row" do
+    pdftoppm = Process.find_executable("pdftoppm")
+    pending!("pdftoppm not available") unless pdftoppm
+
+    rows = String.build do |io|
+      1.upto(60) do |row_number|
+        io << "| cutrow " << row_number << " | sentinel |\n"
+      end
+    end
+    source = "| col a | col b |\n| --- | --- |\n#{rows}"
+    options = Markd::Options.new
+    options.gfm = true
+
+    path = temp_pdf_path
+    begin
+      pages = Markd::Pdf.render(source, path, options)
+      pages.should be >= 2
+
+      _width1, height1, pixels1 = page_pixels(pdftoppm, path, 1)
+      _width2, height2, pixels2 = page_pixels(pdftoppm, path, 2)
+      ink1 = scanline_ink(pixels1, _width1, height1)
+      ink2 = scanline_ink(pixels2, _width2, height2)
+
+      # A rule's ink dwarfs any text row's; the table's own width sets
+      # the scale on each page independently.
+      is_rule1 = ink1.map { |count| count >= ink1.max * 0.6 }
+      is_rule2 = ink2.map { |count| count >= ink2.max * 0.6 }
+      is_ink1 = ink1.map { |count| count >= ink1.max * 0.05 }
+      is_ink2 = ink2.map { |count| count >= ink2.max * 0.05 }
+
+      # The cut must close the table: the last ink on page 1 is a rule.
+      last_ink1 = is_ink1.rindex(true)
+      fail("page 1 shows no table ink at all") unless last_ink1
+      is_rule1[last_ink1].should be_true,
+        "page 1 does not end the table with a rule (last ink at scanline #{last_ink1})"
+
+      # The continuation row keeps its top border: the first ink on
+      # page 2 is a rule, not bare text.
+      first_ink2 = is_ink2.index(true)
+      fail("page 2 shows no table ink at all") unless first_ink2
+      is_rule2[first_ink2].should be_true,
+        "page 2 does not start the table with a continuation rule (first ink at scanline #{first_ink2})"
     ensure
       File.delete?(path)
     end

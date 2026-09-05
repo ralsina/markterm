@@ -107,4 +107,46 @@ describe "markpdf CLI" do
       File.delete?(output_path)
     end
   end
+
+  # Pathological inputs must come back as a clean render or a clean
+  # error — never a signal exit from the C++ side of the renderer.
+  # Running through the CLI makes a segfault visible as a signal.
+  describe "pathological inputs" do
+    it "errors cleanly on an empty document" do
+      status, _output, error = run_cli(BIN_MARKPDF, ["-"], input: "")
+      status.normal_exit?.should be_true, "renderer crashed on empty input"
+      status.success?.should be_false
+      error.should_not be_empty
+    end
+
+    it "survives wildly malformed html" do
+      garbage = String.build do |io|
+        50.times { io << "<p><b><i><table><td><tr>unclosed <div style=" }
+      end
+      status, _output, _error = run_cli(BIN_MARKPDF, ["-"], input: garbage)
+      status.normal_exit?.should be_true, "renderer crashed on malformed html"
+    end
+
+    it "survives a complete-html document of garbage" do
+      garbage = "<!DOCTYPE html><html><head><title>x</title></head><body>" +
+                ("<span style=\"color:#fff\"><table>" * 200) + "tail"
+      status, _output, _error = run_cli(BIN_MARKPDF, ["-"], input: garbage)
+      status.normal_exit?.should be_true, "renderer crashed on garbage html"
+    end
+
+    it "survives deep markdown nesting" do
+      status, _output, _error = run_cli(BIN_MARKPDF, ["-"], input: ("> " * 400) + "deep")
+      status.normal_exit?.should be_true, "renderer crashed on deep nesting"
+    end
+
+    it "survives a long unbreakable string" do
+      status, _output, _error = run_cli(BIN_MARKPDF, ["-"], input: ("x" * 100_000) + "\n")
+      status.normal_exit?.should be_true, "renderer crashed on a long word"
+    end
+
+    it "survives a large pile of random text" do
+      status, _output, _error = run_cli(BIN_MARKPDF, ["-"], input: Random::Secure.hex(60_000))
+      status.normal_exit?.should be_true, "renderer crashed on random text"
+    end
+  end
 end

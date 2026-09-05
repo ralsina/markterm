@@ -11,6 +11,22 @@ private def cjk_font_path : String
   File.expand_path("../compare/assets/fonts/NotoSansCJKsc-Regular.ttf.ttf", __DIR__)
 end
 
+# A system TTF that covers emoji codepoints, searched in the same
+# well-known-family order the shim's auto-probe uses. The shim embeds
+# TrueType only, so OTF/TTC collections are not candidates.
+private def emoji_font_path : String?
+  patterns = ["symbola", "notoemoji", "notosanssymbols", "emoji", "symbol"]
+  fonts = Dir.glob("/usr/share/fonts/**/*.ttf") +
+          Dir.glob("#{Path.home}/.local/share/fonts/**/*.ttf") +
+          Dir.glob("#{Path.home}/.fonts/**/*.ttf")
+  patterns.each do |pattern|
+    fonts.each do |path|
+      return path if File.basename(path).downcase.includes?(pattern)
+    end
+  end
+  nil
+end
+
 private def temp_pdf_path : String
   File.tempname("markpdf_spec", ".pdf")
 end
@@ -49,6 +65,30 @@ describe "markpdf font fallback" do
       text = IO::Memory.new
       Process.run(pdftotext, [path, "-"], output: text, error: IO::Memory.new)
       text.to_s.should contain("中文排版测试")
+    ensure
+      File.delete?(path)
+    end
+  end
+
+  it "round-trips non-BMP emoji through the alternate-CID path" do
+    pdftotext = Process.find_executable("pdftotext")
+    font_path = emoji_font_path
+    pending!("no emoji/symbol TrueType font available") unless pdftotext && font_path
+
+    # Both are plane-1 codepoints: they cannot ride libharu's 16-bit
+    # CID space directly and must come back through the alternate-CID
+    # mapping and its ToUnicode entries.
+    source = "Emoji: \u{1F600} \u{1F389} plain text"
+    path = temp_pdf_path
+    begin
+      Markd::Pdf.emoji_font = font_path
+      Markd::Pdf.render(source, path, Markd::Options.new)
+      text = IO::Memory.new
+      stderr = IO::Memory.new
+      Process.run(pdftotext, [path, "-"], output: text, error: stderr)
+      stderr.to_s.should be_empty, "poppler warnings in the produced PDF"
+      text.to_s.should contain("\u{1F600}")
+      text.to_s.should contain("\u{1F389}")
     ensure
       File.delete?(path)
     end
