@@ -25,4 +25,6 @@ gh release create "v$VERSION" \
   "bin/markpdf-static-linux-arm64" \
   --title "Release v$VERSION" --notes "$(git cliff -l -s all)"
 
-bash -x ./do_aur.sh
+# The AUR update (do_aur.sh) runs manually after the release: the
+# PKGBUILD gained a markpdf build and its checksums need the tag to
+# exist first.
