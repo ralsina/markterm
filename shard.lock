@@ -26,7 +26,7 @@ shards:
 
   markd:
     git: https://github.com/ralsina/markd.git
-    version: 0.6.0+git.commit.be4adc9e7764a3a4178fe017b0511534bdf79f1a
+    version: 0.6.0+git.commit.333befc4717fabcc6e5b61fe4d698254e46cc7e5
 
   sixteen:
     git: https://github.com/ralsina/sixteen.git
