@@ -27,6 +27,32 @@ describe "Terminal" do
     end
   end
 
+  describe "osc8_capable?" do
+    it "recognizes terminals known to support OSC 8" do
+      ["foot", "wezterm", "ghostty", "contour", "xterm-kitty"].each do |term|
+        ENV["TERM"] = term
+        Terminal.osc8_capable?.should be_true
+      end
+      ENV["TERM"] = "xterm"
+    end
+
+    it "does not recognize unknown terminals" do
+      ENV["TERM"] = "xterm"
+      Terminal.osc8_capable?.should be_false
+    end
+
+    it "recognizes supporting TERM_PROGRAM values" do
+      ENV["TERM"] = "xterm"
+      ENV["TERM_PROGRAM"] = "vscode"
+      Terminal.osc8_capable?.should be_true
+      ENV["TERM_PROGRAM"] = "iTerm.app"
+      Terminal.osc8_capable?.should be_true
+      ENV["TERM_PROGRAM"] = "unknown"
+      Terminal.osc8_capable?.should be_false
+      ENV.delete("TERM_PROGRAM")
+    end
+  end
+
   describe "parse_color" do
     it "parses a full terminal color reply" do
       # The reply to an OSC 11 query, including prefix and terminator

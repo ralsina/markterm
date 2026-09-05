@@ -4,11 +4,22 @@ describe "GFM rendering (to_term)" do
   options = Markd::Options.new
   options.gfm = true
 
-  it "renders headings with their level even without max_width" do
+  it "renders headings with their level when no color reaches the terminal" do
+    Colorize.enabled = false
+    begin
+      result = Markd.to_term("# Top\n\n## Sub", options)
+      result.should contain("# Top")
+      result.should contain("## Sub")
+    ensure
+      Colorize.enabled = true
+    end
+  end
+
+  it "drops the ATX hashes when color carries the hierarchy" do
     result = Markd.to_term("# Top\n\n## Sub", options)
     visible = result.gsub(/\e\[[0-9;]*[mGKH]/, "")
-    visible.should contain("# Top")
-    visible.should contain("## Sub")
+    visible.should contain("Top")
+    visible.should_not contain("# Top")
   end
 
   it "renders task list checkboxes" do

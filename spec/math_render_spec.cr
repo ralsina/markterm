@@ -54,5 +54,17 @@ describe MathRender do
       source = "```\n$x^2$\n```"
       MathRender.rewrite_markdown_math(source).should eq(source)
     end
+
+    it "leaves inline code spans alone" do
+      source = "keep `$E = mc^2$` and `$$…$$` literal"
+      MathRender.rewrite_markdown_math(source).should eq(source)
+    end
+
+    it "keeps code spans from swallowing the rest of the paragraph" do
+      source = "(`$E = mc^2$` inline, `$$…$$` display) is rendered as styled Unicode."
+      rewritten = MathRender.rewrite_markdown_math(source)
+      rewritten.should contain("is rendered as styled Unicode")
+      rewritten.should contain("$$…$$")
+    end
   end
 end

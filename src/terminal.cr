@@ -41,9 +41,19 @@ module Terminal
     Term::Screen.width
   end
 
+  # Terminals whose TERM is known to support OSC 8 hyperlinks.
+  OSC8_TERMS = ["xterm-kitty", "kitty", "alacritty", "foot", "wezterm",
+                "ghostty", "contour"]
+
   def supports_links? : Bool
-    STDOUT.tty? && ((["xterm-kitty", "kitty", "alacritty"].includes? ENV["TERM"]) ||
-      (ENV.fetch("TERM_PROGRAM", nil) == "vscode"))
+    STDOUT.tty? && osc8_capable?
+  end
+
+  # OSC 8 support judged from the environment alone, so it can be
+  # asked about (and tested) without a terminal attached.
+  def osc8_capable? : Bool
+    return true if ["vscode", "iTerm.app"].includes?(ENV.fetch("TERM_PROGRAM", ""))
+    OSC8_TERMS.includes?(ENV.fetch("TERM", ""))
   end
 
   def supports_images? : Bool

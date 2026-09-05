@@ -183,10 +183,12 @@ module MathRender
 
   # Markdown-source rewrite for the terminal renderer: display math
   # becomes a fenced block holding the rendered art (when available),
-  # inline math is converted to Unicode text. Fenced code blocks are
-  # skipped.
+  # inline math is converted to Unicode text. Fenced code blocks and
+  # inline code spans are skipped: `$` inside backticks is code, not
+  # math, and rewriting it unbalances the spans and corrupts the parse
+  # of everything after it.
   def self.rewrite_markdown_math(source : String) : String
-    fence_split = Regex.new("(```[^\\n]*\\n[\\s\\S]*?\\n```|```[^\\n]*\\n[\\s\\S]*$)")
+    fence_split = Regex.new("(```[^\\n]*\\n[\\s\\S]*?\\n```|```[^\\n]*\\n[\\s\\S]*$|`[^`\\n]*`)")
     held = [] of String
     rewritten = source.split(fence_split).map_with_index do |part, index|
       next part if index.odd?
@@ -230,10 +232,4 @@ module MathRender
   private def self.unescape_html(s : String) : String
     s.gsub("&lt;", "<").gsub("&gt;", ">").gsub("&quot;", "\"").gsub("&#39;", "'").gsub("&amp;", "&")
   end
-
-  # Markdown-source rewrite for the terminal renderer: display math
-  # becomes a fenced block holding the rendered art (when available),
-  # inline math is converted to Unicode text. Fenced code blocks are
-  # skipped, and display blocks are held aside while inline math is
-  # rewritten so art never gets re-processed.
 end

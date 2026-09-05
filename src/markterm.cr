@@ -24,6 +24,7 @@ module Markd
     @max_width : Int32?
     @block_buffer = ""
     @in_wrappable_block = false
+    @image_visible = true
 
     def initialize(@options = Options.new, theme : String? = nil, code_theme : String? = nil, @force_links : Bool = false, max_width : Int32? = nil)
       super(@options)
@@ -69,6 +70,61 @@ module Markd
     # and OSC 8 hyperlinks, counting East Asian wide glyphs as two columns)
     private def visible_length(str : String) : Int32
       Terminal.display_width(strip_osc8(strip_ansi(str)))
+    end
+
+    # True for destinations that are real URLs. Relative paths and
+    # anchors read fine as the link's own text; a printed copy of them
+    # is noise.
+    private def urlish?(destination : String) : Bool
+      destination.starts_with?("http://") || destination.starts_with?("https://") ||
+        destination.starts_with?("mailto:")
+    end
+
+    # Condensed form of a URL for display next to link text: scheme
+    # and www. dropped, long paths elided in the middle.
+    private def condensed_url(url : String) : String
+      text = url.sub(%r{\A[a-z]+://}i, "").sub(/\Awww\./i, "")
+      if text.size > 44
+        text = "#{text[0, 32]}…#{text[-8, 8]}"
+      end
+      text
+    end
+
+    # The concatenated text of a node's children: Node#text is not
+    # populated for container nodes like links, but a bare-URL link's
+    # children concatenate to exactly its destination.
+    private def full_text(node : Node) : String
+      String.build do |io|
+        child = node.first_child?
+        while child
+          io << child.text
+          child = child.next?
+        end
+      end
+    end
+
+    # Soft-wrap code lines that would overflow the width: the terminal
+    # would hard-wrap them at column zero and destroy the block's
+    # shape. Continuations indent two columns past the code's left
+    # edge (which print() re-indents, so both indents come out of the
+    # budget). No-op when no width is known.
+    private def wrap_code(text : String) : String
+      return text unless max_width = @max_width
+      indent_len = visible_length(@indent.join)
+      wrap_width = max_width - indent_len - (indent_len + 2)
+      return text if wrap_width <= 4
+      continuation = " " * (indent_len + 2)
+      text.lines.map do |line|
+        next line if visible_length(line) <= wrap_width
+        pieces = [] of String
+        rest = line
+        until rest.empty?
+          chunk = rest[0, wrap_width]? || rest
+          pieces << chunk
+          rest = rest.size > chunk.size ? rest[chunk.size..] : ""
+        end
+        pieces.join("\n" + continuation)
+      end.join("\n")
     end
 
     # Wrap and print the accumulated block buffer, then clear it
@@ -138,11 +194,11 @@ module Markd
       languages = node.fence_language ? node.fence_language.split : nil
       @indent << "  "
       blank_line
+      text = wrap_code(node.text)
       if languages.nil? || languages.empty?
-        print node.text
+        print text
       else
-        code = Terminal.highlight(node.text, languages[0], @code_theme)
-        print code
+        print Terminal.highlight(text, languages[0], @code_theme)
       end
       @indent.pop
     end
@@ -160,14 +216,17 @@ module Markd
         @style << @theme["heading"]
         level = node.data["level"]?.try(&.as(Int32)) || 1
         blank_line
+        # Color, bold and underline already carry the hierarchy; the
+        # ATX hashes only matter when no ANSI reaches the terminal.
+        marker = @style.prefix.includes?('\e') ? "" : "#{"#" * level} "
         # When wrapping, buffer the prefix so it word-wraps together
         # with the heading text; otherwise print it right away, as
         # the text nodes bypass the buffer when there is no max_width
         if @max_width
           @in_wrappable_block = true
-          @block_buffer = @style.apply("#{"#" * level} ").to_s
+          @block_buffer = @style.apply(marker).to_s
         else
-          print @style.apply("#{"#" * level} ")
+          print @style.apply(marker)
         end
       else
         @in_wrappable_block = false
@@ -219,16 +278,28 @@ module Markd
     end
 
     def image(node : Node, entering : Bool) : Nil
-      title = (node.data["title"]?.try(&.as(String)) || "") + " "
       if entering
         dest = node.data["destination"]?.try(&.as(String)) || ""
         image_data = Terminal.supports_images? ? Terminal.show_image(dest) : ""
         if image_data.empty?
-          # Print as a link
-          if Terminal.supports_links? || @force_links
-            print @style.apply "\n\e]8;;#{dest}\e\\#{node.text}\e]8;;\e\\"
+          # Fallback: an image placeholder, hyperlinked when the
+          # terminal supports OSC 8. An alt-less image riding inside a
+          # link (badges!) would only repeat what the link already
+          # says, so it says nothing at all.
+          # The alt may be split across several text children (markd
+          # splits it), so concatenate them all
+          alt = full_text(node).strip
+          in_link = node.parent?.try(&.type) == Node::Type::Link
+          if !alt.empty? || !in_link
+            placeholder = alt.empty? ? "[image]" : "[image: #{alt}]"
+            if Terminal.supports_links? || @force_links
+              print @style.apply("\n\e]8;;#{dest}\e\\#{placeholder}\e]8;;\e\\")
+            else
+              print @style.apply("\n#{placeholder}")
+            end
+            @image_visible = true
           else
-            print @style.apply "\n<#{dest}> #{title}"
+            @image_visible = false
           end
         else
           # Reset colors in-band before the image, so the image's own
@@ -236,9 +307,10 @@ module Markd
           # Colorize.reset would leak to STDOUT outside the result.
           reset_code = Colorize.enabled? ? "\e[0m" : ""
           print "\n\n#{reset_code}#{image_data}\n"
+          @image_visible = true
         end
       else
-        print "\n"
+        print "\n" if @image_visible
       end
     end
 
@@ -278,13 +350,12 @@ module Markd
         # Skip URL in table cells to keep visible length correct
         unless Terminal.supports_links? || @force_links || @in_table_cell
           dest = node.data["destination"]?.try(&.as(String)) || ""
-          # Get the full text of the link to check if it's a bare URL
-          link_text = node.first_child?.try(&.text) || ""
-          next_child = node.first_child?.try(&.next?)
-          # Only print destination if it's not the same as the text (not a bare URL)
-          # If there's a next child, the text is split so it's not a bare URL match
-          if dest != link_text || next_child
-            output " <#{dest}>"
+          # Only print a destination for real URLs, and then condensed
+          # and dim: a full URL breaks the sentence's flow and rarely
+          # fits the width anyway. A bare URL is its own destination,
+          # and relative destinations read fine as the link's text.
+          if dest != full_text(node) && urlish?(dest)
+            output " (" + condensed_url(dest).colorize.dim.to_s + ")"
           end
         end
         @style.pop
@@ -329,7 +400,7 @@ module Markd
       if node.parent?.try &.type == Node::Type::Link
         # The parent node is a link, so we need to handle specially.
         # Style is already set by link() method, so just print raw text
-        dest = node.parent.data["destination"].as(String)
+        dest = node.parent.data["destination"]?.try(&.as(String)) || ""
         if dest == node.text
           # This is a bare URL, just print it.
           output "<#{dest}>"
@@ -343,7 +414,9 @@ module Markd
             output node.text
           end
         end
-      else
+      elsif node.parent?.try &.type != Node::Type::Image
+        # Image nodes print their own placeholder; the alt text child
+        # would only duplicate it
         output @style.apply(node.text).to_s
       end
     end

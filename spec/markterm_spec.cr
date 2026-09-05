@@ -29,14 +29,26 @@ describe "Markterm" do
       result = Markd.to_term("<http://go.to>")
       result.should contain("<http://go.to>")
     end
-    it "does links with text" do
-      result = Markd.to_term("[foo](http://go.to)")
-      result.should contain("foo")
-      result.should contain("<http://go.to>")
+    it "does links with text, with a condensed dimmed destination" do
+      result = Markd.to_term("[foo](http://go.to/very/long/path/that/goes/on/and/on/forever)")
+      plain = result.gsub(/\e\[[0-9;]*m/, "").gsub(/\e\]8;;[^\e]*\e\\/, "")
+      plain.should contain("foo")
+      # scheme dropped, path elided: readable without breaking flow
+      plain.should contain("(go.to/very/long/path/that/goes/o…/forever)")
+      plain.should_not contain("http://")
     end
     it "removes text if it's just the URL" do
       result = Markd.to_term("[http://go.to](http://go.to)")
-      result.should contain("<http://go.to>")
+      plain = result.gsub(/\e\[[0-9;]*m/, "")
+      plain.should contain("http://go.to")
+      plain.should_not contain("(go.to)")
+      plain.scan(/go\.to/).size.should eq(1)
+    end
+    it "does not repeat relative destinations" do
+      result = Markd.to_term("[BUILDING.md](BUILDING.md)")
+      plain = result.gsub(/\e\[[0-9;]*m/, "")
+      plain.should contain("BUILDING.md")
+      plain.should_not contain("(BUILDING.md)")
     end
     it "uses OSC 8 for links when TERM is kitty" do
       ENV["TERM"] = "xterm-kitty"
@@ -128,6 +140,13 @@ describe "Table rendering" do
 end
 
 describe "Word wrap" do
+  it "does not corrupt paragraphs with $$ inside code spans" do
+    source = "Markdown math (`$E = mc^2$` inline, `$$…$$` display) is rendered as styled Unicode."
+    result = Markd.to_term(source)
+    result.should contain("display) is rendered as styled Unicode")
+    result.should contain("$$…$$")
+  end
+
   it "wraps paragraphs to max_width" do
     long_text = "This is a long paragraph that should wrap to fit within the specified width."
     result = Markd.to_term(long_text, max_width: 20)
@@ -171,10 +190,18 @@ describe "Word wrap" do
     result.strip.split("\n").size.should eq(1)
   end
 
-  it "does not wrap code blocks" do
-    code = "```\nthis_is_a_very_long_line_of_code_that_should_not_be_wrapped_at_all\n```"
-    result = Markd.to_term(code, max_width: 20)
-    result.should contain("this_is_a_very_long_line_of_code_that_should_not_be_wrapped_at_all")
+  it "soft-wraps over-wide code lines with indented continuations" do
+    code = "```\nthis_is_a_very_long_line_of_code_that_should_never_overflow_the_terminal_width\n```"
+    result = Markd.to_term(code, max_width: 30)
+    plain = result.gsub(/\e\[[0-9;]*[mGKH]/, "")
+    # nothing is lost: whitespace (the wrap) is the only addition
+    plain.gsub(/\s/, "").should contain("this_is_a_very_long_line_of_code_that_should_never_overflow_the_terminal_width")
+    lines = plain.strip.split("\n").reject(&.strip.empty?)
+    lines.each do |line|
+      line.size.should be <= 30, "code line overflowed: #{line.inspect}"
+    end
+    # continuation lines indent past the code block's content column
+    lines.select(&.starts_with?("      ")).should_not be_empty
   end
 
   it "handles long words by letting them overflow" do
@@ -227,12 +254,20 @@ describe "Word wrap" do
 end
 
 describe "Image rendering" do
-  it "falls back to link rendering when the image cannot be shown" do
+  it "falls back to an image placeholder when the image cannot be shown" do
     # A nonexistent file makes timg fail on machines that have it,
     # and is equivalent to not having timg at all on machines that don't
     result = Markd.to_term("![dot](/nonexistent/path/image.png)")
-    result.should contain("dot")
-    result.should contain("/nonexistent/path/image.png")
+    result.should contain("[image: dot]")
+    result.should_not contain("/nonexistent/path/image.png")
+  end
+
+  it "suppresses alt-less images inside links entirely" do
+    # Badges: an empty image inside a link would only repeat what the
+    # link itself says
+    result = Markd.to_term("[![CI](https://example.com/badge.svg)](https://example.com/ci)")
+    result.should contain("CI")
+    result.should_not contain("badge.svg")
   end
 end
 
