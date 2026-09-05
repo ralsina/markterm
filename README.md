@@ -35,7 +35,6 @@ Still open:
 * markterm: allow enabling/disabling images and html-style-links via
   CLI (links: done via `-l`, images: not yet)
 * markterm: use crystal-term/color to detect color capabilities
-* markpdf: emoji and CJK font fallback (CID font embedding)
 * markpdf: richer header/footer templating (alignment, per-page
   sections, fonts)
 
@@ -51,6 +50,8 @@ Done recently (markpdf):
 * ✅ Superscript and subscript via inline HTML
 * ✅ Math: styled Unicode pass (always) + optional libtexprintf text
   art for display math (GPL build flag)
+* ✅ Emoji and CJK rendering via font fallback (CID font embedding
+  through a libharu patch)
 
 Done (markterm):
 
@@ -66,6 +67,27 @@ Done (markterm):
 * ✅ Task lists, GFM alerts, wrapped tables
 * ✅ Footnotes
 * ✅ Wrap styled table cells at word boundaries when tables are squeezed
+
+### Upstreaming
+
+The forks and patches this suite carries are meant to shrink over
+time. These are the changes we want merged upstream; open pull
+requests are linked:
+
+* markd: footnotes —
+  [PR #78](https://github.com/icyleaf/markd/pull/78), open since
+  March 2025, awaiting review; `shard.yml` pins the PR branch
+* litehtml: clip-based subtree pruning in the draw walk —
+  [PR #485](https://github.com/litehtml/litehtml/pull/485), in review;
+  makes paginated drawing linear instead of quadratic
+* litehtml: `get_row_boxes`, the table-row box API markpdf needs to
+  split tables at row boundaries — local-only commit on top of the
+  #485 branch; goes upstream once it lands
+* libharu: cmap format 12 support and an alternate-CID encoder API,
+  which together enable non-BMP glyphs (emoji) — currently a local
+  patch applied at build time
+  ([ext/libharu-cid-fixes.patch](ext/libharu-cid-fixes.patch)); no PR
+  yet
 
 ## Usage as a program
 
@@ -159,12 +181,12 @@ Built-in stylesheets set layout and typography; `-t` themes set colors.
 The rendered stylesheet is layered **style → theme → `--css`**, each
 later layer winning on equal specificity. `--css` may be repeated.
 
-| style   | look                                              |
-|---------|---------------------------------------------------|
-| default | clean sans-serif print style                      |
+| style   | look                                                |
+|---------|-----------------------------------------------------|
+| default | clean sans-serif print style                        |
 | book    | serif, justified, indented — long prose / e-readers |
-| dark    | dark page, light text — screen reading            |
-| sepia   | warm paper tones, serif — e-reader default look   |
+| dark    | dark page, light text — screen reading              |
+| sepia   | warm paper tones, serif — e-reader default look     |
 
 See them, print one out, tweak it, and feed it back:
 
