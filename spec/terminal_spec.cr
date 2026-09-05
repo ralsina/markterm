@@ -1,6 +1,32 @@
 require "./spec_helper"
 
 describe "Terminal" do
+  describe "display_width" do
+    it "counts latin text as one column per codepoint" do
+      Terminal.display_width("café").should eq(4)
+    end
+
+    it "counts East Asian wide glyphs as two columns" do
+      Terminal.display_width("中文").should eq(4)
+      Terminal.display_width("日本語").should eq(6)
+      Terminal.display_width("かな").should eq(4)
+    end
+
+    it "counts emoji as two columns" do
+      Terminal.display_width("😀").should eq(2)
+    end
+
+    it "counts combining marks as zero columns" do
+      # é written as e + combining acute occupies one column
+      Terminal.display_width("e\u{0301}").should eq(1)
+    end
+
+    it "counts zero-width codepoints as zero columns" do
+      Terminal.display_width("a\u{200B}b").should eq(2)
+      Terminal.display_width("😀\u{FE0F}").should eq(2)
+    end
+  end
+
   describe "parse_color" do
     it "parses a full terminal color reply" do
       # The reply to an OSC 11 query, including prefix and terminator

@@ -140,6 +140,20 @@ describe "Word wrap" do
     end
   end
 
+  it "wraps CJK text respecting display width, not codepoint count" do
+    # 30 words of two han glyphs each: 4 columns per word. With the
+    # 2-column block indent, 3 words (14 columns) fit on a 20-column
+    # line and a 4th would need 19 > 18 available — counting
+    # codepoints would wrongly fit 6 words.
+    result = Markd.to_term(("中文 " * 30).strip, max_width: 20)
+    result.strip.split("\n").each do |line|
+      visible = line.gsub(/\e\[[0-9;]*[mGKH]/, "").gsub(/\e\]8;;[^\e]*\e\\/, "")
+      Terminal.display_width(visible).should be <= 20, "line too wide: #{visible.inspect}"
+    end
+    # 30 words at 3 per line must take 10 lines, not fewer
+    result.strip.split("\n").size.should eq(10)
+  end
+
   it "wraps headings to max_width" do
     heading = "# This is a very long heading that needs wrapping"
     result = Markd.to_term(heading, max_width: 25)

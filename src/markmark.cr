@@ -39,7 +39,7 @@ module Markd
 
     def heading(node : Node, entering : Bool) : Nil
       if entering
-        level = node.data["level"].as(Int32)
+        level = node.data["level"]?.try(&.as(Int32)) || 1
         print "\n\n#{"#" * level} "
       else
         print "\n"
@@ -78,7 +78,7 @@ module Markd
     def image(node : Node, entering : Bool) : Nil
       if entering
         alt = node.first_child?.try(&.text) || ""
-        print "![#{alt}](#{node.data["destination"].as(String)})"
+        print "![#{alt}](#{node.data["destination"]?.try(&.as(String)) || ""})"
       end
     end
 

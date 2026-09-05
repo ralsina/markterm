@@ -65,9 +65,10 @@ module Markd
       str.gsub(/\e\]8;;[^\e]*\e\\/, "")
     end
 
-    # Calculate visible length (excluding ANSI codes and OSC 8 hyperlinks)
+    # Calculate visible length in terminal columns (excluding ANSI codes
+    # and OSC 8 hyperlinks, counting East Asian wide glyphs as two columns)
     private def visible_length(str : String) : Int32
-      strip_osc8(strip_ansi(str)).size
+      Terminal.display_width(strip_osc8(strip_ansi(str)))
     end
 
     # Wrap and print the accumulated block buffer, then clear it
@@ -157,7 +158,7 @@ module Markd
     def heading(node : Node, entering : Bool) : Nil
       if entering
         @style << @theme["heading"]
-        level = node.data["level"].as(Int32)
+        level = node.data["level"]?.try(&.as(Int32)) || 1
         blank_line
         # When wrapping, buffer the prefix so it word-wraps together
         # with the heading text; otherwise print it right away, as
@@ -218,9 +219,9 @@ module Markd
     end
 
     def image(node : Node, entering : Bool) : Nil
-      title = node.data["title"].as(String) + " "
+      title = (node.data["title"]?.try(&.as(String)) || "") + " "
       if entering
-        dest = node.data["destination"].as(String)
+        dest = node.data["destination"]?.try(&.as(String)) || ""
         image_data = Terminal.supports_images? ? Terminal.show_image(dest) : ""
         if image_data.empty?
           # Print as a link
@@ -276,7 +277,7 @@ module Markd
         # Print destination after all text nodes (for non-OSC8 links)
         # Skip URL in table cells to keep visible length correct
         unless Terminal.supports_links? || @force_links || @in_table_cell
-          dest = node.data["destination"].as(String)
+          dest = node.data["destination"]?.try(&.as(String)) || ""
           # Get the full text of the link to check if it's a bare URL
           link_text = node.first_child?.try(&.text) || ""
           next_child = node.first_child?.try(&.next?)

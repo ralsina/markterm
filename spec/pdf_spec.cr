@@ -4,6 +4,22 @@ def temp_pdf_path : String
   File.tempname("markpdf_spec", ".pdf")
 end
 
+# Selectors every built-in style must style: the styles are maintained
+# as four literal stylesheets on purpose (hand-editable, byte-stable
+# for --print-style round-trips), so this list is the parity contract.
+private def core_selectors : Array(String)
+  [
+    "body { font-family:", "h1 {", "h2 {", "h3 {", "h4 {", "h5 {", "h6 {",
+    "p {", "a {", "strong {", "em {", "del {", "ul, ol {", "li {",
+    "li.task-list-item", "blockquote {", "blockquote p", "pre {", "code {",
+    "pre code", "table {", "th {", "td {", "hr {", "img {", ".alert {",
+    ".alert p", ".alert-title", ".alert-note", ".alert-tip",
+    ".alert-important", ".alert-warning", ".alert-caution", ".footnotes",
+    "u, ins", "q {", "abbr {", "mark {", "kbd {", ".math {", ".math.block",
+    "pre.math",
+  ]
+end
+
 def sample_markdown : String
   <<-MD
     # Sample
@@ -131,6 +147,31 @@ describe Markd::Pdf do
   describe ".style_names" do
     it "includes the four built-in styles" do
       Markd::Pdf.style_names.should eq(["default", "book", "dark", "sepia"])
+    end
+  end
+
+  describe "built-in styles" do
+    it "covers the core selector set in every style" do
+      Markd::Pdf.style_names.each do |name|
+        css = Markd::Pdf.style_css(name)
+        core_selectors.each do |selector|
+          css.should contain(selector), "style #{name} is missing #{selector.inspect}"
+        end
+      end
+    end
+
+    # The shim paints the page from the body background-color rule
+    # (Markd::Pdf.page_background): themed styles need one, print
+    # styles must leave the page to the reader's paper.
+    it "declares a page background exactly where the page paint needs it" do
+      ["dark", "sepia"].each do |name|
+        Markd::Pdf.page_background(Markd::Pdf.style_css(name)).should_not eq(""),
+          "style #{name} needs a body background-color for the page paint"
+      end
+      ["default", "book"].each do |name|
+        Markd::Pdf.page_background(Markd::Pdf.style_css(name)).should eq(""),
+          "style #{name} must not set a body background-color"
+      end
     end
   end
 
