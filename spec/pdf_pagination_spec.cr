@@ -270,35 +270,35 @@ describe "markpdf pagination drawing" do
   end
 end
 
-  # Keep-with-next: a heading must never be stranded as the last line
-  # of a page. The heading's top and the following block's top are both
-  # break candidates a few pixels apart, so every section in a
-  # multi-section document is checked: the page holding the heading
-  # must also hold the section's opening words.
-  it "never strands a section heading at the bottom of a page" do
-    pdftotext = pdftotext_path
-    pending!("pdftotext not available") unless pdftotext
+# Keep-with-next: a heading must never be stranded as the last line
+# of a page. The heading's top and the following block's top are both
+# break candidates a few pixels apart, so every section in a
+# multi-section document is checked: the page holding the heading
+# must also hold the section's opening words.
+it "never strands a section heading at the bottom of a page" do
+  pdftotext = pdftotext_path
+  pending!("pdftotext not available") unless pdftotext
 
-    source = String.build do |io|
-      1.upto(12) do |section|
-        io << "## Section " << section << " sentinel\n\n"
-        io << "Section " << section << " opens with its first line of body text, "
-        io << "followed by enough words to wrap over several lines and fill "
-        io << "the space below the heading the way ordinary prose does.\n\n"
-      end
-    end
-
-    path = temp_pdf_path
-    begin
-      pages = Markd::Pdf.render(source, path)
-      page_texts = (1..pages).map { |page| page_text(pdftotext, path, page) }
-      1.upto(12) do |section|
-        heading_pages = pages_containing(page_texts, "Section #{section} sentinel")
-        heading_pages.size.should eq(1), "section #{section}: heading drawn on pages #{heading_pages}"
-        page_texts[heading_pages.first - 1].should contain("opens with its first line"),
-          "section #{section}: heading stranded at the bottom of page #{heading_pages.first} without its body"
-      end
-    ensure
-      File.delete?(path)
+  source = String.build do |io|
+    1.upto(12) do |section|
+      io << "## Section " << section << " sentinel\n\n"
+      io << "Section " << section << " opens with its first line of body text, "
+      io << "followed by enough words to wrap over several lines and fill "
+      io << "the space below the heading the way ordinary prose does.\n\n"
     end
   end
+
+  path = temp_pdf_path
+  begin
+    pages = Markd::Pdf.render(source, path)
+    page_texts = (1..pages).map { |page| page_text(pdftotext, path, page) }
+    1.upto(12) do |section|
+      heading_pages = pages_containing(page_texts, "Section #{section} sentinel")
+      heading_pages.size.should eq(1), "section #{section}: heading drawn on pages #{heading_pages}"
+      page_texts[heading_pages.first - 1].should contain("opens with its first line"),
+        "section #{section}: heading stranded at the bottom of page #{heading_pages.first} without its body"
+    end
+  ensure
+    File.delete?(path)
+  end
+end
