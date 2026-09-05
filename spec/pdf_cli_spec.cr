@@ -91,4 +91,20 @@ describe "markpdf CLI" do
       File.delete?(path)
     end
   end
+
+  it "warns on stderr when an image cannot be loaded" do
+    path = File.tempname("markpdf_cli", ".md")
+    output_path = File.tempname("markpdf_cli", ".pdf")
+    File.write(path, "# Broken image\n\n![missing](no-such-image-XYZ.png)\n")
+    begin
+      status, _output, error = run_cli(BIN_MARKPDF, [path, "-o", output_path])
+      status.exit_code.should eq(0), error
+      error.should contain("could not load image")
+      error.should contain("no-such-image-XYZ.png")
+      File.read(output_path)[0, 5].should eq("%PDF-")
+    ensure
+      File.delete?(path)
+      File.delete?(output_path)
+    end
+  end
 end

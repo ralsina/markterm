@@ -56,6 +56,14 @@ module Markd
       stripped.downcase.starts_with?("<!doctype html") || stripped.downcase.starts_with?("<html")
     end
 
+    # The page background declared by the CSS's `body` rules, the last
+    # one winning as in CSS. Empty when none is set: the shim then
+    # leaves the page white.
+    def self.page_background(css : String) : String
+      rules = css.scan(/body\s*\{[^}]*background-color\s*:\s*(#[0-9a-fA-F]{3,8}|[a-zA-Z]+)/)
+      rules.empty? ? "" : rules.last[1]
+    end
+
     # The built-in stylesheets (including the default one) and the CSS
     # layering machinery live in pdf_styles.cr, required above.
 
@@ -145,9 +153,8 @@ module Markd
       # produce dark pages; the shim paints it before any content. Complete
       # HTML documents bring their own styles, so the default stylesheet
       # only applies to markdown and HTML fragments.
-      body_background = css.match(/body\s*\{[^}]*background-color\s*:\s*(#[0-9a-fA-F]{3,8}|[a-zA-Z]+)/)
       is_html = html_input || html_document?(source)
-      Litepdf.set_page_background(is_html ? "" : (body_background ? body_background[1] : ""))
+      Litepdf.set_page_background(is_html ? "" : page_background(css))
       temp_dir = File.join(Dir.tempdir, "markpdf-imgs-#{Process.pid}-#{Time.utc.to_unix_ms}")
       Dir.mkdir(temp_dir, 0o700)
       converted = [] of String
@@ -220,7 +227,8 @@ module Markd
     # fetched, other formats are converted to PNG (crimage), data URIs are
     # decoded. PNG/JPEG files are left alone. Converted files land in
     # temp_dir and are tracked in converted for later cleanup; sources
-    # that fail keep working as before (silently skipped).
+    # that fail keep working (the image is skipped, with a warning on
+    # stderr so broken documents are not silently degraded).
     private def self.process_images(html : String, base_dir : String, temp_dir : String,
                                     converted : Array(String)) : String
       sources = html.scan(/<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/).map(&.[1]).uniq!
@@ -231,7 +239,7 @@ module Markd
           STDERR.puts "img #{source[0, 40]} -> #{replacement} (converted: #{converted.size})" if ENV["LITEPDF_DEBUG"]?
           rewritten[source] = replacement
         else
-          STDERR.puts "img #{source[0, 40]} -> FAILED (converted: #{converted.size})" if ENV["LITEPDF_DEBUG"]?
+          STDERR.puts "markpdf: could not load image '#{source[0, 80]}', skipping it"
         end
       end
       return html if rewritten.empty?

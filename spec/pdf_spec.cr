@@ -44,6 +44,21 @@ describe Markd::Pdf do
     end
   end
 
+  describe ".page_background" do
+    it "reads the body background-color" do
+      Markd::Pdf.page_background("body { color: black; background-color: #ffeedd; }").should eq("#ffeedd")
+    end
+
+    it "prefers the last body rule, like CSS" do
+      css = "body { background-color: #111111; }\nbody { background-color: #222222; }"
+      Markd::Pdf.page_background(css).should eq("#222222")
+    end
+
+    it "returns empty when no body background is set" do
+      Markd::Pdf.page_background("p { color: red; }").should eq("")
+    end
+  end
+
   describe ".css=" do
     it "appends user css to the default stylesheet" do
       Markd::Pdf.css = "p { color: red; }"

@@ -618,6 +618,22 @@ std::string g_footer_template;
 // Page background color as a CSS "#rrggbb" string; empty = white.
 std::string g_page_background;
 
+// The page background as RGB channels: the color translucent fills
+// composite against (libharu has no alpha). Empty means white.
+void page_background_channels(unsigned char& red, unsigned char& green, unsigned char& blue)
+{
+    if (g_page_background.size() >= 7 && g_page_background[0] == '#')
+    {
+        red = (unsigned char)std::strtol(g_page_background.substr(1, 2).c_str(), nullptr, 16);
+        green = (unsigned char)std::strtol(g_page_background.substr(3, 2).c_str(), nullptr, 16);
+        blue = (unsigned char)std::strtol(g_page_background.substr(5, 2).c_str(), nullptr, 16);
+    }
+    else
+    {
+        red = green = blue = 255;
+    }
+}
+
 // Provided font files (--font flags), then scanned system fonts.
 std::vector<FontFile> g_provided_fonts;
 std::vector<FontFile> g_system_fonts;
@@ -1521,12 +1537,16 @@ class PdfContainer : public litehtml::document_container
     void set_fill(litehtml::uint_ptr hdc, const litehtml::web_color& color)
     {
         DrawContext* context = ctx(hdc);
-        // libharu has no alpha: blend over the white page.
+        // libharu has no alpha: composite over the page background so
+        // translucent fills stay correct on dark and sepia pages too.
+        unsigned char bg_red, bg_green, bg_blue;
+        page_background_channels(bg_red, bg_green, bg_blue);
         float alpha = color.alpha / 255.0f;
-        float blend = [&](float channel) { return 255.0f - alpha * (255.0f - channel); }(color.red);
-        HPDF_Page_SetRGBFill(context->page, blend / 255.0f,
-                             (255.0f - alpha * (255.0f - color.green)) / 255.0f,
-                             (255.0f - alpha * (255.0f - color.blue)) / 255.0f);
+        auto blend = [&](unsigned char background, unsigned char channel) {
+            return (background + alpha * (channel - background)) / 255.0f;
+        };
+        HPDF_Page_SetRGBFill(context->page, blend(bg_red, color.red),
+                             blend(bg_green, color.green), blend(bg_blue, color.blue));
     }
 
     void fill_rect(litehtml::uint_ptr hdc, float left, float top, float width, float height)
@@ -2687,8 +2707,24 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
     container.content_width = content_width;
 
     // Note: render() returns the root's natural width; the laid-out
-    // document height is what matters for pagination.
-    doc->render(content_width);
+    // document height is what matters for pagination. A litehtml throw
+    // here must not cross the C boundary, so it becomes a clean error.
+    try
+    {
+        doc->render(content_width);
+    }
+    catch (const std::exception& error)
+    {
+        std::snprintf(errbuf, errbuf_len, "html layout failed: %s", error.what());
+        HPDF_Free(pdf);
+        return -1;
+    }
+    catch (...)
+    {
+        std::snprintf(errbuf, errbuf_len, "html layout failed");
+        HPDF_Free(pdf);
+        return -1;
+    }
     float total_height = px(doc->height());
     if (total_height <= 0)
     {
@@ -2913,11 +2949,9 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         // Themed page background: fill the whole page before clipping.
         if (g_page_background.size() >= 7 && g_page_background[0] == '#')
         {
-            auto channel = [](const std::string& text, size_t offset) {
-                return std::strtol(text.substr(offset, 2).c_str(), nullptr, 16) / 255.0f;
-            };
-            HPDF_Page_SetRGBFill(page, channel(g_page_background, 1), channel(g_page_background, 3),
-                                 channel(g_page_background, 5));
+            unsigned char bg_red, bg_green, bg_blue;
+            page_background_channels(bg_red, bg_green, bg_blue);
+            HPDF_Page_SetRGBFill(page, bg_red / 255.0f, bg_green / 255.0f, bg_blue / 255.0f);
             HPDF_Page_Rectangle(page, 0, 0, page_width, page_height);
             HPDF_Page_Fill(page);
         }
@@ -2955,7 +2989,23 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
                                 clip_width,
                                 (int)std::ceil(flow_to_doc_in(container.wide_tables, window.second) -
                                                flow_to_doc_in(container.wide_tables, window.first)));
-        doc->draw(reinterpret_cast<litehtml::uint_ptr>(&context), 0, 0, &clip);
+        // A throw during drawing must not cross the C boundary either.
+        try
+        {
+            doc->draw(reinterpret_cast<litehtml::uint_ptr>(&context), 0, 0, &clip);
+        }
+        catch (const std::exception& error)
+        {
+            std::snprintf(errbuf, errbuf_len, "page draw failed: %s", error.what());
+            HPDF_Free(pdf);
+            return -1;
+        }
+        catch (...)
+        {
+            std::snprintf(errbuf, errbuf_len, "page draw failed");
+            HPDF_Free(pdf);
+            return -1;
+        }
         while (context.clip_depth > 0)
         {
             HPDF_Page_GRestore(page);
