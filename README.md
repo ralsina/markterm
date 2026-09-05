@@ -302,6 +302,10 @@ The only process-wide state is the font cache
 are cached for the life of the process because font metadata parsing
 is expensive, and duplicate registrations are ignored.
 
+Renderers are not thread-safe: litehtml and libharu make no
+thread-safety claims either. If several threads need to render,
+serialize the renders or use one process per worker.
+
 ## Contributing
 
 1. Fork it (<https://github.com/ralsina/markterm/fork>)
