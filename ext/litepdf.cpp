@@ -2304,6 +2304,27 @@ class PdfContainer : public litehtml::document_container
     // render_item positions are relative to the parent's content box
     // (litehtml accumulates x/y offsets while drawing), so the walk must
     // accumulate them too to get document-space coordinates.
+    // Distance from a table row box top down to the row's first drawn
+    // pixels: the top border and padding of the table's first cell (all
+    // cells share the style, so the first one stands for every row).
+    float first_cell_top_inset(const std::shared_ptr<litehtml::render_item>& item) const
+    {
+        for (const auto& child : item->children())
+        {
+            std::string child_tag = child->src_el() ? child->src_el()->get_tagName() : "";
+            if (child_tag == "td" || child_tag == "th")
+            {
+                return px(child->get_borders().top) + px(child->get_paddings().top);
+            }
+            float nested = first_cell_top_inset(child);
+            if (nested > 0)
+            {
+                return nested;
+            }
+        }
+        return 0.0f;
+    }
+
     void collect_breaks(const std::shared_ptr<litehtml::render_item>& item, float offset_x, float offset_y,
                         bool inside_atomic, std::set<int>& candidates, std::set<int>& heading_candidates)
     {
@@ -2325,19 +2346,23 @@ class PdfContainer : public litehtml::document_container
         }
         // Tables report one box per row: their tops become candidates so
         // a long table splits across pages at a row boundary. Each box is
-        // the row's first cell, whose top can sit a fraction below the
-        // row's first drawn pixels (collapsed borders, line-box leading),
-        // so bias the candidate up by 1px: the break must land strictly
-        // above a row, never at its first line.
+        // the row's first cell's content-box top, which sits below the
+        // cell's top border and padding; bias the candidate up by that
+        // inset plus 1px, so the break lands just above the row's border
+        // box. The row is then culled whole from the earlier page (no
+        // border slivers, no clipped ghost text), and the previous row's
+        // bottom border — the collapsed shared edge — is drawn on the
+        // continuation page, giving the first row there a top border.
         if (tag == "table")
         {
+            float cell_inset = first_cell_top_inset(item);
             std::vector<litehtml::position> row_boxes;
             item->get_row_boxes(row_boxes);
             for (const auto& box : row_boxes)
             {
                 if (px(box.height) > 0)
                 {
-                    candidates.insert((int)std::floor(abs_y + px(box.y)) - 1);
+                    candidates.insert((int)std::floor(abs_y + px(box.y) - cell_inset) - 1);
                 }
             }
         }
