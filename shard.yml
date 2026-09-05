@@ -35,6 +35,8 @@ dependencies:
     github: ralsina/sixteen
   tablo:
     github: hutou/tablo
+  term-color:
+    github: crystal-term/color
   term-screen:
     github: crystal-term/screen
   crimage:

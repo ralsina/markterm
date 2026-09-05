@@ -150,3 +150,52 @@ describe "markpdf CLI" do
     end
   end
 end
+
+it "renders left|center|right header and footer sections" do
+  pdftotext = Process.find_executable("pdftotext")
+  pending!("pdftotext not available") unless pdftotext
+  path = File.tempname("markpdf_cli", ".md")
+  output_path = File.tempname("markpdf_cli", ".pdf")
+  File.write(path, "# Sectioned\n\nbody")
+  begin
+    status, _output, error = run_cli(BIN_MARKPDF,
+      [path, "-o", output_path, "--header", "HEADL|HEADM|HEADR",
+       "--footer", "FOOTL|%p/%t|FOOTR"])
+    status.exit_code.should eq(0), error
+    text = IO::Memory.new
+    Process.run(pdftotext, ["-layout", output_path, "-"], output: text, error: IO::Memory.new)
+    lines = text.to_s.lines
+    header_lines = lines.select(&.includes?("HEADL"))
+    header_lines.size.should eq(1)
+    header_lines.first.should contain("HEADM")
+    header_lines.first.should contain("HEADR")
+    footer_lines = lines.select(&.includes?("FOOTL"))
+    footer_lines.size.should eq(1)
+    footer_lines.first.should contain("1/1")
+    footer_lines.first.should contain("FOOTR")
+    lines.join("\n").should_not contain("%p")
+  ensure
+    File.delete?(path)
+    File.delete?(output_path)
+  end
+end
+
+it "draws headers even without embedded fonts" do
+  # base-14-only documents used to silently drop headers/footers
+  pdftotext = Process.find_executable("pdftotext")
+  pending!("pdftotext not available") unless pdftotext
+  path = File.tempname("markpdf_cli", ".md")
+  output_path = File.tempname("markpdf_cli", ".pdf")
+  File.write(path, "# Plain\n\nbody")
+  begin
+    status, _output, error = run_cli(BIN_MARKPDF,
+      [path, "-o", output_path, "--header", "PLAINHEAD"])
+    status.exit_code.should eq(0), error
+    text = IO::Memory.new
+    Process.run(pdftotext, ["-layout", output_path, "-"], output: text, error: IO::Memory.new)
+    text.to_s.should contain("PLAINHEAD")
+  ensure
+    File.delete?(path)
+    File.delete?(output_path)
+  end
+end

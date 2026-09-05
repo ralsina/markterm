@@ -36,14 +36,22 @@ module Markd
     @block_buffer = ""
     @in_wrappable_block = false
     @image_visible = true
+    @images : Bool?
+    @no_links = false
 
-    def initialize(@options = Options.new, theme : String? = nil, code_theme : String? = nil, @force_links : Bool = false, max_width : Int32? = nil)
+    def initialize(@options = Options.new, theme : String? = nil, code_theme : String? = nil, @force_links : Bool = false, max_width : Int32? = nil, @images : Bool? = nil, @no_links : Bool = false)
       super(@options)
       @theme = Terminal.theme(theme)
       @code_theme = code_theme
       @style = Terminal::StyleStack.new
       @style << @theme["default"]
       @max_width = max_width
+    end
+
+    # OSC 8 links are on when the terminal supports them or they were
+    # forced, unless explicitly disabled
+    private def links_on? : Bool
+      !@no_links && (@force_links || Terminal.supports_links?)
     end
 
     # Print or collect based on whether we're in a table cell or wrappable block
@@ -328,7 +336,8 @@ module Markd
     def image(node : Node, entering : Bool) : Nil
       if entering
         dest = node.data["destination"]?.try(&.as(String)) || ""
-        image_data = Terminal.supports_images? ? Terminal.show_image(dest) : ""
+        want_images = @images.nil? ? Terminal.supports_images? : @images
+        image_data = want_images ? Terminal.show_image(dest) : ""
         if image_data.empty?
           # Fallback: an image placeholder, hyperlinked when the
           # terminal supports OSC 8. An alt-less image riding inside a
@@ -340,7 +349,7 @@ module Markd
           in_link = node.parent?.try(&.type) == Node::Type::Link
           if !alt.empty? || !in_link
             placeholder = alt.empty? ? "[image]" : "[image: #{alt}]"
-            if Terminal.supports_links? || @force_links
+            if links_on?
               print @style.apply("\n\e]8;;#{dest}\e\\#{placeholder}\e]8;;\e\\")
             else
               print @style.apply("\n#{placeholder}")
@@ -396,7 +405,7 @@ module Markd
       else
         # Print destination after all text nodes (for non-OSC8 links)
         # Skip URL in table cells to keep visible length correct
-        unless Terminal.supports_links? || @force_links || @in_table_cell
+        unless links_on? || @in_table_cell
           dest = node.data["destination"]?.try(&.as(String)) || ""
           # Only print a destination for real URLs, and then condensed
           # and dim: a full URL breaks the sentence's flow and rarely
@@ -454,7 +463,7 @@ module Markd
           output "<#{dest}>"
         else
           # This is a link with text.
-          if Terminal.supports_links? || @force_links
+          if links_on?
             # For OSC 8 links, wrap the text in the link
             output "\e]8;;#{dest}\e\\#{node.text}\e]8;;\e\\"
           else
@@ -698,7 +707,8 @@ module Markd
   def self.to_term(source : String, options = Options.new,
                    theme : String? = nil, code_theme : String? = nil,
                    force_links : Bool = false, max_width : Int32? = nil,
-                   hyphenate : Bool = false, language : String = "en") : String
+                   hyphenate : Bool = false, language : String = "en",
+                   images : Bool? = nil, no_links : Bool = false) : String
     return "" if source.empty?
     source = MathRender.rewrite_markdown_math(source)
     document = Parser.parse(source, options)
@@ -707,7 +717,7 @@ module Markd
       # before any rendering happens
       insert_soft_hyphens(document, Hyphen::Dictionary.load(language))
     end
-    renderer = TermRenderer.new(options, theme, code_theme, force_links, max_width)
+    renderer = TermRenderer.new(options, theme, code_theme, force_links, max_width, images, no_links)
     renderer.render(document)
   end
 

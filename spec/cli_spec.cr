@@ -122,3 +122,25 @@ describe "markterm hyphenation CLI" do
     output.should contain("-")
   end
 end
+
+describe "markterm image, link and pager switches" do
+  it "does not engage the pager when output is piped" do
+    stdout = IO::Memory.new
+    status = Process.run(BIN_MARKTERM, ["-"],
+      input: IO::Memory.new(("line\n" * 60)),
+      output: stdout, error: IO::Memory.new,
+      env: {"PAGER" => "true"})
+    status.exit_code.should eq(0)
+    stdout.to_s.should contain("line")
+  end
+
+  it "forces color with -c even under NO_COLOR" do
+    stdout = IO::Memory.new
+    status = Process.run(BIN_MARKTERM, ["-", "-c"],
+      input: IO::Memory.new("# Head\n"),
+      output: stdout, error: IO::Memory.new,
+      env: {"NO_COLOR" => "1"})
+    status.exit_code.should eq(0)
+    stdout.to_s.should contain("\e[")
+  end
+end

@@ -2867,39 +2867,100 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
     int page_count = 0;
     int total_pages = (int)windows.size();
     // Headers/footers use the body font (the first one created).
-    const PdfFont* page_text_font = container.fonts.empty() ? nullptr : &container.fonts[0];
     auto draw_page_text = [&](const std::string& templ, bool top)
     {
-        if (templ.empty() || !page_text_font || !context.page)
+        if (templ.empty() || !context.page)
         {
             return;
         }
-        std::string text = templ;
-        std::string number = std::to_string(page_count + 1);
-        std::string total = std::to_string(total_pages);
-        for (size_t pos = text.find("%p"); pos != std::string::npos; pos = text.find("%p"))
+        // Sections separated by '|': "left|center|right". A single
+        // section is centered (the original behavior); two are left
+        // and right; three are left, center and right.
+        std::vector<std::string> parts;
+        size_t section_start = 0;
+        while (parts.size() < 3)
         {
-            text.replace(pos, 2, number);
+            size_t bar = templ.find('|', section_start);
+            if (bar == std::string::npos)
+            {
+                parts.push_back(templ.substr(section_start));
+                break;
+            }
+            parts.push_back(templ.substr(section_start, bar - section_start));
+            section_start = bar + 1;
         }
-        for (size_t pos = text.find("%t"); pos != std::string::npos; pos = text.find("%t"))
+        std::vector<std::pair<std::string, char>> sections;
+        if (parts.size() == 1)
         {
-            text.replace(pos, 2, total);
+            sections = {{parts[0], 'c'}};
         }
-        const char* drawn = text.c_str();
-        std::string encoded;
-        if (!page_text_font->utf8)
+        else if (parts.size() == 2)
         {
-            encoded = to_cp1252(text.c_str());
-            drawn = encoded.c_str();
+            sections = {{parts[0], 'l'}, {parts[1], 'r'}};
         }
-        float size = std::max(7.0f, page_text_font->size * 0.85f);
-        HPDF_Page_SetFontAndSize(context.page, page_text_font->handle, size);
+        else
+        {
+            sections = {{parts[0], 'l'}, {parts[1], 'c'}, {parts[2], 'r'}};
+        }
+
+        // The body font draws the page text when there is one (full
+        // Unicode through the fallback machinery); otherwise fall back
+        // to base-14 Helvetica so headers and footers never silently
+        // vanish on base-14-only documents.
+        HPDF_Font handle;
+        float text_size;
+        bool utf8;
+        if (!container.fonts.empty())
+        {
+            handle = container.fonts[0].handle;
+            text_size = std::max(7.0f, container.fonts[0].size * 0.85f);
+            utf8 = container.fonts[0].utf8;
+        }
+        else
+        {
+            handle = HPDF_GetFont(pdf, "Helvetica", "StandardEncoding");
+            text_size = 9.0f;
+            utf8 = false;
+        }
+        if (!handle)
+        {
+            return;
+        }
+        HPDF_Page_SetFontAndSize(context.page, handle, text_size);
         HPDF_Page_SetRGBFill(context.page, 0.45f, 0.45f, 0.45f);
-        float width = HPDF_Page_TextWidth(context.page, drawn);
         float y = top ? page_height - margin * 0.35f : margin * 0.35f;
-        HPDF_Page_BeginText(context.page);
-        HPDF_Page_TextOut(context.page, (page_width - width) / 2.0f, y, drawn);
-        HPDF_Page_EndText(context.page);
+        for (const auto& [templ_text, align] : sections)
+        {
+            std::string text = templ_text;
+            if (text.empty())
+            {
+                continue;
+            }
+            std::string number = std::to_string(page_count + 1);
+            std::string total = std::to_string(total_pages);
+            for (size_t pos = text.find("%p"); pos != std::string::npos; pos = text.find("%p"))
+            {
+                text.replace(pos, 2, number);
+            }
+            for (size_t pos = text.find("%t"); pos != std::string::npos; pos = text.find("%t"))
+            {
+                text.replace(pos, 2, total);
+            }
+            const char* drawn = text.c_str();
+            std::string encoded;
+            if (!utf8)
+            {
+                encoded = to_cp1252(text.c_str());
+                drawn = encoded.c_str();
+            }
+            float width = HPDF_Page_TextWidth(context.page, drawn);
+            float x = align == 'l' ? margin
+                    : align == 'r' ? page_width - margin - width
+                                   : (page_width - width) / 2.0f;
+            HPDF_Page_BeginText(context.page);
+            HPDF_Page_TextOut(context.page, x, y, drawn);
+            HPDF_Page_EndText(context.page);
+        }
     };
     std::vector<HPDF_Page> page_handles;
     // Internal links wait for all pages to exist: their annotations need

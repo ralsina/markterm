@@ -332,3 +332,18 @@ describe "Hyphenation" do
     end
   end
 end
+
+describe "Image and link switches" do
+  it "never draws images with images: false" do
+    image_path = Dir.glob("/usr/share/icons/**/*.png").first?
+    pending!("no png icon available to test with") unless image_path
+    result = Markd.to_term("![dot](#{image_path})", images: false)
+    result.should contain("[image: dot]")
+  end
+
+  it "disables OSC 8 links with no_links even when forced" do
+    result = Markd.to_term("[foo](http://go.to)", force_links: true, no_links: true)
+    result.should_not contain("\e]8;;")
+    result.should contain("foo")
+  end
+end

@@ -31,15 +31,6 @@ It can also be used as a Crystal library.
 
 ## TODO
 
-Still open:
-
-* markterm: implement internal piping to $PAGER
-* markterm: allow enabling/disabling images and html-style-links via
-  CLI (links: done via `-l`, images: not yet)
-* markterm: use crystal-term/color to detect color capabilities
-* markpdf: richer header/footer templating (alignment, per-page
-  sections, fonts)
-
 Done recently (markpdf):
 
 * ✅ Built-in stylesheets (default, book, dark, sepia) with `--style`,
@@ -54,6 +45,9 @@ Done recently (markpdf):
   art for display math (GPL build flag)
 * ✅ Emoji and CJK rendering via font fallback (CID font embedding
   through a libharu patch)
+* ✅ Richer header/footer templating: `left|center|right` sections via
+  `|`, and a base-14 font fallback so headers and footers work even
+  without embedded fonts
 
 Done (markterm):
 
@@ -69,6 +63,11 @@ Done (markterm):
 * ✅ Task lists, GFM alerts, wrapped tables
 * ✅ Footnotes
 * ✅ Wrap styled table cells at word boundaries when tables are squeezed
+* ✅ Internal piping to $PAGER for tall documents (`--no-pager` opts out)
+* ✅ CLI switches for images and links (`--images`, `--no-images`,
+  `--no-links`)
+* ✅ Color capability detection: NO_COLOR and colorless terminals get
+  plain text with ATX heading hashes
 
 ### Upstreaming
 
@@ -106,7 +105,7 @@ This is the help:
 Markterm - A tool to render markdown to the terminal
 
 Usage:
-  markterm <file> [-t <theme>][--code-theme <code-theme>][-l][-c][-w <width>][--hyphenate][--language <language>]
+  markterm <file> [-t <theme>][--code-theme <code-theme>][-l][-c][-w <width>][--hyphenate][--language <language>][--images|--no-images][--no-links][--no-pager]
   markterm -h | --help
   markterm --version
 
@@ -116,10 +115,14 @@ Options:
   --code-theme <code-theme>  Theme to use for coloring code blocks
   --version                  Show version.
   -l                         Force html-like links
+  --no-links                 Never emit html-like links
   -c --color                 Force color output even when piping
   -w <width>                 Maximum line width for text wrapping (0 to disable, auto-detects if not specified)
   --hyphenate                Break long words at syllable boundaries when wrapping
   --language <language>      Hyphenation language: en or es [default: en]
+  --images                   Force images where the terminal can show them
+  --no-images                Never draw images; show placeholders instead
+  --no-pager                 Never pipe output to $PAGER
 
 If you use "-" as the file argument, markterm will read from stdin.
 ```
@@ -169,9 +172,11 @@ Options:
                              are used automatically when available.
   --emoji-font <font>        TTF font used for emoji and symbols the main fonts
                              lack (auto-detected from system fonts by default)
-  --header <header>          Page header text; "%p" is the page number, "%t" the
-                             total page count
-  --footer <footer>          Page footer text; supports the same placeholders
+    --header <header>          Page header text; "%p" is the page number, "%t" the
+                               total page count. Split it with "|" into
+                               left|center|right sections
+    --footer <footer>          Page footer text; supports the same placeholders
+                               and sections
 
 If you use "-" as the file argument, markpdf will read from stdin.
 Complete HTML documents (and .html files) are rendered directly,
