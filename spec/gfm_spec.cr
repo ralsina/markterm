@@ -53,8 +53,8 @@ describe "GFM rendering (to_term)" do
 
   it "colors the alert gutter per type, like the PDF borders" do
     accents = {
-      "NOTE"      => "\e[34m", "TIP" => "\e[32m", "IMPORTANT" => "\e[35m",
-      "WARNING"   => "\e[33m", "CAUTION" => "\e[31m",
+      "NOTE" => "\e[34m", "TIP" => "\e[32m", "IMPORTANT" => "\e[35m",
+      "WARNING" => "\e[33m", "CAUTION" => "\e[31m",
     }
     accents.each do |keyword, color|
       result = Markd.to_term("> [!#{keyword}]\n> body", options)

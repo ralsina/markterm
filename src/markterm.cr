@@ -455,11 +455,11 @@ module Markd
         # verbatim, ANSI codes and all, and the width math strips them
         # right back out.
         alert_type = node.data["alert"]?.try(&.as(String)) || ""
-        bar = if (accent = ALERT_ACCENTS[alert_type.downcase]?)
-          "│".colorize.fore(accent).to_s + " "
-        else
-          "│ "
-        end
+        bar = if accent = ALERT_ACCENTS[alert_type.downcase]?
+                "│".colorize.fore(accent).to_s + " "
+              else
+                "│ "
+              end
         @indent << bar
         blank_line
         @style << @theme["block_quote"]
