@@ -8,12 +8,11 @@ require "./spec_helper"
 # draws with clips that start at the document top. These examples render
 # multi-page documents and check, with pdftotext, that every item is
 # drawn exactly where pagination put it: each page shows a contiguous,
-# strictly increasing run of items, pages may only share the row that
-# straddles the break, and nothing is dropped or duplicated.
+# strictly increasing run of items, and nothing is dropped or duplicated.
 #
-# Rows that straddle a page break are drawn on both pages (the break
-# cuts through them), so the concatenated page sequence is allowed to
-# repeat the row shared by consecutive pages.
+# Table rows are atomic: a row is drawn whole on a single page, label
+# cell and body cell together, so page breaks land between rows and
+# never inside one.
 
 private def temp_pdf_path : String
   File.tempname("markpdf_spec", ".pdf")
@@ -28,6 +27,15 @@ private def page_text(pdftotext : String, pdf_path : String, page : Int32) : Str
   Process.run(pdftotext, ["-f", page.to_s, "-l", page.to_s, "-layout", pdf_path, "-"],
     output: output, error: IO::Memory.new)
   output.to_s
+end
+
+# Numbers of the pages whose extracted text contains the token.
+private def pages_containing(page_texts : Array(String), token : String) : Array(Int32)
+  pages = Array(Int32).new
+  page_texts.each_with_index do |page_text, page_index|
+    pages << page_index + 1 if page_text.includes?(token)
+  end
+  pages
 end
 
 # Extract the per-page sequences of "item N" numbers and check the
@@ -79,6 +87,53 @@ describe "markpdf pagination drawing" do
 
       page_texts = (1..pages).map { |page| page_text(pdftotext, path, page) }
       should_draw_items_in_order(page_texts, 80, "tablerow")
+    ensure
+      File.delete?(path)
+    end
+  end
+
+  # Two-cell rows with a short label and a tall body: the break must
+  # land between rows, so every label and the start of its body end up
+  # on the same single page. Zero-padded sentinels so "rowlabel02" is
+  # never a prefix hit for "rowlabel2"-style tokens.
+  it "draws two-cell table rows whole, never cut by a page break" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+
+    filler = "alpha bravo charlie delta echo foxtrot golf hotel india juliet " \
+             "kilo lima mike november oscar papa quebec romeo sierra tango " \
+             "uniform victor whiskey xray yankee zulu one two three four five " \
+             "six seven eight nine ten eleven twelve thirteen fourteen " \
+             "fifteen sixteen seventeen eighteen"
+    row_count = 30
+    rows = String.build do |io|
+      1.upto(row_count) do |row_number|
+        label = "rowlabel#{row_number.to_s.rjust(2, '0')}"
+        body_head = "rbody#{row_number.to_s.rjust(2, '0')}x"
+        io << "<tr><td>" << label << "</td><td>" << body_head << ' ' << filler << "</td></tr>"
+      end
+    end
+    source = <<-HTML
+      <table>
+        <tbody>#{rows}</tbody>
+      </table>
+      HTML
+
+    path = temp_pdf_path
+    begin
+      pages = Markd::Pdf.render(source, path, html_input: true)
+      pages.should be >= 2
+
+      page_texts = (1..pages).map { |page| page_text(pdftotext, path, page) }
+      1.upto(row_count) do |row_number|
+        label = "rowlabel#{row_number.to_s.rjust(2, '0')}"
+        body_head = "rbody#{row_number.to_s.rjust(2, '0')}x"
+        label_pages = pages_containing(page_texts, label)
+        body_pages = pages_containing(page_texts, body_head)
+        label_pages.size.should eq(1), "row #{row_number}: label drawn on pages #{label_pages}"
+        body_pages.size.should eq(1), "row #{row_number}: body drawn on pages #{body_pages}"
+        label_pages.should eq(body_pages), "row #{row_number}: label and body on different pages"
+      end
     ensure
       File.delete?(path)
     end

@@ -2203,7 +2203,7 @@ class PdfContainer : public litehtml::document_container
         // stay atomic — breaks land between rows, never inside one.
         static const std::set<std::string> atomic_tags = {"h1", "h2", "h3", "h4", "h5", "h6",
                                                           "pre", "img", "figure", "svg", "hr",
-                                                          "li"};
+                                                          "li", "tr", "td", "th"};
         return atomic_tags.count(tag) > 0;
     }
 
@@ -2234,7 +2234,11 @@ class PdfContainer : public litehtml::document_container
             candidates.insert((int)std::floor(offset_y + px(item->top())));
         }
         // Tables report one box per row: their tops become candidates so
-        // a long table splits across pages at a row boundary.
+        // a long table splits across pages at a row boundary. Each box is
+        // the row's first cell, whose top can sit a fraction below the
+        // row's first drawn pixels (collapsed borders, line-box leading),
+        // so bias the candidate up by 1px: the break must land strictly
+        // above a row, never at its first line.
         if (tag == "table")
         {
             std::vector<litehtml::position> row_boxes;
@@ -2243,7 +2247,7 @@ class PdfContainer : public litehtml::document_container
             {
                 if (px(box.height) > 0)
                 {
-                    candidates.insert((int)std::floor(abs_y + px(box.y)));
+                    candidates.insert((int)std::floor(abs_y + px(box.y)) - 1);
                 }
             }
         }
