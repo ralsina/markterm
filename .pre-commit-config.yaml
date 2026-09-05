@@ -34,4 +34,4 @@ repos:
         - id: commitizen-branch
           stages:
             - post-commit
-            - push
+            - pre-push
