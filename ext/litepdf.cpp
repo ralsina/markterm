@@ -599,10 +599,12 @@ bool is_emoji_codepoint(uint32_t codepoint)
            (codepoint >= 0x1F000 && codepoint <= 0x1FAFF); // emoji planes
 }
 
-// Zero-width joiners/variation selectors never draw on their own.
+// Zero-width joiners/variation selectors never draw on their own;
+// soft hyphens are dropped unless the line broke there (a break at
+// one draws a real ASCII hyphen appended by litehtml instead).
 bool is_zero_width_codepoint(uint32_t codepoint)
 {
-    return codepoint == 0xFE0F || codepoint == 0xFE0E || codepoint == 0x200D;
+    return codepoint == 0xFE0F || codepoint == 0xFE0E || codepoint == 0x200D || codepoint == 0x00AD;
 }
 
 // The explicit emoji font path (--emoji-font); empty means auto-detect.

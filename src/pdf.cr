@@ -13,6 +13,7 @@ require "base64"
 require "./cli"
 require "./pdf_styles"
 require "./math_render"
+require "./hyphenation"
 
 # Render markdown to PDF: markdown -> HTML (markd) -> litehtml layout ->
 # libharu PDF, via the C++ shim in ext/ (built with `make -C ext`).
@@ -133,7 +134,7 @@ module Markd
                     page_size : String = "a4", margin_mm : Float64 = 20.0, base_dir : String = ".",
                     header : String = "", footer : String = "", code_theme : String? = nil,
                     theme : String? = nil, html_input : Bool = false, style : String? = nil,
-                    pageless : Bool = false) : Int32
+                    pageless : Bool = false, hyphenate : Bool = false, language : String = "en") : Int32
       # A style argument switches the base stylesheet at render time and
       # raises Error on an unknown name. CSS layered earlier (theme,
       # user) is replaced by the bare style; set the layers afterwards
@@ -163,6 +164,7 @@ module Markd
           html = process_images(source, base_dir, temp_dir, converted)
         else
           body_html = process_images(MathRender.rewrite_html(rewrite_task_lists(Markd.to_html(source, options, formatter: formatter))), base_dir, temp_dir, converted)
+          body_html = hyphenate_body(body_html, hyphenate, language)
           html = document_html(body_html, extra_css: formatter.style_defs)
         end
         size_code = PAGE_SIZES[page_size.downcase]?
@@ -185,6 +187,18 @@ module Markd
           Dir.delete(temp_dir)
         rescue File::Error
         end
+      end
+    end
+
+    # Soft hyphens go in last: they only make sense on the final text,
+    # and the math spans the rewriter emits must stay intact. Unknown
+    # languages surface as the module's Error type.
+    private def self.hyphenate_body(body_html : String, hyphenate : Bool, language : String) : String
+      return body_html unless hyphenate
+      begin
+        insert_soft_hyphens(body_html, language)
+      rescue error : ArgumentError
+        raise Error.new(error.message)
       end
     end
 

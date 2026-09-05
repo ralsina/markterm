@@ -22,6 +22,10 @@ dependencies:
   markd:
     github: ralsina/markd
     commit: be4adc9e7764a3a4178fe017b0511534bdf79f1a
+  # Kept in-tree (path dependency) so it can be extracted into its
+  # own repository later without changing the require.
+  hyphen:
+    path: ./hyphen
   docopt:
     github: ralsina/docopt.cr
   tartrazine:

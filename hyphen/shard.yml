@@ -1,0 +1,11 @@
+name: hyphen
+version: 0.1.0
+
+authors:
+  - Roberto Alsina <roberto.alsina@gmail.com>
+
+crystal: '>= 1.13.0'
+
+# The shard's code is MIT; the embedded pattern data in data/ carries
+# its own licenses, documented in data/README.md.
+license: MIT

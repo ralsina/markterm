@@ -40,6 +40,11 @@ doc = <<-DOC
                                no headers/footers — good for on-screen reading,
                                wrong for printing. Very long documents scale
                                down to fit the PDF page-size limit.
+    --hyphenate                Insert soft hyphens at hyphenation points, so
+                               fully justified paragraphs can break long words
+                               with a hyphen at the line end
+    --language <language>      Hyphenation language for --hyphenate: en or es
+                               [default: en]
 
   If you use "-" as the file argument, markpdf will read from stdin.
   Complete HTML documents (and .html files) are rendered directly,
@@ -101,7 +106,7 @@ def pick_code_theme(code_theme : String?, theme : String?, style : String)
   code_theme
 end
 
-def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless)
+def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
 
@@ -122,14 +127,16 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
   if output
     Markd::Pdf.render(input, output, options, page_size: page_size, html_input: html_input,
       margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "",
-      code_theme: code_theme, theme: theme, pageless: pageless)
+      code_theme: code_theme, theme: theme, pageless: pageless, hyphenate: hyphenate,
+      language: language)
   else
     # No output file: render to a temporary file and stream to stdout
     temp_path = File.tempname("markpdf", ".pdf")
     begin
       Markd::Pdf.render(input, temp_path, options, page_size: page_size, html_input: html_input,
         margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "",
-        code_theme: code_theme, theme: theme, pageless: pageless)
+        code_theme: code_theme, theme: theme, pageless: pageless, hyphenate: hyphenate,
+        language: language)
       STDOUT.write(File.read(temp_path).to_slice)
     ensure
       File.delete?(temp_path)
@@ -200,6 +207,8 @@ begin
     style,
     (file.as(String).ends_with?(".html") || file.as(String).ends_with?(".htm")),
     options["--pageless"] == true,
+    options["--hyphenate"] == true,
+    options["--language"].as(String),
   )
 rescue error
   abort_with(error.message.to_s)

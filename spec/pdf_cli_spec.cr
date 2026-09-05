@@ -60,6 +60,26 @@ describe "markpdf CLI" do
     end
   end
 
+  it "renders with --hyphenate and rejects an unknown --language" do
+    path = File.tempname("markpdf_cli", ".md")
+    output_path = File.tempname("markpdf_cli", ".pdf")
+    File.write(path, "# Hyphenated\n\ninternationalization internationalization")
+    begin
+      status, _output, error = run_cli(BIN_MARKPDF,
+        [path, "--style", "book", "--hyphenate", "-o", output_path])
+      status.exit_code.should eq(0), error
+      File.read(output_path)[0, 5].should eq("%PDF-")
+
+      status, _output, error = run_cli(BIN_MARKPDF,
+        [path, "--style", "book", "--hyphenate", "--language", "tlh", "-o", output_path])
+      status.exit_code.should eq(1)
+      error.should contain("tlh")
+    ensure
+      File.delete?(path)
+      File.delete?(output_path)
+    end
+  end
+
   it "fails for a missing css file" do
     path = File.tempname("markpdf_cli", ".md")
     File.write(path, "content")

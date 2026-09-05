@@ -20,6 +20,10 @@ shards:
     git: https://github.com/ralsina/docopt.cr.git
     version: 0.3.1
 
+  hyphen:
+    path: ./hyphen
+    version: 0.1.0
+
   markd:
     git: https://github.com/ralsina/markd.git
     version: 0.6.0+git.commit.be4adc9e7764a3a4178fe017b0511534bdf79f1a

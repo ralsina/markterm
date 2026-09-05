@@ -15,3 +15,7 @@ compare/
 /xx.pdf
 /.zcode/
 
+
+# shards artifacts from running shards inside the in-tree shard
+hyphen/lib/
+hyphen/shard.lock
