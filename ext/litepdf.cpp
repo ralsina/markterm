@@ -1445,8 +1445,13 @@ class PdfContainer : public litehtml::document_container
             {
                 bool primary_covers = primary.utf8 ? (!primary.coverage || primary.coverage->covers(codepoint))
                                                    : cp1252_covers(codepoint);
+                // Non-BMP codepoints get the fallback chain even when the
+                // primary claims coverage: fonts like DejaVu map the emoji
+                // block to blank placeholder glyphs, so a claim there is
+                // worthless.
+                bool trust_primary = primary_covers && codepoint <= 0xFFFF;
                 const PdfFont* piece_font = &primary;
-                if (!primary_covers)
+                if (!trust_primary)
                 {
                     const PdfFont* fallback = nullptr;
                     if (emoji_possible() && is_emoji_codepoint(codepoint))
@@ -1458,7 +1463,7 @@ class PdfContainer : public litehtml::document_container
                         fallback = fallback_font_at(primary.size, primary.decoration, codepoint);
                     }
                     // no covering font: the codepoint stays with the
-                    // primary and the viewer shows .notdef
+                    // primary and the viewer shows whatever it has
                     if (fallback)
                     {
                         piece_font = fallback;
@@ -2465,6 +2470,78 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
     g_last_op = "creating document";
     HPDF_SetCompressionMode(pdf, HPDF_COMP_ALL);
     HPDF_UseUTFEncodings(pdf);
+
+    // Codepoints beyond the BMP cannot be encoded in the 16-bit CID
+    // space: each one found in the document gets an alternate CID from
+    // a pool below the top of the 2-byte range (U+FFF0.. — interlinear
+    // annotation and byte-order codepoints, which real text essentially
+    // never contains). Registered before layout so every font created
+    // afterwards resolves them in its CIDToGIDMap and ToUnicode.
+    if (HPDF_Encoder utf8_encoder = HPDF_GetEncoder(pdf, "UTF-8"))
+    {
+        uint32_t next_cid = 0xFFF0;
+        bool pool_exhausted = false;
+        const unsigned char* cursor = reinterpret_cast<const unsigned char*>(html);
+        while (*cursor)
+        {
+            uint32_t codepoint = cursor[0];
+            int extra = 0;
+            if (codepoint >= 0xF0)
+            {
+                codepoint &= 0x07;
+                extra = 3;
+            }
+            else if (codepoint >= 0xE0)
+            {
+                codepoint &= 0x0F;
+                extra = 2;
+            }
+            else if (codepoint >= 0xC0)
+            {
+                codepoint &= 0x1F;
+                extra = 1;
+            }
+            else
+            {
+                cursor += 1;
+                continue;
+            }
+            bool valid = true;
+            for (int i = 0; i < extra; i++)
+            {
+                if ((cursor[1 + i] & 0xC0) != 0x80)
+                {
+                    valid = false;
+                    break;
+                }
+                codepoint = (codepoint << 6) | (uint32_t)(cursor[1 + i] & 0x3F);
+            }
+            if (!valid)
+            {
+                cursor += 1;
+                continue;
+            }
+            if (codepoint > 0xFFFF && !HPDF_GetEncoderAlternate(utf8_encoder, codepoint))
+            {
+                if (next_cid < 0xE000 || pool_exhausted)
+                {
+                    if (!pool_exhausted)
+                    {
+                        pool_exhausted = true;
+                        std::fprintf(stderr,
+                                     "markpdf: more than %u non-BMP codepoints in one "
+                                     "document; the rest degrade to spaces\n",
+                                     0xFFF0u - 0xE000u);
+                    }
+                }
+                else if (HPDF_SetEncoderAlternate(utf8_encoder, codepoint, (uint16_t)next_cid) == HPDF_OK)
+                {
+                    next_cid--;
+                }
+            }
+            cursor += extra + 1;
+        }
+    }
 
     PdfContainer container(pdf);
     container.base_dir = base_dir ? base_dir : ".";

@@ -1,5 +1,50 @@
+diff --git a/include/hpdf_encoder.h b/include/hpdf_encoder.h
+index 520e53a..8aca548 100644
+--- a/include/hpdf_encoder.h
++++ b/include/hpdf_encoder.h
+@@ -215,6 +215,14 @@ typedef struct _HPDF_UnicodeMap_Rec {
+     HPDF_UINT16  unicode;
+ } HPDF_UnicodeMap_Rec;
+ 
++/* A codepoint outside the BMP mapped into the 16-bit CID space by
++ * HPDF_SetEncoderAlternate: the content stream encodes the alternate
++ * CID and readers decode it back through the ToUnicode bfchar entry. */
++typedef struct _HPDF_AlternateUnicodeRec {
++      HPDF_UINT32  codepoint;
++      HPDF_UINT16  cid;
++} HPDF_AlternateUnicodeRec;
++
+ typedef struct _HPDF_CMapEncoderAttr_Rec  *HPDF_CMapEncoderAttr;
+ 
+ typedef struct  _HPDF_CMapEncoderAttr_Rec {
+@@ -224,6 +232,7 @@ typedef struct  _HPDF_CMapEncoderAttr_Rec {
+       HPDF_List                        cmap_range;
+       HPDF_List                        notdef_range;
+       HPDF_List                        code_space_range;
++      HPDF_List                        alternate_map;
+       HPDF_WritingMode                 writing_mode;
+       char                             registry[HPDF_LIMIT_MAX_NAME_LEN + 1];
+       char                             ordering[HPDF_LIMIT_MAX_NAME_LEN + 1];
+@@ -235,6 +244,17 @@ typedef struct  _HPDF_CMapEncoderAttr_Rec {
+ } HPDF_CMapEncoderAttr_Rec;
+ 
+ 
++HPDF_STATUS
++HPDF_SetEncoderAlternate  (HPDF_Encoder   encoder,
++                           HPDF_UINT32    codepoint,
++                           HPDF_UINT16    cid);
++
++
++HPDF_UINT16
++HPDF_GetEncoderAlternate  (HPDF_Encoder   encoder,
++                           HPDF_UINT32    codepoint);
++
++
+ HPDF_Encoder
+ HPDF_CMapEncoder_New  (HPDF_MMgr                mmgr,
+                        char                    *name,
 diff --git a/include/hpdf_fontdef.h b/include/hpdf_fontdef.h
-index c094f7f..a4f2068 100644
+index c094f7f..5244483 100644
 --- a/include/hpdf_fontdef.h
 +++ b/include/hpdf_fontdef.h
 @@ -233,6 +233,15 @@ typedef struct _HPDF_TTF_CmapRange {
@@ -27,8 +72,143 @@ index c094f7f..a4f2068 100644
      HPDF_UINT16              fs_type;
      HPDF_BYTE                sfamilyclass[2];
      HPDF_BYTE                panose[10];
+@@ -339,6 +350,10 @@ HPDF_UINT16
+ HPDF_TTFontDef_GetGlyphid  (HPDF_FontDef   fontdef,
+                             HPDF_UINT16    unicode);
+ 
++HPDF_UINT16
++HPDF_TTFontDef_GetGlyphidU32  (HPDF_FontDef   fontdef,
++                               HPDF_UINT32    code);
++
+ 
+ HPDF_INT16
+ HPDF_TTFontDef_GetCharWidth  (HPDF_FontDef   fontdef,
+diff --git a/src/hpdf_encoder.c b/src/hpdf_encoder.c
+index 207afcd..ec4e25c 100644
+--- a/src/hpdf_encoder.c
++++ b/src/hpdf_encoder.c
+@@ -2598,10 +2598,69 @@ HPDF_CMapEncoder_InitAttr  (HPDF_Encoder  encoder)
+     if (!encoder_attr->code_space_range)
+         return encoder->error->error_no;
+ 
++    encoder_attr->alternate_map = HPDF_List_New (encoder->mmgr,
++                HPDF_DEF_ITEMS_PER_BLOCK);
++    if (!encoder_attr->alternate_map)
++        return encoder->error->error_no;
++
+     return HPDF_OK;
+ }
+ 
+ 
++HPDF_STATUS
++HPDF_SetEncoderAlternate  (HPDF_Encoder   encoder,
++                           HPDF_UINT32    codepoint,
++                           HPDF_UINT16    cid)
++{
++    HPDF_CMapEncoderAttr attr;
++    HPDF_AlternateUnicodeRec *entry;
++
++    if (!encoder || encoder->type != HPDF_ENCODER_TYPE_DOUBLE_BYTE)
++        return HPDF_INVALID_ENCODER;
++
++    attr = (HPDF_CMapEncoderAttr)encoder->attr;
++    if (!attr || !attr->alternate_map)
++        return HPDF_INVALID_ENCODER;
++
++    if (codepoint <= 0xFFFF)
++        return HPDF_INVALID_PARAMETER;
++
++    entry = HPDF_GetMem (encoder->mmgr, sizeof (HPDF_AlternateUnicodeRec));
++    if (!entry)
++        return encoder->error->error_no;
++
++    entry->codepoint = codepoint;
++    entry->cid = cid;
++
++    return HPDF_List_Add (attr->alternate_map, entry);
++}
++
++
++HPDF_UINT16
++HPDF_GetEncoderAlternate  (HPDF_Encoder   encoder,
++                           HPDF_UINT32    codepoint)
++{
++    HPDF_CMapEncoderAttr attr;
++    HPDF_UINT i;
++
++    if (!encoder)
++        return 0;
++
++    attr = (HPDF_CMapEncoderAttr)encoder->attr;
++    if (!attr || !attr->alternate_map)
++        return 0;
++
++    for (i = 0; i < attr->alternate_map->count; i++) {
++        HPDF_AlternateUnicodeRec *entry = HPDF_List_ItemAt (attr->alternate_map, i);
++
++        if (entry->codepoint == codepoint)
++            return entry->cid;
++    }
++
++    return 0;
++}
++
++
+ HPDF_UNICODE
+ HPDF_CMapEncoder_ToUnicode  (HPDF_Encoder  encoder,
+                              HPDF_UINT16   code)
+@@ -2667,6 +2726,18 @@ HPDF_CMapEncoder_Free  (HPDF_Encoder  encoder)
+         HPDF_List_Free (attr->code_space_range);
+     }
+ 
++    if (attr && attr->alternate_map) {
++        HPDF_AlternateUnicodeRec *alt;
++
++        for (i = 0; i < attr->alternate_map->count; i++) {
++            alt = HPDF_List_ItemAt (attr->alternate_map, i);
++
++            HPDF_FreeMem (encoder->mmgr, alt);
++        }
++
++        HPDF_List_Free (attr->alternate_map);
++    }
++
+     HPDF_FreeMem (encoder->mmgr, encoder->attr);
+     encoder->attr = NULL;
+ }
+diff --git a/src/hpdf_encoder_utf.c b/src/hpdf_encoder_utf.c
+index 77147fa..3f70b8e 100644
+--- a/src/hpdf_encoder_utf.c
++++ b/src/hpdf_encoder_utf.c
+@@ -147,7 +147,7 @@ UTF8_Encoder_ToUnicode_Func  (HPDF_Encoder   encoder,
+     switch (utf8_attr->end_byte) {
+     case 3:
+ 	val = (unsigned int) ((utf8_attr->utf8_bytes[0] & 0x7) << 18) +
+-	    (unsigned int) ((utf8_attr->utf8_bytes[1]) << 12)       +
++	    (unsigned int) ((utf8_attr->utf8_bytes[1] & 0x3f) << 12) +
+ 	    (unsigned int) ((utf8_attr->utf8_bytes[2] & 0x3f) << 6) +
+ 	    (unsigned int) ((utf8_attr->utf8_bytes[3] & 0x3f));
+ 	break;
+@@ -167,8 +167,15 @@ UTF8_Encoder_ToUnicode_Func  (HPDF_Encoder   encoder,
+ 	val = 32; // Unknown character
+     }
+ 
+-    if (val > 65535) //Convert everything outside UCS-2 to space
+-        val = 32;
++    if (val > 65535) {
++	// Codepoints beyond the BMP are drawn through an alternate CID
++	// registered with HPDF_SetEncoderAlternate; unmapped ones (or an
++	// exhausted alternate pool) degrade to space.
++	HPDF_UINT16 cid = HPDF_GetEncoderAlternate (encoder, val);
++	if (cid != 0)
++	    return cid;
++	val = 32;
++    }
+ 
+     return val;
+ }
 diff --git a/src/hpdf_font_cid.c b/src/hpdf_font_cid.c
-index 0b76a36..4391373 100644
+index 0b76a36..1bb2ecf 100644
 --- a/src/hpdf_font_cid.c
 +++ b/src/hpdf_font_cid.c
 @@ -61,7 +61,8 @@ CidRangeToHex (char        *s,
@@ -73,7 +253,43 @@ index 0b76a36..4391373 100644
      ret += HPDF_Dict_AddNumber (cid_system_info, "Supplement",
              encoder_attr->suppliment);
  
-@@ -473,7 +479,8 @@ CIDFontType2_New (HPDF_Font parent, HPDF_Xref xref)
+@@ -418,6 +424,23 @@ CIDFontType2_New (HPDF_Font parent, HPDF_Xref xref)
+ 	}
+     }
+ 
++    /* non-BMP codepoints the encoder mapped into alternate CIDs: the
++     * CID space is 16-bit, so these were assigned from a pool by the
++     * document, and here they resolve to this font's glyphs */
++    if (encoder->to_unicode_fn != HPDF_CMapEncoder_ToUnicode &&
++            encoder_attr->alternate_map) {
++        for (i = 0; i < encoder_attr->alternate_map->count; i++) {
++            HPDF_AlternateUnicodeRec *alt = HPDF_List_ItemAt (
++                    encoder_attr->alternate_map, i);
++            HPDF_UINT16 gid = HPDF_TTFontDef_GetGlyphidU32 (fontdef,
++                    alt->codepoint);
++
++            tmp_map[alt->cid] = gid;
++            if (max < alt->cid)
++                max = alt->cid;
++        }
++    }
++
+     if (max > 0) {
+         HPDF_INT16 dw = fontdef->missing_width;
+         HPDF_UNICODE *ptmp_map = tmp_map;
+@@ -431,7 +454,10 @@ CIDFontType2_New (HPDF_Font parent, HPDF_Xref xref)
+         if (HPDF_Dict_Add (font, "W", array) != HPDF_OK)
+             return NULL;
+ 
+-        for (i = 0; i < max; i++, ptmp_map++) {
++        /* i <= max: the highest CID must get its width queried too —
++         * GetGidWidth flags the glyph for the embedded subset, and a
++         * CID skipped here renders as .notdef */
++        for (i = 0; i <= max; i++, ptmp_map++) {
+             HPDF_INT w = HPDF_TTFontDef_GetGidWidth (fontdef, *ptmp_map);
+ 
+             if (w != dw) {
+@@ -473,7 +499,8 @@ CIDFontType2_New (HPDF_Font parent, HPDF_Xref xref)
              }
  
              if ((ret = HPDF_Stream_Write (attr->map_stream->stream,
@@ -83,7 +299,7 @@ index 0b76a36..4391373 100644
                  return NULL;
          }
      } else {
-@@ -491,8 +498,13 @@ CIDFontType2_New (HPDF_Font parent, HPDF_Xref xref)
+@@ -491,8 +518,13 @@ CIDFontType2_New (HPDF_Font parent, HPDF_Xref xref)
  
      ret += HPDF_Dict_Add (cid_system_info, "Registry",
              HPDF_String_New (parent->mmgr, encoder_attr->registry, NULL));
@@ -98,8 +314,41 @@ index 0b76a36..4391373 100644
      ret += HPDF_Dict_AddNumber (cid_system_info, "Supplement",
              encoder_attr->suppliment);
  
-@@ -867,7 +879,8 @@ CidRangeToHex  (char        *s,
+@@ -865,9 +897,41 @@ CidRangeToHex  (char        *s,
+     return pbuf;
+ }
  
++/* Destination of a bfchar entry for a codepoint beyond the BMP: its
++ * UTF-16 surrogate pair, written as one <8-hex-digit> token. */
++static char*
++AlternateDstToHex  (char        *buf,
++                    HPDF_UINT32  codepoint,
++                    char        *eptr)
++{
++    static const char hexdig[] = "0123456789ABCDEF";
++    HPDF_UINT32 tail = codepoint - 0x10000;
++    HPDF_UINT16 surrogates[2];
++    char *pbuf = buf;
++    int i, j;
++
++    surrogates[0] = (HPDF_UINT16)(0xD800 + (tail >> 10));
++    surrogates[1] = (HPDF_UINT16)(0xDC00 + (tail & 0x3FF));
++
++    if (eptr - buf < 11)
++        return buf;
++
++    *pbuf++ = '<';
++    for (i = 0; i < 2; i++) {
++        for (j = 3; j >= 0; j--) {
++            *pbuf++ = hexdig[(surrogates[i] >> (j * 4)) & 0xF];
++        }
++    }
++    *pbuf++ = '>';
++    *pbuf = 0;
++
++    return pbuf;
++}
++
  static HPDF_Dict
  CreateCMap  (HPDF_Encoder   encoder,
 -             HPDF_Xref      xref)
@@ -108,7 +357,7 @@ index 0b76a36..4391373 100644
  {
      HPDF_STATUS ret = HPDF_OK;
      HPDF_Dict cmap = HPDF_DictStream_New (encoder->mmgr, xref);
-@@ -1032,36 +1045,49 @@ CreateCMap  (HPDF_Encoder   encoder,
+@@ -1032,36 +1096,49 @@ CreateCMap  (HPDF_Encoder   encoder,
      if (ret != HPDF_OK)
          return NULL;
  
@@ -169,7 +418,7 @@ index 0b76a36..4391373 100644
  
              ret += HPDF_Stream_WriteStr (cmap->stream, buf);
          }
-@@ -1070,8 +1096,11 @@ CreateCMap  (HPDF_Encoder   encoder,
+@@ -1070,10 +1147,44 @@ CreateCMap  (HPDF_Encoder   encoder,
              return NULL;
      }
  
@@ -180,11 +429,45 @@ index 0b76a36..4391373 100644
 +                        "endcidrange\r\n", eptr);
 +    else
 +        pbuf = buf;
++    ret += HPDF_Stream_WriteStr (cmap->stream, buf);
++    if (ret != HPDF_OK)
++        return NULL;
++
++    /* non-BMP codepoints: a ToUnicode stream decodes their alternate
++     * CIDs through explicit bfchar entries (UTF-16 surrogate pairs) */
++    if (to_unicode && attr->alternate_map &&
++            attr->alternate_map->count > 0) {
++        pbuf = HPDF_IToA (buf, attr->alternate_map->count, eptr);
++        HPDF_StrCpy (pbuf, " beginbfchar\r\n", eptr);
++        ret += HPDF_Stream_WriteStr (cmap->stream, buf);
++
++        for (i = 0; i < attr->alternate_map->count; i++) {
++            HPDF_AlternateUnicodeRec *alt = HPDF_List_ItemAt (
++                    attr->alternate_map, i);
++
++            pbuf = UINT16ToHex (buf, alt->cid, eptr, 2);
++            *pbuf++ = ' ';
++            pbuf = AlternateDstToHex (pbuf, alt->codepoint, eptr);
++            HPDF_StrCpy (pbuf, "\r\n", eptr);
++
++            ret += HPDF_Stream_WriteStr (cmap->stream, buf);
++
++            if (ret != HPDF_OK)
++                return NULL;
++        }
++
++        ret += HPDF_Stream_WriteStr (cmap->stream, "endbfchar\r\n\r\n");
++        if (ret != HPDF_OK)
++            return NULL;
++    }
  
-     pbuf = (char *)HPDF_StrCpy (pbuf, "endcmap\r\n", eptr);
+-    pbuf = (char *)HPDF_StrCpy (pbuf, "endcmap\r\n", eptr);
++    pbuf = (char *)HPDF_StrCpy (buf, "endcmap\r\n", eptr);
      pbuf = (char *)HPDF_StrCpy (pbuf, "CMapName currentdict /CMap "
+             "defineresource pop\r\n", eptr);
+     pbuf = (char *)HPDF_StrCpy (pbuf, "end\r\n", eptr);
 diff --git a/src/hpdf_fontdef_tt.c b/src/hpdf_fontdef_tt.c
-index 5e70c6f..e6d8584 100644
+index 5e70c6f..3188cbb 100644
 --- a/src/hpdf_fontdef_tt.c
 +++ b/src/hpdf_fontdef_tt.c
 @@ -125,6 +125,9 @@ ParseHhea (HPDF_FontDef  fontdef);
@@ -207,45 +490,89 @@ index 5e70c6f..e6d8584 100644
          if (attr->offset_tbl.table)
              HPDF_FreeMem (fontdef->mmgr, attr->offset_tbl.table);
  
-@@ -886,6 +892,7 @@ ParseCMap (HPDF_FontDef  fontdef)
+@@ -886,6 +892,8 @@ ParseCMap (HPDF_FontDef  fontdef)
      HPDF_UINT16 num_cmap;
      HPDF_UINT i;
      HPDF_UINT32 ms_unicode_encoding_offset = 0;
++    HPDF_UINT32 apple_unicode_encoding_offset = 0;
 +    HPDF_UINT32 full_unicode_encoding_offset = 0;
      HPDF_UINT32 byte_encoding_offset = 0;
  
      HPDF_PTRACE ((" HPDF_TTFontDef_ParseCMap\n"));
-@@ -944,8 +951,17 @@ ParseCMap (HPDF_FontDef  fontdef)
-             break;
-         }
+@@ -939,22 +947,32 @@ ParseCMap (HPDF_FontDef  fontdef)
+                         encodingID, format, (HPDF_UINT)offset));
  
+         /* MS-Unicode-CMAP is used for priority */
+-        if (platformID == 3 && encodingID == 1 && format == 4) {
++        if (platformID == 3 && encodingID == 1 && format == 4 &&
++                ms_unicode_encoding_offset == 0) {
+             ms_unicode_encoding_offset = offset;
+-            break;
++        }
++
 +        /* Full-Unicode-CMAP (format 12) covers code points beyond the
 +         * BMP and is often the only subtable CJK and symbol fonts ship
-+         * for their whole repertoire. */
++         * for their whole repertoire. Parsed in addition to the BMP
++         * cmap whenever present. */
 +        if ((platformID == 3 && encodingID == 10) ||
 +                (platformID == 0 && encodingID == 4)) {
 +            if (format == 12 && full_unicode_encoding_offset == 0)
 +                full_unicode_encoding_offset = offset;
-+        }
-+
+         }
+ 
          /* Byte-Encoding-CMAP will be used if MS-Unicode-CMAP is not found */
 -        if (platformID == 1 && encodingID ==0 && format == 1)
 +        if (platformID == 1 && encodingID == 0 && format == 0)
              byte_encoding_offset = offset;
  
          /* Apple - see https://github.com/opentypejs/opentype.js/issues/139
-@@ -966,6 +982,10 @@ ParseCMap (HPDF_FontDef  fontdef)
+          *  For example: Helvetica.ttc has platformID == 0 and encodingID == 1;
+          *  HelveticaNeue.tcc has platformID == 0 and encodingID == 3
+          */
+-        if (platformID == 0 && (encodingID == 1 || encodingID == 3) && format == 4) {
+-            ms_unicode_encoding_offset = offset;
+-            break;
++        if (platformID == 0 && (encodingID == 1 || encodingID == 3) &&
++                format == 4 && ms_unicode_encoding_offset == 0) {
++            apple_unicode_encoding_offset = offset;
+         }
+ 
+         ret = HPDF_Stream_Seek (attr->stream, save_offset, HPDF_SEEK_SET);
+@@ -966,10 +984,32 @@ ParseCMap (HPDF_FontDef  fontdef)
          HPDF_PTRACE((" found microsoft unicode cmap.\n"));
          ret = ParseCMAP_format4(fontdef, ms_unicode_encoding_offset +
                  tbl->offset);
-+    } else if (full_unicode_encoding_offset != 0) {
-+        HPDF_PTRACE((" found full unicode cmap.\n"));
-+        ret = ParseCMAP_format12(fontdef, full_unicode_encoding_offset +
++    } else if (apple_unicode_encoding_offset != 0) {
++        HPDF_PTRACE((" found apple unicode cmap.\n"));
++        ret = ParseCMAP_format4(fontdef, apple_unicode_encoding_offset +
 +                tbl->offset);
      } else if (byte_encoding_offset != 0) {
          HPDF_PTRACE((" found byte encoding cmap.\n"));
          ret = ParseCMAP_format0(fontdef, byte_encoding_offset + tbl->offset);
-@@ -1018,7 +1038,9 @@ ParseCMAP_format0  (HPDF_FontDef  fontdef,
+-    } else {
++    }
++
++    /* The format 12 cmap complements the BMP one: it is the only table
++     * able to address codepoints beyond the BMP. When no BMP cmap was
++     * found it becomes the primary cmap instead. */
++    if (full_unicode_encoding_offset != 0) {
++        HPDF_STATUS ret12 = ParseCMAP_format12(fontdef,
++                full_unicode_encoding_offset + tbl->offset);
++
++        if (ret12 != HPDF_OK && ret != HPDF_OK)
++            return ret12;
++        if (ret12 == HPDF_OK &&
++                ms_unicode_encoding_offset == 0 &&
++                apple_unicode_encoding_offset == 0 &&
++                byte_encoding_offset == 0)
++            attr->cmap.format = 12;
++    }
++
++    if (ret != HPDF_OK) {
+         HPDF_PTRACE((" cannot found target cmap.\n"));
+         return HPDF_SetError (fontdef->error, HPDF_TTF_INVALID_FOMAT, 0);
+     }
+@@ -1018,7 +1058,9 @@ ParseCMAP_format0  (HPDF_FontDef  fontdef,
  
      parray = attr->cmap.glyph_id_array;
      for (i = 0; i < 256; i++) {
@@ -256,7 +583,7 @@ index 5e70c6f..e6d8584 100644
          HPDF_PTRACE((" ParseCMAP_format0 glyph_id_array[%d]=%u\n",
                      i, *parray));
          parray++;
-@@ -1028,6 +1050,58 @@ ParseCMAP_format0  (HPDF_FontDef  fontdef,
+@@ -1028,6 +1070,63 @@ ParseCMAP_format0  (HPDF_FontDef  fontdef,
  }
  
  
@@ -266,6 +593,7 @@ index 5e70c6f..e6d8584 100644
 +{
 +    HPDF_TTFontDefAttr attr = (HPDF_TTFontDefAttr)fontdef->attr;
 +    HPDF_STATUS ret;
++    HPDF_UINT16 format;
 +    HPDF_UINT16 reserved;
 +    HPDF_UINT32 length;
 +    HPDF_UINT32 language;
@@ -278,7 +606,7 @@ index 5e70c6f..e6d8584 100644
 +            HPDF_OK)
 +        return ret;
 +
-+    ret += GetUINT16 (attr->stream, &attr->cmap.format);
++    ret += GetUINT16 (attr->stream, &format);
 +    ret += GetUINT16 (attr->stream, &reserved);
 +    ret += GetUINT32 (attr->stream, &length);
 +    ret += GetUINT32 (attr->stream, &language);
@@ -287,8 +615,12 @@ index 5e70c6f..e6d8584 100644
 +    if (ret != HPDF_OK)
 +        return HPDF_Error_GetCode (fontdef->error);
 +
-+    if (attr->cmap.format != 12)
++    if (format != 12)
 +        return HPDF_SetError (fontdef->error, HPDF_TTF_INVALID_FOMAT, 0);
++
++    /* attr->cmap.format is NOT set here: a format 4 subtable stays the
++     * primary (BMP) cmap; the caller records format 12 only when this
++     * is the sole subtable */
 +
 +    attr->cmap_groups = HPDF_GetMem (fontdef->mmgr,
 +            sizeof (HPDF_TTF_CmapGroup) * num_groups);
@@ -315,7 +647,7 @@ index 5e70c6f..e6d8584 100644
  static HPDF_STATUS
  ParseCMAP_format4  (HPDF_FontDef  fontdef,
                      HPDF_UINT32   offset)
-@@ -1166,6 +1240,33 @@ HPDF_TTFontDef_GetGlyphid  (HPDF_FontDef   fontdef,
+@@ -1166,6 +1265,33 @@ HPDF_TTFontDef_GetGlyphid  (HPDF_FontDef   fontdef,
          return attr->cmap.glyph_id_array[unicode];
      }
  
@@ -349,3 +681,53 @@ index 5e70c6f..e6d8584 100644
      /* format 4 */
      if (!attr->cmap.end_count || !attr->cmap.start_count || !attr->cmap.id_range_offset)
          return 0;
+@@ -1212,6 +1338,49 @@ HPDF_TTFontDef_GetGlyphid  (HPDF_FontDef   fontdef,
+ }
+ 
+ 
++HPDF_UINT16
++HPDF_TTFontDef_GetGlyphidU32  (HPDF_FontDef   fontdef,
++                               HPDF_UINT32    code)
++{
++    HPDF_TTFontDefAttr attr = (HPDF_TTFontDefAttr)fontdef->attr;
++    HPDF_UINT lo = 0;
++    HPDF_UINT hi = attr->cmap_group_count;
++
++    /* only the format 12 cmap can address codepoints beyond the BMP */
++    if (!attr->cmap_groups)
++        return (code <= 0xFFFF) ? HPDF_TTFontDef_GetGlyphid (fontdef,
++                (HPDF_UINT16)code) : 0;
++
++    while (lo < hi) {
++        HPDF_UINT mid = lo + (hi - lo) / 2;
++        HPDF_TTF_CmapGroup *group = &attr->cmap_groups[mid];
++
++        if (code < group->start_char_code)
++            hi = mid;
++        else if (code > group->end_char_code)
++            lo = mid + 1;
++        else
++        {
++            HPDF_UINT16 gid = (HPDF_UINT16)(group->start_glyph_id +
++                    (code - group->start_char_code));
++
++            /* a lookup is a promise to draw: flag the glyph (and its
++             * components) for the embedded subset, the way GetCharWidth
++             * does for BMP codepoints */
++            if (gid < attr->num_glyphs && !attr->glyph_tbl.flgs[gid])
++            {
++                attr->glyph_tbl.flgs[gid] = 1;
++                CheckCompositGlyph (fontdef, gid);
++            }
++
++            return gid;
++        }
++    }
++
++    return 0;
++}
++
++
+ HPDF_INT16
+ HPDF_TTFontDef_GetCharWidth  (HPDF_FontDef   fontdef,
+                               HPDF_UINT16    unicode)
