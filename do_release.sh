@@ -21,6 +21,8 @@ gh release create "v$VERSION" \
   "bin/markterm-static-linux-arm64" \
   "bin/markmark-static-linux-amd64" \
   "bin/markmark-static-linux-arm64" \
+  "bin/markpdf-static-linux-amd64" \
+  "bin/markpdf-static-linux-arm64" \
   --title "Release v$VERSION" --notes "$(git cliff -l -s all)"
 
 bash -x ./do_aur.sh

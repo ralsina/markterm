@@ -48,11 +48,9 @@ filter_unconventional = true
 split_commits = false
 # regex for preprocessing the commit messages
 commit_preprocessors = [
-  # Replace issue numbers
-  #{ pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](<REPO>/issues/${2}))"},
-  # Check spelling of the commit with https://github.com/crate-ci/typos
-  # If the spelling is incorrect, it will be automatically fixed.
-  #{ pattern = '.*', replace_command = 'typos --write-changes -' },
+  # Component prefixes (markpdf:, markterm:, ...) become scoped feats:
+  # component work drives minor bumps and lands in the Features section
+  { pattern = "^(markpdf|markterm|markmark|compare|hyphen): ", replace = "feat($1): " },
 ]
 # regex for parsing and grouping commits
 commit_parsers = [
@@ -63,8 +61,10 @@ commit_parsers = [
   { message = "^refactor", group = "<!-- 2 -->🚜 Refactor" },
   { message = "^style", group = "<!-- 5 -->🎨 Styling" },
   { message = "^test", group = "<!-- 6 -->🧪 Testing" },
+  # Release commits carry the version tags: grouping them instead of
+  # skipping keeps the tags bound to the changelog sections
+  { message = "^bump: Release", group = "<!-- 10 -->🔖 Releases" },
   { message = "^chore\\(release\\): prepare for", skip = true },
-  { message = "^bump", skip = true },
   { message = "^chore\\(deps.*\\)", skip = true },
   { message = "^chore\\(ignore\\)", skip = true },
   { message = "^chore\\(pr\\)", skip = true },
