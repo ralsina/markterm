@@ -2767,7 +2767,13 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
     bool prev_was_heading = false;
     for (size_t i = 0; i < candidates.size(); i++)
     {
-        avoid[i] = prev_was_heading;
+        // The candidate right after a heading is avoided (widow title),
+        // and so is any candidate within a few pixels of an avoided
+        // one: a block's margin-box top and its first line-box top are
+        // the same break to the eye, but only the first used to be
+        // flagged, letting widows slip through by three pixels.
+        avoid[i] = prev_was_heading ||
+                   (i > 0 && avoid[i - 1] && candidates[i] - candidates[i - 1] < 4.0f);
         prev_was_heading = heading_flows.count(candidates[i]) > 0;
     }
     float total_flow_height = container.flow_y(total_height);
