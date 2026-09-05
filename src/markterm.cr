@@ -113,8 +113,10 @@ module Markd
 
     def block_quote(node : Node, entering : Bool) : Nil
       if entering
-        print "\n"
+        # Push the indent first, so the separator newlines carry the
+        # quote bar for the quote's first line
         @indent << "│ "
+        blank_line
         @style << @theme["block_quote"]
       else
         @indent.pop
@@ -134,7 +136,7 @@ module Markd
     def code_block(node : Node, entering : Bool, formatter : T?) : Nil forall T
       languages = node.fence_language ? node.fence_language.split : nil
       @indent << "  "
-      print "\n\n"
+      blank_line
       if languages.nil? || languages.empty?
         print node.text
       else
@@ -156,7 +158,7 @@ module Markd
       if entering
         @style << @theme["heading"]
         level = node.data["level"].as(Int32)
-        print "\n\n"
+        blank_line
         # When wrapping, buffer the prefix so it word-wraps together
         # with the heading text; otherwise print it right away, as
         # the text nodes bypass the buffer when there is no max_width
@@ -175,7 +177,7 @@ module Markd
     end
 
     def html_block(node : Node, entering : Bool) : Nil
-      print "\n\n"
+      blank_line
       print Terminal.highlight(node.text, "html", @code_theme)
     end
 
@@ -199,7 +201,7 @@ module Markd
     def footnote_definition(node : Node, entering : Bool) : Nil
       if entering
         if node.prev?.try(&.type) != Node::Type::FootnoteDefinition
-          print "\n\n"
+          blank_line
           print @style.apply("--" * 20)
           print "\n"
           @style << @theme["heading"]
@@ -295,9 +297,9 @@ module Markd
         @in_wrappable_block = true
         @block_buffer = ""
         parent_type = node.parent?.try(&.type)
-        if parent_type != Node::Type::Item && parent_type != Node::Type::Alert &&
+        if parent_type != Node::Type::Item &&
            parent_type != Node::Type::FootnoteDefinition
-          print "\n"
+          blank_line
         end
       else
         @in_wrappable_block = false
@@ -347,7 +349,7 @@ module Markd
 
     def thematic_break(node : Node, entering : Bool) : Nil
       if entering
-        print "\n\n"
+        blank_line
         print @style.apply("-" * 40)
         print "\n"
       end
@@ -363,8 +365,10 @@ module Markd
 
     def alert(node : Node, entering : Bool) : Nil
       if entering
-        print "\n"
+        # Push the indent first, like block_quote, so the separator
+        # newlines carry the bar for the alert's first line
         @indent << "│ "
+        blank_line
         @style << @theme["block_quote"]
         title = node.data["title"]?.try(&.as(String)) || ""
         print @style.apply("#{title}\n") unless title.empty?
@@ -379,7 +383,7 @@ module Markd
       if entering
         @table_data = [] of Array(String)
         @table_alignments = [] of String
-        print "\n\n"
+        blank_line
       else
         render_table
         @table_data = [] of Array(String)
@@ -460,7 +464,7 @@ module Markd
       header = @table_data[0]
       body = @table_data[1..-1]
 
-      table = Tablo::Table.new(body) do |table_builder|
+      table = Tablo::Table.new(body, border: Tablo::Border.new(Tablo::Border::PreSet::Modern)) do |table_builder|
         header.each_with_index do |title, idx|
           align = alignment_to_tablo(@table_alignments[idx]? || "")
           table_builder.add_column(title, body_alignment: align, header_alignment: align) { |row| row[idx] }
