@@ -1285,6 +1285,77 @@ class PdfContainer : public litehtml::document_container
         return nullptr;
     }
 
+    // -- glyph fallback ------------------------------------------------------
+    // When the primary font lacks a codepoint, try provided (--font) fonts
+    // first and then scanned system fonts: the first candidate whose cmap
+    // covers the codepoint gets lazily embedded and used for the run.
+    // This is what keeps CJK text out of tofu-land when the stylesheet
+    // asks for DejaVu and the document answers in Chinese.
+
+    std::map<std::string, const PdfFont*> fallback_font_cache; // "cp|size|deco" -> font
+    const FontFile* fallback_last = nullptr; // last font that satisfied a fallback
+
+    const PdfFont* fallback_font_at(float size, int decoration, uint32_t codepoint)
+    {
+        std::string key = std::to_string(codepoint) + "|" + std::to_string((int)(size * 4)) +
+                          "|" + std::to_string(decoration);
+        auto cached = fallback_font_cache.find(key);
+        if (cached != fallback_font_cache.end())
+        {
+            return cached->second;
+        }
+
+        ensure_system_fonts_scanned();
+
+        const PdfFont* result = nullptr;
+        // The font that satisfied the previous fallback usually satisfies
+        // this one too (CJK runs, symbol runs): try it first.
+        auto try_font = [&](const FontFile& candidate) -> const PdfFont* {
+            if (!font_covers(candidate, codepoint))
+            {
+                return nullptr;
+            }
+            PdfFont font;
+            if (!create_ttf_font(candidate, size, decoration, font))
+            {
+                return nullptr;
+            }
+            fonts.push_back(font);
+            litehtml::uint_ptr handle = fonts.size();
+            return &fonts[handle - 1];
+        };
+        auto try_list = [&](const std::vector<FontFile>& list) -> const PdfFont* {
+            if (fallback_last && font_covers(*fallback_last, codepoint))
+            {
+                if (const PdfFont* font = try_font(*fallback_last))
+                {
+                    return font;
+                }
+            }
+            for (const auto& candidate : list)
+            {
+                if (fallback_last == &candidate)
+                {
+                    continue;
+                }
+                if (const PdfFont* font = try_font(candidate))
+                {
+                    fallback_last = &candidate;
+                    return font;
+                }
+            }
+            return nullptr;
+        };
+        result = try_list(g_provided_fonts);
+        if (!result)
+        {
+            result = try_list(g_system_fonts);
+        }
+        // Cache misses too: an uncovered codepoint stays uncovered.
+        fallback_font_cache[key] = result;
+        return result;
+    }
+
     // -- text segmentation ----------------------------------------------------
     // Split a UTF-8 run into (font kind, text) pieces: codepoints the
     // primary font covers stay there; missing emoji-range codepoints go
@@ -1308,8 +1379,8 @@ class PdfContainer : public litehtml::document_container
 
     struct TextPiece
     {
-        int kind;          // 0 = primary font, 1 = emoji font
-        uint32_t codepoint; // first codepoint in the piece
+        const PdfFont* font; // font this piece is drawn with
+        uint32_t codepoint;  // first codepoint in the piece
         std::string text;
     };
 
@@ -1318,13 +1389,13 @@ class PdfContainer : public litehtml::document_container
         std::vector<TextPiece> out;
         const unsigned char* cursor = reinterpret_cast<const unsigned char*>(text);
         size_t byte_pos = 0;
-        int current_kind = -1;
+        const PdfFont* current_font = nullptr;
         size_t current_start = 0;
         uint32_t piece_codepoint = 0;
         auto flush = [&](size_t end) {
-            if (current_kind >= 0 && end > current_start)
+            if (current_font && end > current_start)
             {
-                out.push_back({current_kind, piece_codepoint, std::string(text + current_start, end - current_start)});
+                out.push_back({current_font, piece_codepoint, std::string(text + current_start, end - current_start)});
             }
         };
         while (*cursor)
@@ -1359,7 +1430,7 @@ class PdfContainer : public litehtml::document_container
             if (!valid)
             {
                 flush(byte_pos);
-                current_kind = -1;
+                current_font = nullptr;
                 byte_pos += 1;
                 cursor += 1;
                 continue;
@@ -1368,21 +1439,35 @@ class PdfContainer : public litehtml::document_container
             if (is_zero_width_codepoint(codepoint))
             {
                 flush(byte_pos);
-                current_kind = -1;
+                current_font = nullptr;
             }
             else
             {
                 bool primary_covers = primary.utf8 ? (!primary.coverage || primary.coverage->covers(codepoint))
                                                    : cp1252_covers(codepoint);
-                int kind = 0;
-                if (!primary_covers && emoji_possible() && is_emoji_codepoint(codepoint))
+                const PdfFont* piece_font = &primary;
+                if (!primary_covers)
                 {
-                    kind = 1;
+                    const PdfFont* fallback = nullptr;
+                    if (emoji_possible() && is_emoji_codepoint(codepoint))
+                    {
+                        fallback = emoji_font_at(primary.size, primary.decoration, codepoint);
+                    }
+                    if (!fallback)
+                    {
+                        fallback = fallback_font_at(primary.size, primary.decoration, codepoint);
+                    }
+                    // no covering font: the codepoint stays with the
+                    // primary and the viewer shows .notdef
+                    if (fallback)
+                    {
+                        piece_font = fallback;
+                    }
                 }
-                if (kind != current_kind)
+                if (piece_font != current_font)
                 {
                     flush(byte_pos);
-                    current_kind = kind;
+                    current_font = piece_font;
                     current_start = byte_pos;
                     piece_codepoint = codepoint;
                 }
@@ -1404,7 +1489,7 @@ class PdfContainer : public litehtml::document_container
         float width = 0;
         for (const auto& segment : segment_text(text, f))
         {
-            const PdfFont* segment_font = segment.kind == 1 ? emoji_font_at(f.size, f.decoration, segment.codepoint) : &f;
+            const PdfFont* segment_font = segment.font;
             if (!segment_font)
             {
                 continue;
@@ -1459,7 +1544,7 @@ class PdfContainer : public litehtml::document_container
         float cursor = context->pdf_x(px(pos.x));
         for (const auto& segment : segment_text(text, f))
         {
-            const PdfFont* segment_font = segment.kind == 1 ? emoji_font_at(f.size, f.decoration, segment.codepoint) : &f;
+            const PdfFont* segment_font = segment.font;
             if (!segment_font)
             {
                 continue;
