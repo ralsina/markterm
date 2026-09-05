@@ -11,6 +11,16 @@ module Markd
   class TermRenderer < TextRenderer
     SGR_OR_OSC8 = /\e\[[0-9;]*[mGKH]|\e\]8;;[^\e]*\e\\/
 
+    # GFM alert accents by type: the same hues the PDF stylesheet uses
+    # for its alert left borders, mapped to the terminal's palette.
+    ALERT_ACCENTS = {
+      "note"      => :blue,
+      "tip"       => :green,
+      "important" => :magenta,
+      "warning"   => :yellow,
+      "caution"   => :red,
+    }
+
     @style : Terminal::StyleStack
     @theme : Hash(String, Terminal::Style)
     @code_theme : String?
@@ -440,8 +450,17 @@ module Markd
     def alert(node : Node, entering : Bool) : Nil
       if entering
         # Push the indent first, like block_quote, so the separator
-        # newlines carry the bar for the alert's first line
-        @indent << "│ "
+        # newlines carry the bar for the alert's first line. The bar
+        # takes the alert's accent color: print() inserts the indent
+        # verbatim, ANSI codes and all, and the width math strips them
+        # right back out.
+        alert_type = node.data["alert"]?.try(&.as(String)) || ""
+        bar = if (accent = ALERT_ACCENTS[alert_type.downcase]?)
+          "│".colorize.fore(accent).to_s + " "
+        else
+          "│ "
+        end
+        @indent << bar
         blank_line
         @style << @theme["block_quote"]
         title = node.data["title"]?.try(&.as(String)) || ""

@@ -51,6 +51,17 @@ describe "GFM rendering (to_term)" do
     result.should contain("note body")
   end
 
+  it "colors the alert gutter per type, like the PDF borders" do
+    accents = {
+      "NOTE"      => "\e[34m", "TIP" => "\e[32m", "IMPORTANT" => "\e[35m",
+      "WARNING"   => "\e[33m", "CAUTION" => "\e[31m",
+    }
+    accents.each do |keyword, color|
+      result = Markd.to_term("> [!#{keyword}]\n> body", options)
+      result.should contain("#{color}│"), "#{keyword} gutter should be #{color}"
+    end
+  end
+
   it "renders tables with all rows" do
     markdown = "| Name | Age |\n|------|-----|\n| Alice | 30 |\n| Bob | 25 |"
     result = Markd.to_term(markdown, options)
