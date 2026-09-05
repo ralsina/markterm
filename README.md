@@ -281,6 +281,27 @@ In your code, use it like this:
   puts Markd.to_md(source)
 ```
 
+The PDF side is a library too: `Markd::Pdf::Renderer` owns every
+option as instance state, so instances are independent and reusable —
+no global style accumulates between renders.
+
+```crystal
+  require "markterm/pdf"
+
+  renderer = Markd::Pdf::Renderer.new(style: "book",
+    header: "notes", footer: "%p / %t")
+  renderer.add_css(File.read("my-book.css"))
+  pages = renderer.render(source, "book.pdf")
+
+  # or one-shot, no instance to keep:
+  Markd::Pdf.render(source, "out.pdf", style: "dark")
+```
+
+The only process-wide state is the font cache
+(`Markd::Pdf.register_font`, `Markd::Pdf.emoji_font=`): parsed fonts
+are cached for the life of the process because font metadata parsing
+is expensive, and duplicate registrations are ignored.
+
 ## Contributing
 
 1. Fork it (<https://github.com/ralsina/markterm/fork>)

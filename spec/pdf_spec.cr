@@ -34,19 +34,19 @@ end
 describe Markd::Pdf do
   describe ".document_html" do
     it "wraps the body in a document with the stylesheet" do
-      html = Markd::Pdf.document_html("<p>hello</p>")
+      html = Markd::Pdf.document_html("<p>hello</p>", Markd::Pdf.style_css("default"))
       html.should contain("<style>")
-      html.should contain(Markd::Pdf.css)
+      html.should contain(Markd::Pdf.style_css("default"))
       html.should contain("<p>hello</p>")
     end
 
     it "uses the first heading as the title" do
-      html = Markd::Pdf.document_html("<h1>My Title</h1><p>body</p>")
+      html = Markd::Pdf.document_html("<h1>My Title</h1><p>body</p>", Markd::Pdf.style_css("default"))
       html.should contain("<title>My Title</title>")
     end
 
     it "falls back to Untitled without headings" do
-      html = Markd::Pdf.document_html("<p>body</p>")
+      html = Markd::Pdf.document_html("<p>body</p>", Markd::Pdf.style_css("default"))
       html.should contain("<title>Untitled</title>")
     end
   end
@@ -72,16 +72,6 @@ describe Markd::Pdf do
 
     it "returns empty when no body background is set" do
       Markd::Pdf.page_background("p { color: red; }").should eq("")
-    end
-  end
-
-  describe ".css=" do
-    it "appends user css to the default stylesheet" do
-      Markd::Pdf.css = "p { color: red; }"
-      Markd::Pdf.css.should contain(Markd::Pdf::DEFAULT_CSS)
-      Markd::Pdf.css.should contain("p { color: red; }")
-    ensure
-      Markd::Pdf.reset_css
     end
   end
 
@@ -187,45 +177,48 @@ describe Markd::Pdf do
     end
   end
 
-  describe ".style=" do
-    it "switches the base stylesheet" do
-      Markd::Pdf.style = "book"
-      Markd::Pdf.style.should eq("book")
-      Markd::Pdf.css.should contain("DejaVu Serif")
-    ensure
-      Markd::Pdf.style = "default"
-    end
-
-    it "raises on an unknown style" do
+  describe "Pdf::Renderer" do
+    it "raises at construction for an unknown style" do
       expect_raises(Markd::Pdf::Error, "unknown style") do
-        Markd::Pdf.style = "nope"
+        Markd::Pdf::Renderer.new(style: "nope")
       end
     end
-  end
 
-  describe ".reset_css" do
-    it "resets to the selected style" do
-      Markd::Pdf.style = "dark"
-      Markd::Pdf.css = "p { color: red; }"
-      Markd::Pdf.reset_css
-      Markd::Pdf.css.should eq(Markd::Pdf.style_css("dark"))
-    ensure
-      Markd::Pdf.style = "default"
-    end
-  end
-
-  describe ".css=" do
-    it "layers the style first and user css last" do
-      Markd::Pdf.style = "book"
-      Markd::Pdf.css = "p { color: red; }"
-      base = Markd::Pdf.css.index(Markd::Pdf.style_css("book"))
-      extra = Markd::Pdf.css.index("p { color: red; }")
-      if base.nil? || extra.nil?
-        fail "expected both the style base and the user layer in the css"
+    it "layers style, theme and user css in order" do
+      renderer = Markd::Pdf::Renderer.new(style: "book", theme: "0x96f",
+        css_layers: ["p { color: red; }"])
+      css = renderer.css
+      base = css.index(Markd::Pdf.style_css("book"))
+      theme_layer = css.index(Markd::Pdf.theme_css("0x96f"))
+      extra = css.index("p { color: red; }")
+      if base.nil? || theme_layer.nil? || extra.nil?
+        fail "expected the style, theme and user layer in the css"
       end
-      base.should be < extra
-    ensure
-      Markd::Pdf.style = "default"
+      base.should be < theme_layer
+      theme_layer.should be < extra
+    end
+
+    it "keeps instances independent across renders" do
+      # No global stylesheet: two renderers with different styles stay
+      # different no matter how many times each one renders
+      book = Markd::Pdf::Renderer.new(style: "book")
+      plain = Markd::Pdf::Renderer.new(style: "default")
+      book.css.should contain(%q(body { font-family: "DejaVu Serif"))
+      plain.css.should contain(%q(body { font-family: "DejaVu Sans"))
+      plain.css.should_not contain(%q(body { font-family: "DejaVu Serif"))
+
+      book_path = temp_pdf_path
+      plain_path = temp_pdf_path
+      begin
+        book.render(sample_markdown, book_path)
+        plain.render(sample_markdown, plain_path)
+        book.render(sample_markdown, book_path)
+        File.read(book_path)[0, 5].should eq("%PDF-")
+        File.read(plain_path)[0, 5].should eq("%PDF-")
+      ensure
+        File.delete?(book_path)
+        File.delete?(plain_path)
+      end
     end
   end
 

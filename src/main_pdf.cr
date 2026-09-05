@@ -57,21 +57,10 @@ def abort_with(message : String)
   exit 1
 end
 
-def apply_theme(theme : String)
-  Markd::Pdf.css = Markd::Pdf.css + "\n" + Markd::Pdf.theme_css(theme)
-rescue error : Markd::Pdf::Error
-  abort_with(error.message.to_s)
-end
-
-def apply_user_css(css_path : String)
-  abort_with("CSS file not found: #{css_path}") unless File.file?(css_path)
-  Markd::Pdf.css = Markd::Pdf.css + "\n" + File.read(css_path)
-end
-
-# List the built-in stylesheets, marking the one currently selected.
-def list_styles
+# List the built-in stylesheets, marking the selected one.
+def list_styles(selected : String)
   Markd::Pdf.style_names.each do |name|
-    suffix = name == Markd::Pdf.style ? " (current)" : ""
+    suffix = name == selected ? " (current)" : ""
     puts "#{name.ljust(8)} #{Markd::Pdf.style_description(name)}#{suffix}"
   end
 end
@@ -110,33 +99,46 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
 
-  apply_theme(theme) if theme
-  css_paths.each do |css_path|
-    apply_user_css(css_path)
-  end
-  setup_emoji_font(emoji_font) if emoji_font
-  register_fonts(font_paths)
-  code_theme = pick_code_theme(code_theme, theme, style)
-
   margin_mm = margin.to_f?
   abort_with("invalid margin '#{margin}'") unless margin_mm && margin_mm >= 0
 
   options = Markd::Options.new
   options.gfm = true
 
+  begin
+    renderer = Markd::Pdf::Renderer.new(
+      options: options,
+      style: style,
+      theme: theme,
+      code_theme: pick_code_theme(code_theme, theme, style),
+      page_size: page_size,
+      margin_mm: margin_mm,
+      base_dir: base_dir,
+      header: header || "",
+      footer: footer || "",
+      html_input: html_input,
+      pageless: pageless,
+      hyphenate: hyphenate,
+      language: language,
+    )
+  rescue error : Markd::Pdf::Error
+    abort_with(error.message.to_s)
+  end
+
+  css_paths.each do |css_path|
+    abort_with("CSS file not found: #{css_path}") unless File.file?(css_path)
+    renderer.add_css(File.read(css_path))
+  end
+  setup_emoji_font(emoji_font) if emoji_font
+  register_fonts(font_paths)
+
   if output
-    Markd::Pdf.render(input, output, options, page_size: page_size, html_input: html_input,
-      margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "",
-      code_theme: code_theme, theme: theme, pageless: pageless, hyphenate: hyphenate,
-      language: language)
+    renderer.render(input, output)
   else
     # No output file: render to a temporary file and stream to stdout
     temp_path = File.tempname("markpdf", ".pdf")
     begin
-      Markd::Pdf.render(input, temp_path, options, page_size: page_size, html_input: html_input,
-        margin_mm: margin_mm, base_dir: base_dir, header: header || "", footer: footer || "",
-        code_theme: code_theme, theme: theme, pageless: pageless, hyphenate: hyphenate,
-        language: language)
+      renderer.render(input, temp_path)
       STDOUT.write(File.read(temp_path).to_slice)
     ensure
       File.delete?(temp_path)
@@ -152,7 +154,7 @@ if options["--version"]
 end
 
 if options["--list-styles"]
-  list_styles
+  list_styles(options["--style"].as(String))
   exit 0
 end
 
@@ -184,14 +186,6 @@ begin
               when String then [css_option]
               else             [] of String
               end
-  # Validate --style before any layering: an unknown name aborts here,
-  # listing the valid ones.
-  style = options["--style"].as(String)
-  begin
-    Markd::Pdf.style = style
-  rescue error : Markd::Pdf::Error
-    abort_with(error.message.to_s)
-  end
   main(
     file.as(String),
     options["-o"].try &.as(String),
@@ -204,7 +198,7 @@ begin
     options["--footer"].try &.as(String),
     options["-t"].try &.as(String),
     options["--code-theme"].try &.as(String),
-    style,
+    options["--style"].as(String),
     (file.as(String).ends_with?(".html") || file.as(String).ends_with?(".htm")),
     options["--pageless"] == true,
     options["--hyphenate"] == true,

@@ -91,8 +91,6 @@ describe "hyphenated justified rendering" do
       rejoined = text.gsub("-\n", "")
       rejoined.downcase.scan("internationalization").size.should eq(4)
     ensure
-      # render switches the global stylesheet; leave it as found
-      Markd::Pdf.style = "default"
       File.delete?(path)
     end
   end
@@ -110,7 +108,6 @@ describe "hyphenated justified rendering" do
       # spaces, so no line can end in a hyphen.
       pdf_text(pdftotext, path).should_not contain("-\n")
     ensure
-      Markd::Pdf.style = "default"
       File.delete?(path)
     end
   end

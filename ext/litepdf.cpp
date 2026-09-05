@@ -608,31 +608,12 @@ bool is_zero_width_codepoint(uint32_t codepoint)
 }
 
 // The explicit emoji font path (--emoji-font); empty means auto-detect.
+// The font tables below are the only intentional process-global state:
+// font metadata parsing is expensive, so registered and scanned fonts
+// are cached for the life of the process. Everything else about a
+// render (header/footer templates, page background) travels through
+// the per-render PdfContainer.
 std::string g_emoji_font_path;
-
-// Optional page header/footer templates. "%p" expands to the page
-// number and "%t" to the total page count.
-std::string g_header_template;
-std::string g_footer_template;
-
-// Page background color as a CSS "#rrggbb" string; empty = white.
-std::string g_page_background;
-
-// The page background as RGB channels: the color translucent fills
-// composite against (libharu has no alpha). Empty means white.
-void page_background_channels(unsigned char& red, unsigned char& green, unsigned char& blue)
-{
-    if (g_page_background.size() >= 7 && g_page_background[0] == '#')
-    {
-        red = (unsigned char)std::strtol(g_page_background.substr(1, 2).c_str(), nullptr, 16);
-        green = (unsigned char)std::strtol(g_page_background.substr(3, 2).c_str(), nullptr, 16);
-        blue = (unsigned char)std::strtol(g_page_background.substr(5, 2).c_str(), nullptr, 16);
-    }
-    else
-    {
-        red = green = blue = 255;
-    }
-}
 
 // Provided font files (--font flags), then scanned system fonts.
 std::vector<FontFile> g_provided_fonts;
@@ -986,7 +967,30 @@ class PdfContainer : public litehtml::document_container
     std::string base_dir;
     litehtml::pixel_t content_width = 0;
 
+    // Per-render page furniture, set by litepdf_render: header/footer
+    // templates ("%p" page number, "%t" total) and the page background
+    // as a CSS "#rrggbb" string (empty = white).
+    std::string header_template;
+    std::string footer_template;
+    std::string page_background;
+
     explicit PdfContainer(HPDF_Doc doc) : pdf(doc) {}
+
+    // The page background as RGB channels: the color translucent fills
+    // composite against (libharu has no alpha). Empty means white.
+    void page_background_channels(unsigned char& red, unsigned char& green, unsigned char& blue) const
+    {
+        if (page_background.size() >= 7 && page_background[0] == '#')
+        {
+            red = (unsigned char)std::strtol(page_background.substr(1, 2).c_str(), nullptr, 16);
+            green = (unsigned char)std::strtol(page_background.substr(3, 2).c_str(), nullptr, 16);
+            blue = (unsigned char)std::strtol(page_background.substr(5, 2).c_str(), nullptr, 16);
+        }
+        else
+        {
+            red = green = blue = 255;
+        }
+    }
 
     // -- fonts -----------------------------------------------------------
 
@@ -2491,18 +2495,6 @@ extern "C"
 // Set page header/footer templates drawn in the top/bottom margin of
 // every page. "%p" expands to the page number, "%t" to the total page
 // count. NULL or empty disables.
-void litepdf_set_page_text(const char* header, const char* footer)
-{
-    g_header_template = header ? header : "";
-    g_footer_template = footer ? footer : "";
-}
-
-// Set the page background color (CSS "#rrggbb"); empty = white.
-void litepdf_set_page_background(const char* css_color)
-{
-    g_page_background = css_color ? css_color : "";
-}
-
 // Register a TTF file as a candidate font for font-family matching.
 // Provided fonts take priority over scanned system fonts. Parses the
 // font's metadata; returns 1 on success, 0 and fills errbuf on failure.
@@ -2566,7 +2558,8 @@ int litepdf_set_emoji_font(const char* ttf_path, char* errbuf, int errbuf_len)
 // uniform page margin. Returns the number of pages, or -1 and fills
 // errbuf on failure.
 int litepdf_render(const char* html, const char* css, int page_size, float margin_pt, const char* out_path,
-                   const char* base_dir, char* errbuf, int errbuf_len, int single_page)
+                   const char* base_dir, const char* header, const char* footer,
+                   const char* page_background, char* errbuf, int errbuf_len, int single_page)
 {
     if (errbuf && errbuf_len > 0)
     {
@@ -2660,6 +2653,12 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
     }
 
     PdfContainer container(pdf);
+    // Per-render page furniture: these used to be process globals set
+    // by separate litepdf_set_* calls, which made the renderer unsafe
+    // to use as a library.
+    container.header_template = header ? header : "";
+    container.footer_template = footer ? footer : "";
+    container.page_background = page_background ? page_background : "";
     container.base_dir = base_dir ? base_dir : ".";
     if (container.base_dir.empty())
     {
@@ -2947,10 +2946,10 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
             HPDF_Page_Concat(page, page_scale, 0, 0, page_scale, 0, 0);
         }
         // Themed page background: fill the whole page before clipping.
-        if (g_page_background.size() >= 7 && g_page_background[0] == '#')
+        if (container.page_background.size() >= 7 && container.page_background[0] == '#')
         {
             unsigned char bg_red, bg_green, bg_blue;
-            page_background_channels(bg_red, bg_green, bg_blue);
+            container.page_background_channels(bg_red, bg_green, bg_blue);
             HPDF_Page_SetRGBFill(page, bg_red / 255.0f, bg_green / 255.0f, bg_blue / 255.0f);
             HPDF_Page_Rectangle(page, 0, 0, page_width, page_height);
             HPDF_Page_Fill(page);
@@ -3022,8 +3021,8 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         // pageless document has no pages to decorate.
         if (!single_page)
         {
-            draw_page_text(g_header_template, true);
-            draw_page_text(g_footer_template, false);
+            draw_page_text(container.header_template, true);
+            draw_page_text(container.footer_template, false);
         }
 
         // Link annotations for every anchor rectangle on this page's window.

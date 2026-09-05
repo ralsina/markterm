@@ -1,5 +1,6 @@
 # Built-in stylesheets for markpdf: the "personalities" a document can
-# have, selectable with --style / Markd::Pdf.style=. Written against the
+# have, selectable with --style or Markd::Pdf::Renderer's style option.
+# Written against the
 # CSS subset litehtml supports (no CSS variables, no grid, no
 # page-break-*). Every style covers the same property set so they
 # interchange cleanly and an edited copy fed back through --css behaves
@@ -223,9 +224,6 @@ module Markd
     # The original name of the base stylesheet, kept for compatibility.
     DEFAULT_CSS = STYLES["default"]
 
-    @@css : String = DEFAULT_CSS
-    @@style : String = "default"
-
     # Names of the built-in styles, in roster order.
     def self.style_names : Array(String)
       STYLES.keys
@@ -242,37 +240,6 @@ module Markd
     def self.style_css(name : String) : String
       STYLES[name]? ||
         raise Error.new("unknown style '#{name}' (available: #{STYLES.keys.join(", ")})")
-    end
-
-    # The style the base stylesheet currently comes from.
-    def self.style : String
-      @@style
-    end
-
-    # Select the base stylesheet and reset the rendered CSS to it.
-    # Layers added with css= are dropped: set them again afterwards.
-    # Raises Error on an unknown name.
-    def self.style=(name : String) : Nil
-      css = style_css(name) # raises Error on an unknown name
-      @@style = name
-      @@css = css
-    end
-
-    # Extend the current stylesheet (e.g. from a --css flag): the
-    # selected style's rules come first, the argument's last, so the
-    # argument wins on equal specificity.
-    def self.css=(user_css : String)
-      @@css = style_css(@@style) + "\n" + user_css
-    end
-
-    def self.css : String
-      @@css
-    end
-
-    # Reset the rendered CSS to the selected style (dropping any layers
-    # added with css=).
-    def self.reset_css : Nil
-      @@css = style_css(@@style)
     end
   end
 end
