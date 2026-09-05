@@ -278,3 +278,57 @@ describe "Terminal width detection" do
     result.nil? || result.should be_a(Int32)
   end
 end
+
+describe "Hyphenation" do
+  it "breaks long words at syllable boundaries when enabled" do
+    result = Markd.to_term(("internationalization " * 6).strip, max_width: 20, hyphenate: true)
+    plain = result.gsub(/\e\[[0-9;]*m/, "")
+    lines = plain.strip.split("\n")
+    lines.each do |line|
+      line.size.should be <= 20, "line overflowed: #{line.inspect}"
+    end
+    lines.select(&.ends_with?("-")).should_not be_empty
+    # nothing lost: un-joining the break hyphens restores every word
+    plain.gsub("-\n", "").gsub(/\s/, "").scan(/internationalization/).size.should eq(6)
+  end
+
+  it "leaves words whole when not enabled" do
+    result = Markd.to_term("internationalization", max_width: 20)
+    plain = result.gsub(/\e\[[0-9;]*m/, "")
+    plain.should contain("internationalization")
+    plain.strip.split("\n").each do |line|
+      line.should_not end_with("-")
+    end
+  end
+
+  it "does not hyphenate code spans" do
+    result = Markd.to_term("before `internationalization` after", max_width: 20, hyphenate: true)
+    plain = result.gsub(/\e\[[0-9;]*m/, "")
+    plain.should contain("internationalization")
+    plain.strip.split("\n").each do |line|
+      line.should_not end_with("-")
+    end
+  end
+
+  it "does not hyphenate link text" do
+    result = Markd.to_term("[internationalization](https://example.com/path)", max_width: 20, hyphenate: true)
+    plain = result.gsub(/\e\[[0-9;]*m/, "").gsub(/\e\]8;;[^\e]*\e\\/, "")
+    plain.should contain("internationalization")
+    plain.strip.split("\n").each do |line|
+      line.should_not end_with("-")
+    end
+  end
+
+  it "hyphenates spanish words with language es" do
+    result = Markd.to_term(("internacionalización " * 6).strip, max_width: 20, hyphenate: true, language: "es")
+    plain = result.gsub(/\e\[[0-9;]*m/, "")
+    plain.strip.split("\n").select(&.ends_with?("-")).should_not be_empty
+    plain.gsub("-\n", "").gsub(/\s/, "").scan(/internacionalización/).size.should eq(6)
+  end
+
+  it "rejects an unknown hyphenation language" do
+    expect_raises(ArgumentError) do
+      Markd.to_term("text", max_width: 20, hyphenate: true, language: "tlh")
+    end
+  end
+end

@@ -135,3 +135,9 @@ describe "Terminal" do
     end
   end
 end
+
+describe "display_width soft hyphens" do
+  it "counts soft hyphens as zero columns" do
+    Terminal.display_width("inter\u{00AD}national").should eq(13)
+  end
+end

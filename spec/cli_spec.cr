@@ -106,3 +106,19 @@ describe "markmark CLI" do
     error.should_not contain("from ")
   end
 end
+
+describe "markterm hyphenation CLI" do
+  it "rejects an unknown hyphenation language" do
+    status, _output, error = run_cli(BIN_MARKTERM, ["-", "--hyphenate", "--language", "tlh"], input: "text")
+    status.exit_code.should eq(1)
+    error.should contain("hyphenation")
+  end
+
+  it "renders with hyphenation enabled" do
+    status, output, error = run_cli(BIN_MARKTERM,
+      ["-", "-w", "20", "--hyphenate"],
+      input: "internationalization internationalization\n")
+    status.exit_code.should eq(0), error
+    output.should contain("-")
+  end
+end

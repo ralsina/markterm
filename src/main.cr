@@ -8,7 +8,7 @@ doc = <<-DOC
   Markterm - A tool to render markdown to the terminal
 
   Usage:
-    markterm <file> [-t <theme>][--code-theme <code-theme>][-l][-c][-w <width>]
+    markterm <file> [-t <theme>][--code-theme <code-theme>][-l][-c][-w <width>][--hyphenate][--language <language>]
     markterm -h | --help
     markterm --version
 
@@ -20,11 +20,13 @@ doc = <<-DOC
     -l                         Force html-like links
     -c --color                 Force color output even when piping
     -w <width>                 Maximum line width for text wrapping (0 to disable, auto-detects if not specified)
+    --hyphenate                Break long words at syllable boundaries when wrapping
+    --language <language>      Hyphenation language: en or es [default: en]
 
   If you use "-" as the file argument, markterm will read from stdin.
   DOC
 
-def main(source, theme, code_theme, force_links = false, force_color = false, width = nil)
+def main(source, theme, code_theme, force_links = false, force_color = false, width = nil, hyphenate = false, language = "en")
   Colorize.enabled = true if force_color
 
   input = Cli.read_source(source)
@@ -44,6 +46,10 @@ def main(source, theme, code_theme, force_links = false, force_color = false, wi
     max_width = Terminal.terminal_width
   end
 
+  # Validate the language even when no wrapping will happen: a typo in
+  # --language should fail loudly, not silently do nothing
+  Hyphen::Dictionary.load(language) if hyphenate
+
   puts Markd.to_term(
     input,
     options,
@@ -51,6 +57,8 @@ def main(source, theme, code_theme, force_links = false, force_color = false, wi
     code_theme: code_theme,
     force_links: force_links,
     max_width: max_width,
+    hyphenate: hyphenate,
+    language: language,
   )
 end
 
@@ -69,6 +77,8 @@ begin
     force_links: options["-l"] != nil,
     force_color: options["--color"] != nil,
     width: options["-w"].try &.as(String),
+    hyphenate: options["--hyphenate"] != nil,
+    language: options["--language"].try &.as(String) || "en",
   )
 rescue error
   STDERR.puts "markterm: #{error.message}"

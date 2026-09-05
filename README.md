@@ -22,6 +22,8 @@ It can also be used as a Crystal library.
   vs code themes in the vs code terminal, etc.
 * In general it tries to look good and not gaudy
 * It will do the right thing if output is not a tty
+* Optional hyphenation of long words when wrapping
+  (`--hyphenate`, English or Spanish patterns)
 * Can be used as a library or as a program
 
 ![markterm on a light terminal](https://ralsina.me/images/markterm-light.png)
@@ -104,7 +106,7 @@ This is the help:
 Markterm - A tool to render markdown to the terminal
 
 Usage:
-  markterm <file> [-t <theme>][--code-theme <code-theme>][-l][-c][-w <width>]
+  markterm <file> [-t <theme>][--code-theme <code-theme>][-l][-c][-w <width>][--hyphenate][--language <language>]
   markterm -h | --help
   markterm --version
 
@@ -116,6 +118,8 @@ Options:
   -l                         Force html-like links
   -c --color                 Force color output even when piping
   -w <width>                 Maximum line width for text wrapping (0 to disable, auto-detects if not specified)
+  --hyphenate                Break long words at syllable boundaries when wrapping
+  --language <language>      Hyphenation language: en or es [default: en]
 
 If you use "-" as the file argument, markterm will read from stdin.
 ```

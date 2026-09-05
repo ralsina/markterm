@@ -3,6 +3,7 @@ require "./styles"
 require "./text_renderer"
 require "./markmark"
 require "./math_render"
+require "hyphen"
 require "colorize"
 require "markd"
 require "tablo"
@@ -147,7 +148,12 @@ module Markd
     end
 
     # Wrap text to fit within max_width, accounting for indentation
-    # Long words overflow rather than break
+    # Long words overflow rather than break — unless they carry soft
+    # hyphens from the hyphenation pre-pass, in which case they break
+    # at a syllable boundary: the head takes the space left on the
+    # line plus a visible hyphen, and the remainder re-enters the loop
+    # for the next line. Soft hyphens that never become breaks are
+    # stripped at the end.
     private def word_wrap(text : String, max_width : Int32, indent : String) : String
       return text if max_width <= 0
 
@@ -161,21 +167,53 @@ module Markd
       # Split on whitespace and reassemble with single spaces
       text.split(/\s+/).each do |word|
         next if word.empty?
-
-        word_len = visible_length(word)
-
-        if current_line.empty?
-          current_line = word
-        elsif visible_length(current_line) + 1 + word_len <= available
-          current_line += " " + word
-        else
-          lines << current_line
-          current_line = word
+        remainder = word
+        until remainder.empty?
+          word_len = visible_length(remainder)
+          if current_line.empty?
+            if word_len <= available
+              current_line = remainder
+              remainder = ""
+            elsif split = hyphen_split(remainder, available - 1)
+              lines << split[0] + "-"
+              remainder = split[1]
+            else
+              lines << remainder # long word overflows, as always
+              remainder = ""
+            end
+          elsif visible_length(current_line) + 1 + word_len <= available
+            current_line += " " + remainder
+            remainder = ""
+          else
+            # Push the line and let the remainder re-enter the loop
+            # against the fresh line, where it can still hyphen-split
+            lines << current_line
+            current_line = ""
+          end
         end
       end
       lines << current_line unless current_line.empty?
 
-      lines.join("\n")
+      lines.join("\n").gsub(SOFT_HYPHEN, "")
+    end
+
+    # Longest prefix of word, broken at a soft hyphen, whose visible
+    # length fits limit; nil when no hyphenation point helps. The tail
+    # keeps any remaining soft hyphens for the following lines.
+    private def hyphen_split(word : String, limit : Int32) : {String, String}?
+      return if limit < 1
+      pieces = word.split(SOFT_HYPHEN)
+      return if pieces.size == 1
+      head_pieces = [] of String
+      pieces[0...-1].each do |piece|
+        candidate = head_pieces + [piece]
+        break if visible_length(candidate.join) > limit
+        head_pieces << piece
+      end
+      return if head_pieces.empty?
+      head = head_pieces.join
+      tail = pieces[head_pieces.size..].join(SOFT_HYPHEN)
+      {head, tail}
     end
 
     def block_quote(node : Node, entering : Bool) : Nil
@@ -653,13 +691,58 @@ module Markd
     end
   end
 
+  # Soft hyphen: inserted by insert_soft_hyphens, turned into a visible
+  # break hyphen by word_wrap when a line actually breaks there.
+  SOFT_HYPHEN = '\u{00AD}'
+
   def self.to_term(source : String, options = Options.new,
                    theme : String? = nil, code_theme : String? = nil,
-                   force_links : Bool = false, max_width : Int32? = nil) : String
+                   force_links : Bool = false, max_width : Int32? = nil,
+                   hyphenate : Bool = false, language : String = "en") : String
     return "" if source.empty?
     source = MathRender.rewrite_markdown_math(source)
     document = Parser.parse(source, options)
+    if hyphenate && max_width
+      # Dictionary.load raises ArgumentError for an unknown language,
+      # before any rendering happens
+      insert_soft_hyphens(document, Hyphen::Dictionary.load(language))
+    end
     renderer = TermRenderer.new(options, theme, code_theme, force_links, max_width)
     renderer.render(document)
+  end
+
+  # Node types whose text must not be hyphenated: code has to stay
+  # verbatim, table cells wrap through a different path, and a break
+  # inside a link would split its OSC 8 wrapper across lines.
+  private NO_HYPHENATION_TYPES = [Node::Type::Code, Node::Type::CodeBlock,
+                                  Node::Type::HTMLBlock, Node::Type::HTMLInline,
+                                  Node::Type::TableCell, Node::Type::Link,
+                                  Node::Type::Image]
+
+  # Insert soft hyphens (U+00AD) at Knuth-Liang break points in prose
+  # text, so word_wrap can break long words at syllable boundaries.
+  # Only worth running when the text will actually wrap.
+  private def self.insert_soft_hyphens(node : Node, dictionary : Hyphen::Dictionary) : Nil
+    return if NO_HYPHENATION_TYPES.includes?(node.type)
+    if node.type.text?
+      text = node.text
+      return unless text =~ /[[:alpha:]]/
+      hyphenated = text.gsub(/[[:alpha:]]+/) do |word|
+        points = dictionary.points(word)
+        next word if points.empty?
+        String.build do |io|
+          word.chars.each_with_index do |character, index|
+            io << SOFT_HYPHEN if points.includes?(index)
+            io << character
+          end
+        end
+      end
+      node.text = hyphenated
+    end
+    child = node.first_child?
+    while child
+      insert_soft_hyphens(child, dictionary)
+      child = child.next?
+    end
   end
 end
