@@ -1,0 +1,18 @@
+# generated artifacts — everything here is reproducible via the scripts
+out/
+__pycache__/
+tools/m2p/node_modules/
+tools/gmmdpdf/gmmdpdf
+bin/
+.bench-*
+.bench.*
+.build*
+.variant*
+.font-*
+.kitchen-*
+
+# 35 MB of Noto Sans CJK (the original CFF .ttf plus the TrueType
+# conversion the harness and spec hand over via --font). Regenerate the
+# converted copy with any CFF->TrueType converter; markpdf cannot embed
+# the common CFF .ttc Linux CJK packages directly.
+assets/fonts/

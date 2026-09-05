@@ -1,0 +1,14 @@
+@page {
+  size: A4;
+  margin: 20mm;
+}
+body {
+  font-family: "DejaVu Sans", sans-serif;
+  font-size: 11px;
+  line-height: 1.5;
+  hyphens: auto;
+}
+pre, code {
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 10px;
+}
