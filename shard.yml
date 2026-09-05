@@ -15,13 +15,14 @@ targets:
     main: src/main_pdf.cr
 
 dependencies:
-  # Pinned to a commit, not branch: master, so builds are
-  # reproducible. This is the footnotes branch of our fork, which
-  # also carries the GFM features (tables, alerts, strikethrough,
-  # task lists) that icyleaf/master has
+  # Pinned to a tag of our fork, so builds are reproducible and what
+  # the pin contains is a lookup, not a raw commit. footnotes-v2 is
+  # the footnotes branch as reviewed on icyleaf/markd#78, which also
+  # carries the GFM features (tables, alerts, strikethrough, task
+  # lists) that icyleaf/master has.
   markd:
     github: ralsina/markd
-    commit: abda7a54467d33bdc728b0973f2bfc9f9ff12ec5
+    tag: footnotes-v2
   # Kept in-tree (path dependency) so it can be extracted into its
   # own repository later without changing the require.
   hyphen:
