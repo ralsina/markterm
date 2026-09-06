@@ -2,6 +2,100 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0] - 2026-09-06
+
+### 🚀 Features
+
+- *(markpdf)* Render markdown to PDF via litehtml + libharu
+- *(markpdf)* Internal anchor links as PDF GoTo annotations
+- *(markpdf)* Page headers and footers with page numbers
+- *(markpdf)* Base16 themes via -t
+- *(markpdf)* Fetch remote images and convert other formats
+- *(markpdf)* Document new flags and features in README
+- *(markpdf)* Drop hardcoded background for code inside pre
+- *(markpdf)* Syntax highlighting for fenced code blocks
+- *(markpdf)* Align CLI help with markterm
+- *(markpdf)* Remove viewer-drawn borders from link annotations
+- *(markpdf)* Fix list indentation and per-line code block alignment
+- *(markpdf)* Clip literal blocks and narrow the usage line
+- *(markpdf)* Fix remote image fetching, scale images to fit
+- *(markpdf)* Fix gmode poisoning on circle markers, add useful libharu errors
+- *(markpdf)* Scale wide tables to fit, restore outline after revert
+- *(markpdf)* Wrap long lines in literal blocks (pre-wrap)
+- *(markpdf)* Render SVG images via external rasterizer
+- *(markpdf)* Render WebP images via ImageMagick fallback
+- *(markpdf)* Accept a single --font occurrence
+- *(markpdf)* Render complete HTML documents directly
+- *(markpdf)* Embed fonts, fix CID font handling
+- *(markpdf)* Raise super/subscripts, complete table outer borders
+- *(markpdf)* Fix table borders, drop body margin, render task lists
+- *(markpdf)* Built-in stylesheets (--style, --list-styles, --print-style)
+- *(markpdf)* Paginate wide tables in flow space
+- *(markpdf)* Draw borders collapse-style so table grids connect
+- *(markpdf)* Book style justifies list items
+- *(markpdf)* Split tables across pages at row boundaries
+- *(markpdf)* --pageless single-page output mode
+- *(markpdf)* Style kbd, mark, u/ins, q and abbr inline elements
+- *(markpdf)* Scale pageless output to fit the PDF page-dimension limit
+- *(markmark)* Fix crash on code blocks without a fence language
+- *(markmark)* Keep blank lines between paragraphs
+- *(markpdf)* Map outline destinations through flow space
+- *(markpdf)* Scope texmath includes and pass libtexprintf a writable string
+- *(markpdf)* Add litehtml CI-parity guard and per-page drawing specs
+- *(markterm)* Exactly one blank line between blocks, line-drawing table borders
+- *(markpdf)* Hyphenated fully-justified paragraphs (--hyphenate)
+- *(markpdf)* Never split table rows across pages
+- *(markpdf)* Coverage-driven font fallback for glyphs the primary lacks
+- *(markpdf)* Draw non-BMP codepoints (emoji!) through alternate CIDs
+- *(markpdf)* Continuation table rows keep their top border
+- *(markpdf)* Clean border rules at table page cuts
+- *(markpdf)* Surface image failures, correct alpha on themed pages, guard the C boundary
+- *(markpdf)* Spec coverage for emoji CIDs, table page cuts, and crash paths
+- *(markterm)* Measure display width, tolerate parser data gaps
+- *(markterm)* Readability pass on math, links, images, headings, code
+- *(markterm)* Color GFM alert gutters per type
+- *(markterm)* Formatting fixes from ameba
+- *(markterm)* Optional hyphenation when wrapping
+- *(markpdf)* Work as a library via Markd::Pdf::Renderer
+- *(compare)* Track the comparison harness
+- *(markpdf)* Keep-with-next survives the first line-box candidate
+- *(markpdf)* Format the pagination spec
+
+### 📚 Documentation
+
+- Add BUILDING.md covering build modes and licensing
+- Add upstreaming section to the TODO
+- State the threading contract for the pdf renderer
+
+### ⚙️ Miscellaneous Tasks
+
+- Build the C shim for markpdf
+- Build libharu from source (Ubuntu ships no libharu package)
+- Replace mdl with markdownlint-cli2
+- Precommit
+- Parse component prefixes in the changelog, ship markpdf release assets
+- The AUR update runs manually after the release
+
+### README
+
+- Drop done TODO — all base16 themes already highlight
+
+### Build
+
+- Export libharu headers for the shim (no system libharu needed)
+- Bump markd pin for footnote review fixes
+- Bump markd pin for the footnote processor refactor
+- Pin markd via the footnotes-v2 tag
+
+### Ext
+
+- Make the patched libharu build real, teach it cmap format 12
+
+### Markpdf/markterm
+
+- Math rendering with optional libtexprintf
+- Math rendering with optional libtexprintf
+
 ## [0.9.0] - 2026-09-01
 
 ### 🚀 Features
@@ -28,6 +122,10 @@ All notable changes to this project will be documented in this file.
 - Add readline to the static build dependencies
 - Add ncurses static library to the static build
 
+### 🔖 Releases
+
+- Release v0.9.0
+
 ### 🚜 Refactor
 
 - Extract shared TextRenderer base and CLI helpers
@@ -47,6 +145,10 @@ All notable changes to this project will be documented in this file.
 
 - Move theme initialization from class-level to instance initializer
 
+### 🔖 Releases
+
+- Release v0.8.1
+
 ## [0.8.0] - 2026-02-14
 
 ### 🚀 Features
@@ -57,6 +159,10 @@ All notable changes to this project will be documented in this file.
 
 - Remove double spaces in word wrap output
 - Update terminal width test to be environment-agnostic
+
+### 🔖 Releases
+
+- Release v0.8.0
 
 ### 🚜 Refactor
 
@@ -75,7 +181,10 @@ All notable changes to this project will be documented in this file.
 - Enable GFM by default and fix inline content in table cells
 - Properly size table columns and strip ANSI codes from cells
 
-## [0.6.3] - 2026-01-14
+### 🔖 Releases
+
+- Release v0.6.3
+- Release v0.7.0
 
 ### ⚙️ Miscellaneous Tasks
 
@@ -83,11 +192,19 @@ All notable changes to this project will be documented in this file.
 
 ## [0.6.2] - 2025-09-04
 
+### 🔖 Releases
+
+- Release v0.6.2
+
 ### Build
 
 - Minor fixes
 
 ## [0.6.1] - 2025-09-04
+
+### 🔖 Releases
+
+- Release v0.6.1
 
 ### Build
 
@@ -106,6 +223,11 @@ All notable changes to this project will be documented in this file.
 - Respect soft breaks
 - Issue #4: COLORFGBG was handled backwards
 
+### 🔖 Releases
+
+- Release v0.6.0
+- Release v0.6.0
+
 ### 🧪 Testing
 
 - Fix broken test
@@ -120,6 +242,10 @@ All notable changes to this project will be documented in this file.
 
 - Support - as filename to read stdin
 
+### 🔖 Releases
+
+- Release v0.5.1
+
 ### ⚙️ Miscellaneous Tasks
 
 - Todo management
@@ -129,6 +255,10 @@ All notable changes to this project will be documented in this file.
 ### 🚀 Features
 
 - Added -l option to force use of html-like links
+
+### 🔖 Releases
+
+- Release v0.5.0
 
 ### ⚙️ Miscellaneous Tasks
 
@@ -145,6 +275,10 @@ All notable changes to this project will be documented in this file.
 
 - Show image targets as links when images are not supported
 - Simplify and make reliable image support
+
+### 🔖 Releases
+
+- Release v0.4.0
 
 ### ⚙️ Miscellaneous Tasks
 
@@ -166,6 +300,11 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - Handle unknown languages in fenced block
+
+### 🔖 Releases
+
+- Release v0.3.2
+- Release v0.3.2
 
 ### ⚙️ Miscellaneous Tasks
 

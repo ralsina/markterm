@@ -269,6 +269,24 @@ once to build the shim, then `shards build`. See
 math build and the license-clean alternative — plus tests and static
 release binaries.
 
+### markpdf-web
+
+`bin/markpdf-web` (built alongside the other binaries) serves a small
+[Kemal](https://kemalcr.org/) site that doubles as markpdf's playground
+and landing page: visitors edit markdown, tweak the styling knobs
+(style, themes, page size, margins, headers, pageless, custom CSS),
+and see the PDF update live.
+
+```bash
+bin/markpdf-web            # listens on :3000
+PORT=8080 bin/markpdf-web  # or wherever you like
+```
+
+Documents live in the visitor's browser (localStorage) and in
+shareable `#d=...` URLs; the server keeps nothing. Renders are
+serialized through a mutex because the PDF shim is not known to be
+thread-safe, so it is meant for demo traffic, not for heavy use.
+
 ## Usage as a library
 
 1. Add the dependency to your `shard.yml`:

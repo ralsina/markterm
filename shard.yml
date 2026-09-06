@@ -1,5 +1,5 @@
 name: markterm
-version: 0.9.0
+version: 0.10.0
 
 authors:
   - Roberto Alsina <roberto.alsina@gmail.com>
@@ -13,6 +13,8 @@ targets:
     main: src/main_mark.cr
   markpdf:
     main: src/main_pdf.cr
+  markpdf-web:
+    main: src/main_web.cr
 
 dependencies:
   # Pinned to a tag of our fork, so builds are reproducible and what
@@ -41,6 +43,10 @@ dependencies:
     github: crystal-term/screen
   crimage:
     github: naqvis/crimage
+  # The markpdf-web playground: a small Kemal site where visitors edit
+  # markdown, tweak styling knobs, and see the markpdf output live.
+  kemal:
+    github: kemalcr/kemal
 
 development_dependencies:
   ameba:
