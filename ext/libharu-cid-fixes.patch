@@ -208,7 +208,7 @@ index 77147fa..3f70b8e 100644
      return val;
  }
 diff --git a/src/hpdf_font_cid.c b/src/hpdf_font_cid.c
-index 0b76a36..1bb2ecf 100644
+index 0b76a36..3b09583 100644
 --- a/src/hpdf_font_cid.c
 +++ b/src/hpdf_font_cid.c
 @@ -61,7 +61,8 @@ CidRangeToHex (char        *s,
@@ -314,7 +314,63 @@ index 0b76a36..1bb2ecf 100644
      ret += HPDF_Dict_AddNumber (cid_system_info, "Supplement",
              encoder_attr->suppliment);
  
-@@ -865,9 +897,41 @@ CidRangeToHex  (char        *s,
+@@ -583,6 +615,35 @@ CIDFontType2_BeforeWrite_Func  (HPDF_Dict obj)
+                 font_attr->fontdef->descriptor);
+ }
+ 
++/* The UTF-8 encoder maps non-BMP codepoints to document-wide alternate
++ * CIDs (HPDF_SetEncoderAlternate), so its to_unicode_fn returns either
++ * a unicode value (BMP) or one of those CIDs. Alternate CIDs resolve to
++ * glyphs by codepoint, not by unicode — the same mapping the embedded
++ * subset's /W array uses — so a plain GetCharWidth call would return
++ * the missing-glyph width for every emoji. */
++static HPDF_INT
++WidthForValue  (HPDF_FontDef    fontdef,
++                HPDF_Encoder    encoder,
++                HPDF_UINT16     value)
++{
++    if (encoder->to_unicode_fn != HPDF_CMapEncoder_ToUnicode) {
++        HPDF_CMapEncoderAttr encoder_attr = (HPDF_CMapEncoderAttr)encoder->attr;
++        if (encoder_attr && encoder_attr->alternate_map) {
++            HPDF_UINT i;
++            for (i = 0; i < encoder_attr->alternate_map->count; i++) {
++                HPDF_AlternateUnicodeRec *alt = HPDF_List_ItemAt (
++                            encoder_attr->alternate_map, i);
++                if (alt->cid == value) {
++                    HPDF_UINT16 gid = HPDF_TTFontDef_GetGlyphidU32 (fontdef,
++                            alt->codepoint);
++                    return HPDF_TTFontDef_GetGidWidth (fontdef, gid);
++                }
++            }
++        }
++    }
++    return HPDF_TTFontDef_GetCharWidth (fontdef, value);
++}
++
+ 
+ static HPDF_TextWidth
+ TextWidth  (HPDF_Font         font,
+@@ -634,7 +695,7 @@ TextWidth  (HPDF_Font         font,
+                 } else {
+                     /* unicode-based font */
+                     unicode = (encoder->to_unicode_fn)(encoder, code);
+-                    w = HPDF_TTFontDef_GetCharWidth (attr->fontdef, unicode);
++                    w = WidthForValue (attr->fontdef, encoder, unicode);
+                 }
+             } else {
+                 w = -dw2;
+@@ -750,8 +811,8 @@ MeasureText  (HPDF_Font          font,
+                 } else {
+                     /* unicode-based font */
+                     unicode = (encoder->to_unicode_fn)(encoder, code);
+-                    tmp_w = HPDF_TTFontDef_GetCharWidth (attr->fontdef,
+-                            unicode);
++                    tmp_w = (HPDF_UINT16)WidthForValue (attr->fontdef,
++                            encoder, unicode);
+                 }
+             } else {
+                 tmp_w = (HPDF_UINT16)(-dw2);
+@@ -865,9 +926,41 @@ CidRangeToHex  (char        *s,
      return pbuf;
  }
  
@@ -357,7 +413,7 @@ index 0b76a36..1bb2ecf 100644
  {
      HPDF_STATUS ret = HPDF_OK;
      HPDF_Dict cmap = HPDF_DictStream_New (encoder->mmgr, xref);
-@@ -1032,36 +1096,49 @@ CreateCMap  (HPDF_Encoder   encoder,
+@@ -1032,36 +1125,49 @@ CreateCMap  (HPDF_Encoder   encoder,
      if (ret != HPDF_OK)
          return NULL;
  
@@ -418,7 +474,7 @@ index 0b76a36..1bb2ecf 100644
  
              ret += HPDF_Stream_WriteStr (cmap->stream, buf);
          }
-@@ -1070,10 +1147,44 @@ CreateCMap  (HPDF_Encoder   encoder,
+@@ -1070,10 +1176,44 @@ CreateCMap  (HPDF_Encoder   encoder,
              return NULL;
      }
  

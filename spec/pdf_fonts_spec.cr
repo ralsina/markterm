@@ -93,4 +93,25 @@ describe "markpdf font fallback" do
       File.delete?(path)
     end
   end
+
+  it "keeps the space after an emoji in layout and in the text layer" do
+    pdftotext = Process.find_executable("pdftotext")
+    font_path = emoji_font_path
+    pending!("no emoji/symbol TrueType font available") unless pdftotext && font_path
+
+    # The emoji's advance used to be measured as the missing-glyph width
+    # (a fraction of an em), so the following word was drawn on top of
+    # the emoji and even the text layer lost the space.
+    source = "Emoji \u{1F389} and links"
+    path = temp_pdf_path
+    begin
+      Markd::Pdf.emoji_font = font_path
+      Markd::Pdf.render(source, path, Markd::Options.new)
+      text = IO::Memory.new
+      Process.run(pdftotext, [path, "-"], output: text, error: IO::Memory.new)
+      text.to_s.should contain("Emoji \u{1F389} and")
+    ensure
+      File.delete?(path)
+    end
+  end
 end
