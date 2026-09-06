@@ -85,16 +85,6 @@ def register_fonts(font_paths : Array(String))
   end
 end
 
-# A dark page with the light default code theme would glow: pick a dark
-# code theme for the dark style unless one was asked for explicitly. An
-# explicit -t keeps its existing behavior (the code theme follows it
-# when tartrazine knows it).
-def pick_code_theme(code_theme : String?, theme : String?, style : String)
-  return code_theme if code_theme
-  return Markd::Pdf::DARK_CODE_THEME if style == "dark" && !theme
-  code_theme
-end
-
 def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
@@ -110,7 +100,7 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
       options: options,
       style: style,
       theme: theme,
-      code_theme: pick_code_theme(code_theme, theme, style),
+      code_theme: Markd::Pdf.pick_code_theme(code_theme, theme, style),
       page_size: page_size,
       margin_mm: margin_mm,
       base_dir: base_dir,

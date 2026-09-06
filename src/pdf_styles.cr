@@ -17,6 +17,16 @@ module Markd
     # dark page.
     DARK_CODE_THEME = "monokai"
 
+    # A dark page with the light default code theme would glow: pick a
+    # dark code theme for the dark style unless one was asked for
+    # explicitly. An explicit theme keeps its existing behavior (the
+    # code theme follows it when tartrazine knows it).
+    def self.pick_code_theme(code_theme : String?, theme : String?, style : String) : String?
+      return code_theme if code_theme
+      return DARK_CODE_THEME if style == "dark" && !theme
+      code_theme
+    end
+
     STYLE_DESCRIPTIONS = {
       "default" => "clean sans-serif print style",
       "book"    => "serif, justified, indented — for long prose / e-readers",
@@ -42,7 +52,7 @@ module Markd
         ul ul, ol ol, ul ol, ol ul { margin: 0 0 9px 0; padding-left: 16px; }
         li { margin: 0 0 3px 0; }
         li.task-list-item { list-style-type: none; }
-        blockquote { border-left: 3px solid #cccccc; margin: 9px 0 9px 4px; padding: 2px 0 2px 12px; color: #444444; }
+        blockquote { border-left: 4px solid #cccccc; margin: 9px 0 9px 0; padding: 2px 0 2px 12px; color: #444444; }
         blockquote p { margin: 0 0 6px 0; }
         pre { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #f6f6f6; border: 1px solid #e0e0e0;
               margin: 9px 0 9px 0; padding: 7px 9px 7px 9px; overflow: hidden;
@@ -55,7 +65,7 @@ module Markd
         td { border: 1px solid #cccccc; padding: 4px 8px 4px 8px; }
         hr { border-bottom: 1px solid #bbbbbb; margin: 18px 0 18px 0; }
         img { margin: 6px 0 6px 0; max-width: 100%; }
-        .alert { border: 1px solid #bbbbbb; border-left: 4px solid #666666; padding: 8px 12px 4px 12px; margin: 9px 0 9px 0; }
+        .alert { border: none; border-left: 4px solid #666666; padding: 8px 12px 4px 12px; margin: 9px 0 9px 0; }
         .alert p { margin: 0 0 6px 0; }
         .alert-title { font-weight: bold; }
         .alert-note { border-left: 4px solid #2e6f9e; }
@@ -92,7 +102,7 @@ module Markd
         li { margin: 0 0 3px 0; text-align: justify; }
         li.task-list-item { list-style-type: none; }
         li p { margin: 0 0 3px 0; text-indent: 0; }
-        blockquote { border-left: 3px solid #cccccc; margin: 9px 0 9px 0; padding: 2px 0 2px 12px; color: #444444; font-size: 11.5px; }
+        blockquote { border-left: 4px solid #cccccc; margin: 9px 0 9px 0; padding: 2px 0 2px 12px; color: #444444; font-size: 11.5px; }
         blockquote p { margin: 0 0 6px 0; text-indent: 0; }
         pre { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #f6f6f6; border: none;
               margin: 9px 0 9px 0; padding: 7px 9px 7px 9px; overflow: hidden;
@@ -105,7 +115,7 @@ module Markd
         td { border: 1px solid #cccccc; padding: 4px 8px 4px 8px; }
         hr { border-bottom: 1px solid #bbbbbb; margin: 18px 0 18px 0; }
         img { margin: 6px 0 6px 0; max-width: 100%; }
-        .alert { border: 1px solid #bbbbbb; border-left: 4px solid #666666; padding: 8px 12px 4px 12px; margin: 9px 0 9px 0; font-size: 11.5px; }
+        .alert { border: none; border-left: 4px solid #666666; padding: 8px 12px 4px 12px; margin: 9px 0 9px 0; font-size: 11.5px; }
         .alert p { margin: 0 0 6px 0; text-indent: 0; }
         .alert-title { font-weight: bold; }
         .alert-note { border-left: 4px solid #2e6f9e; }
@@ -140,7 +150,7 @@ module Markd
         ul ul, ol ol, ul ol, ol ul { margin: 0 0 9px 0; padding-left: 16px; }
         li { margin: 0 0 3px 0; }
         li.task-list-item { list-style-type: none; }
-        blockquote { border-left: 3px solid #444444; margin: 9px 0 9px 4px; padding: 2px 0 2px 12px; color: #bbbbbb; }
+        blockquote { border-left: 4px solid #444444; margin: 9px 0 9px 0; padding: 2px 0 2px 12px; color: #bbbbbb; }
         blockquote p { margin: 0 0 6px 0; }
         pre { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #1e1e1e; border: 1px solid #333333;
               margin: 9px 0 9px 0; padding: 7px 9px 7px 9px; overflow: hidden;
@@ -153,7 +163,7 @@ module Markd
         td { border: 1px solid #444444; padding: 4px 8px 4px 8px; }
         hr { border-bottom: 1px solid #444444; margin: 18px 0 18px 0; }
         img { margin: 6px 0 6px 0; max-width: 100%; }
-        .alert { border: 1px solid #444444; border-left: 4px solid #888888; padding: 8px 12px 4px 12px; margin: 9px 0 9px 0; }
+        .alert { border: none; border-left: 4px solid #888888; padding: 8px 12px 4px 12px; margin: 9px 0 9px 0; }
         .alert p { margin: 0 0 6px 0; }
         .alert-title { font-weight: bold; }
         .alert-note { border-left: 4px solid #6fa8dc; }
@@ -188,7 +198,7 @@ module Markd
         ul ul, ol ol, ul ol, ol ul { margin: 0 0 9px 0; padding-left: 16px; }
         li { margin: 0 0 3px 0; }
         li.task-list-item { list-style-type: none; }
-        blockquote { border-left: 3px solid #d3c3a0; margin: 9px 0 9px 4px; padding: 2px 0 2px 12px; color: #6e5744; }
+        blockquote { border-left: 4px solid #d3c3a0; margin: 9px 0 9px 0; padding: 2px 0 2px 12px; color: #6e5744; }
         blockquote p { margin: 0 0 6px 0; }
         pre { font-family: "DejaVu Sans Mono", "Liberation Mono", Courier, monospace; font-size: 10px; background-color: #ece1c6; border: 1px solid #d3c3a0;
               margin: 9px 0 9px 0; padding: 7px 9px 7px 9px; overflow: hidden;
@@ -201,7 +211,7 @@ module Markd
         td { border: 1px solid #d3c3a0; padding: 4px 8px 4px 8px; }
         hr { border-bottom: 1px solid #d3c3a0; margin: 18px 0 18px 0; }
         img { margin: 6px 0 6px 0; max-width: 100%; }
-        .alert { border: 1px solid #d3c3a0; border-left: 4px solid #8a7a5a; padding: 8px 12px 4px 12px; margin: 9px 0 9px 0; }
+        .alert { border: none; border-left: 4px solid #8a7a5a; padding: 8px 12px 4px 12px; margin: 9px 0 9px 0; }
         .alert p { margin: 0 0 6px 0; }
         .alert-title { font-weight: bold; }
         .alert-note { border-left: 4px solid #4e6f8e; }
