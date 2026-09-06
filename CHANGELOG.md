@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0] - 2026-09-06
+
+### 🚀 Features
+
+- *(markpdf)* Pad emoji segments and link the ext test driver
+- *(markpdf)* Borderless admonitions, quote bars aligned with them
+- Add the markpdf-web playground
+- Harden markpdf-web against abusive input
+- Make remote image fetching optional, off on the demo
+- Stream the rendered PDF from memory, write no temp file
+
+### 🐛 Bug Fixes
+
+- Resolve emoji advance through the alternate-CID map
+
+### ⚙️ Miscellaneous Tasks
+
+- Pin markd at footnotes-v3 for the byte-offset label fix
+- Publish markpdf-web images to ghcr for amd64 and arm64
+- Check out the litehtml submodule for image builds
+- Sanitize the artifact name (no slashes allowed)
+
+### Markpdf-web
+
+- Rate-limit renders per client and throttle auto-render
+
+### Web
+
+- Cut the feature cards down to three
+- Drop the external-link arrows
+- Mention embedded HTML in the GFM feature card
+
 ## [0.10.0] - 2026-09-06
 
 ### 🚀 Features
@@ -61,6 +93,10 @@ All notable changes to this project will be documented in this file.
 - *(markpdf)* Keep-with-next survives the first line-box candidate
 - *(markpdf)* Format the pagination spec
 
+### 🔖 Releases
+
+- Release v0.10.0
+
 ### 📚 Documentation
 
 - Add BUILDING.md covering build modes and licensing
@@ -75,6 +111,7 @@ All notable changes to this project will be documented in this file.
 - Precommit
 - Parse component prefixes in the changelog, ship markpdf release assets
 - The AUR update runs manually after the release
+- Defer the markpdf-web target until its sources land
 
 ### README
 
