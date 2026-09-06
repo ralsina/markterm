@@ -45,6 +45,9 @@ doc = <<-DOC
                                with a hyphen at the line end
     --language <language>      Hyphenation language for --hyphenate: en or es
                                [default: en]
+    --no-remote-images         Skip http(s) image sources instead of fetching
+                               them; remote fetching can also be turned off
+                               programmatically with Markd::Pdf
 
   If you use "-" as the file argument, markpdf will read from stdin.
   Complete HTML documents (and .html files) are rendered directly,
@@ -85,12 +88,14 @@ def register_fonts(font_paths : Array(String))
   end
 end
 
-def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language)
+def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language, no_remote_images)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
 
   margin_mm = margin.to_f?
   abort_with("invalid margin '#{margin}'") unless margin_mm && margin_mm >= 0
+
+  Markd::Pdf.fetch_remote_images = !no_remote_images
 
   options = Markd::Options.new
   options.gfm = true
@@ -193,6 +198,7 @@ begin
     options["--pageless"] == true,
     options["--hyphenate"] == true,
     options["--language"].as(String),
+    options["--no-remote-images"] == true,
   )
 rescue error
   abort_with(error.message.to_s)

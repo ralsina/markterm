@@ -294,15 +294,20 @@ Limits (all env-tunable) keep the demo from being set on fire:
 | `MARKPDF_WEB_MAX_MARKDOWN_KB` | 512 | Largest accepted markdown body |
 | `MARKPDF_WEB_MAX_RENDER_SECONDS` | 30 | Render timeout, answers 503 |
 | `MARKPDF_WEB_MAX_QUEUE` | 8 | Waiting renders before answers turn 429 |
+| `MARKPDF_WEB_FETCH_IMAGES` | off | Set to 1 to fetch remote images |
 | `MARKPDF_MAX_IMAGE_MB` | 8 | Largest remote image body fetched |
 
-Remote images are only fetched from public http(s) hosts — loopback,
-private ranges and link-local addresses (cloud metadata included) are
-refused, redirects included — and anything bigger than the image cap
-is dropped. Local/relative image sources resolve against an empty
-directory, so server files are never reachable as "images". Temp PDFs
-are deleted the moment their bytes are read, and a sweeper removes
-crash orphans older than an hour every ten minutes.
+Remote image fetching is off on the demo — a markdown file must not
+make the server talk to the network. Re-enable it with
+`MARKPDF_WEB_FETCH_IMAGES=1`; when it is on, images are only fetched
+from public http(s) hosts — loopback, private ranges and link-local
+addresses (cloud metadata included) are refused, redirects included —
+and anything bigger than the image cap is dropped. The CLI fetches by
+default and can skip remote images with `--no-remote-images`.
+Local/relative image sources resolve against an empty directory, so
+server files are never reachable as "images". Temp PDFs are deleted
+the moment their bytes are read, and a sweeper removes crash orphans
+older than an hour every ten minutes.
 
 Or run it from Docker (multi-stage build on alpine:edge, runtime ships
 DejaVu/Noto fonts and runs as an unprivileged user):

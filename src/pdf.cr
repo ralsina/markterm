@@ -206,6 +206,7 @@ module Markd
         return data_uri_image(source, temp_dir, converted)
       end
       if source.starts_with?("http://") || source.starts_with?("https://")
+        return unless fetch_remote_images?
         return rasterize_image(source, source, temp_dir, converted) if source.downcase.includes?(".svg")
         bytes = fetch_image(source)
         return unless bytes
@@ -256,6 +257,20 @@ module Markd
     # Remote image bodies larger than this are refused (MARKPDF_MAX_IMAGE_MB
     # overrides the 8 MB default).
     MAX_IMAGE_BYTES = (ENV["MARKPDF_MAX_IMAGE_MB"]?.try(&.to_i?) || 8) * 1024 * 1024
+
+    # Whether http(s) image sources are fetched and embedded. The CLI
+    # leaves this on; the web playground turns it off, because
+    # untrusted markdown must not make the server talk to the network
+    # (when it is on, image_fetch_allowed? still gates every request).
+    @@fetch_remote_images = true
+
+    def self.fetch_remote_images=(value : Bool)
+      @@fetch_remote_images = value
+    end
+
+    def self.fetch_remote_images? : Bool
+      @@fetch_remote_images
+    end
 
     # Server-side fetches (the web playground renders untrusted markdown)
     # must only reach public http(s) hosts: loopback, private ranges and

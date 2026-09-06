@@ -158,6 +158,16 @@ describe Markd::Pdf do
 end
 
 describe "Markd::Pdf image fetch guard" do
+  it "skips remote images entirely when fetching is disabled" do
+    Markd::Pdf.fetch_remote_images = false
+    html = %(<img src="http://example.invalid/x.png" alt="x">)
+    begin
+      Markd::Pdf.process_images(html, ".", Dir.tempdir, [] of String).should eq(html)
+    ensure
+      Markd::Pdf.fetch_remote_images = true
+    end
+  end
+
   it "refuses non-public and non-http targets" do
     Markd::Pdf.image_fetch_allowed?("http://127.0.0.1/secret.png").should be_false
     Markd::Pdf.image_fetch_allowed?("http://169.254.169.254/latest/meta-data").should be_false
