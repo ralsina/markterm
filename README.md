@@ -283,9 +283,13 @@ PORT=8080 bin/markpdf-web  # or wherever you like
 ```
 
 Documents live in the visitor's browser (localStorage) and in
-shareable `#d=...` URLs; the server keeps nothing. Renders are
-serialized through a mutex because the PDF shim is not known to be
-thread-safe, so it is meant for demo traffic, not for heavy use.
+shareable `#d=...` URLs. Submitted markdown is uploaded to the server,
+rendered in memory, and streamed back with the response — no PDF file
+is ever written (only images that need converting pass through a
+private temp directory, deleted right after the render). Renders are
+serialized
+through a mutex because the PDF shim is not known to be thread-safe,
+so it is meant for demo traffic, not for heavy use.
 
 Limits (all env-tunable) keep the demo from being set on fire:
 

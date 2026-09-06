@@ -158,14 +158,13 @@ module MarkpdfWeb
   end
 
   def self.render_to_bytes(render_params : RenderParams) : Bytes
-    output_path = File.tempname("markpdf-web", ".pdf")
     RENDER_MUTEX.synchronize do
       options = Markd::Options.new
       options.gfm = true
+      bytes = Bytes.new(0)
       elapsed = Time.measure do
-        Markd::Pdf.render(
+        bytes = Markd::Pdf.render_to_memory(
           render_params.markdown,
-          output_path,
           options: options,
           page_size: render_params.page_size,
           margin_mm: render_params.margin_mm,
@@ -186,9 +185,7 @@ module MarkpdfWeb
         )
       end
       @@last_render_seconds = elapsed.total_seconds
-      File.read(output_path).to_slice
-    ensure
-      File.delete?(output_path)
+      bytes
     end
   end
 
@@ -217,35 +214,6 @@ module MarkpdfWeb
     pdf_bytes
   ensure
     BUSY_RENDERS.sub(1)
-  end
-
-  # Renders write through temp files that are deleted the moment their
-  # bytes are read; a crash mid-render could still leave orphans, so a
-  # sweeper removes anything with our prefix that has outlived its age.
-  def self.sweep_temp_pdfs(dir : String = Dir.tempdir, max_age : Time::Span = 1.hour) : Int32
-    removed = 0
-    Dir.glob(File.join(dir, "markpdf-web*.pdf")).each do |path|
-      next unless info = File.info?(path)
-      next unless Time.utc - info.modification_time > max_age
-      File.delete?(path)
-      removed += 1
-    end
-    removed
-  rescue
-    0
-  end
-
-  def self.start_temp_sweeper(interval : Time::Span = 10.minutes) : Nil
-    spawn do
-      loop do
-        sleep interval
-        begin
-          sweep_temp_pdfs
-        rescue
-          # a failed sweep must never kill the sweeper fiber
-        end
-      end
-    end
   end
 
   # The base16 themes sixteen ships: the page-theme choices. Theme names

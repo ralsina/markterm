@@ -49,30 +49,7 @@ module Markd
         Dir.mkdir(temp_dir, 0o700)
         converted = [] of String
         begin
-          highlighted_theme = @code_theme || Pdf.tartrazine_known_theme?(@theme) || Pdf::DEFAULT_CODE_THEME
-          formatter = Tartrazine::Html.new(
-            theme: Tartrazine.theme(highlighted_theme),
-            line_numbers: false,
-            standalone: false,
-          )
-          # Complete HTML documents bring their own styles, so the page
-          # background (scraped from the CSS body rule) only applies to
-          # markdown and HTML fragments.
-          is_html = @html_input || Pdf.html_document?(source)
-          background = is_html ? "" : Pdf.page_background(css)
-          if is_html
-            # No markdown processing, no skeleton: the document keeps
-            # its own styles and title.
-            html = Pdf.process_images(source, @base_dir, temp_dir, converted)
-          else
-            body_html = Pdf.process_images(MathRender.rewrite_html(Pdf.rewrite_task_lists(Markd.to_html(source, @options, formatter: formatter))), @base_dir, temp_dir, converted)
-            body_html = Pdf.hyphenate_body(body_html, @hyphenate, @language)
-            html = Pdf.document_html(body_html, css, extra_css: formatter.style_defs)
-          end
-          size_code = PAGE_SIZES[@page_size.downcase]?
-          raise Error.new("unknown page size '#{@page_size}' (expected a4 or letter)") unless size_code
-          margin_pt = @margin_mm * 72.0 / 25.4
-
+          html, size_code, margin_pt, background = prepare(source, temp_dir, converted)
           errbuf = Bytes.new(512)
           pages = Litepdf.render(html, nil, size_code, margin_pt.to_f32,
             output_path, @base_dir, @header, @footer, background,
@@ -89,6 +66,69 @@ module Markd
           rescue File::Error
           end
         end
+      end
+
+      # Render markdown — or a complete HTML document — to bytes in
+      # memory: no PDF file is ever written. Only images that need
+      # converting pass through a private temp directory, deleted right
+      # after the render. Raises Markd::Pdf::Error on failure.
+      def render_to_memory(source : String) : Bytes
+        temp_dir = File.join(Dir.tempdir, "markpdf-imgs-#{Process.pid}-#{Time.utc.to_unix_ms}")
+        Dir.mkdir(temp_dir, 0o700)
+        converted = [] of String
+        begin
+          html, size_code, margin_pt, background = prepare(source, temp_dir, converted)
+          errbuf = Bytes.new(512)
+          out_data = Pointer(LibC::Char).null
+          out_len = LibC::SizeT.new(0)
+          pages = Litepdf.render_to_memory(html, nil, size_code, margin_pt.to_f32,
+            @base_dir, @header, @footer, background,
+            errbuf, errbuf.size, @pageless ? 1 : 0, pointerof(out_data), pointerof(out_len))
+          if pages < 0
+            message = String.new(errbuf).strip
+            raise Error.new(message.empty? ? "PDF rendering failed" : message)
+          end
+          bytes = Slice.new(out_data, out_len.to_i).dup
+          Litepdf.free_buffer(out_data)
+          bytes
+        ensure
+          converted.each { |path| File.delete?(path) }
+          begin
+            Dir.delete(temp_dir)
+          rescue File::Error
+          end
+        end
+      end
+
+      # Everything both render methods share: markdown or HTML in, final
+      # document HTML out, with images materialized into temp_dir and the
+      # page geometry resolved.
+      private def prepare(source : String, temp_dir : String,
+                          converted : Array(String)) : {String, LibC::Int, LibC::Float, String}
+        highlighted_theme = @code_theme || Pdf.tartrazine_known_theme?(@theme) || Pdf::DEFAULT_CODE_THEME
+        formatter = Tartrazine::Html.new(
+          theme: Tartrazine.theme(highlighted_theme),
+          line_numbers: false,
+          standalone: false,
+        )
+        # Complete HTML documents bring their own styles, so the page
+        # background (scraped from the CSS body rule) only applies to
+        # markdown and HTML fragments.
+        is_html = @html_input || Pdf.html_document?(source)
+        background = is_html ? "" : Pdf.page_background(css)
+        if is_html
+          # No markdown processing, no skeleton: the document keeps
+          # its own styles and title.
+          html = Pdf.process_images(source, @base_dir, temp_dir, converted)
+        else
+          body_html = Pdf.process_images(MathRender.rewrite_html(Pdf.rewrite_task_lists(Markd.to_html(source, @options, formatter: formatter))), @base_dir, temp_dir, converted)
+          body_html = Pdf.hyphenate_body(body_html, @hyphenate, @language)
+          html = Pdf.document_html(body_html, css, extra_css: formatter.style_defs)
+        end
+        size_code = PAGE_SIZES[@page_size.downcase]?
+        raise Error.new("unknown page size '#{@page_size}' (expected a4 or letter)") unless size_code
+        margin_pt = @margin_mm * 72.0 / 25.4
+        {html, size_code, margin_pt.to_f32, background}
       end
     end
   end

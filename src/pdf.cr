@@ -31,6 +31,13 @@ lib Litepdf
                               margin_pt : LibC::Float, out_path : LibC::Char*, base_dir : LibC::Char*,
                               header : LibC::Char*, footer : LibC::Char*, page_background : LibC::Char*,
                               errbuf : LibC::Char*, errbuf_len : LibC::Int, single_page : LibC::Int) : LibC::Int
+  fun render_to_memory = litepdf_render_to_memory(html : LibC::Char*, css : LibC::Char*, page_size : LibC::Int,
+                                                  margin_pt : LibC::Float, base_dir : LibC::Char*,
+                                                  header : LibC::Char*, footer : LibC::Char*,
+                                                  page_background : LibC::Char*, errbuf : LibC::Char*,
+                                                  errbuf_len : LibC::Int, single_page : LibC::Int,
+                                                  out_data : LibC::Char**, out_len : LibC::SizeT*) : LibC::Int
+  fun free_buffer = litepdf_free_buffer(buffer : LibC::Char*)
   fun register_font = litepdf_register_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,
                                             errbuf_len : LibC::Int) : LibC::Int
   fun set_emoji_font = litepdf_set_emoji_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,
@@ -144,6 +151,23 @@ module Markd
         hyphenate: hyphenate, language: language)
       renderer.add_css(css) if css
       renderer.render(source, output_path)
+    end
+
+    # Render markdown to PDF bytes in memory: a convenience that builds
+    # a throwaway Renderer. Same parameters as render, minus the output
+    # path — no PDF file is ever written.
+    def self.render_to_memory(source : String, options : Markd::Options = Markd::Options.new,
+                              page_size : String = "a4", margin_mm : Float64 = 20.0, base_dir : String = ".",
+                              header : String = "", footer : String = "", code_theme : String? = nil,
+                              theme : String? = nil, style : String? = nil, html_input : Bool = false,
+                              pageless : Bool = false, hyphenate : Bool = false, language : String = "en",
+                              css : String? = nil) : Bytes
+      renderer = Renderer.new(options: options, style: style || "default", theme: theme, code_theme: code_theme,
+        page_size: page_size, margin_mm: margin_mm, base_dir: base_dir, header: header,
+        footer: footer, html_input: html_input, pageless: pageless, hyphenate: hyphenate,
+        language: language)
+      renderer.add_css(css) if css
+      renderer.render_to_memory(source)
     end
 
     # Internal: called by Pdf::Renderer. Soft hyphens go in last: they

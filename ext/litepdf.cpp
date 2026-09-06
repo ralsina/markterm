@@ -2575,9 +2575,10 @@ int litepdf_set_emoji_font(const char* ttf_path, char* errbuf, int errbuf_len)
 // relative image paths. page_size: 0 = A4, 1 = Letter. margin_pt is the
 // uniform page margin. Returns the number of pages, or -1 and fills
 // errbuf on failure.
-int litepdf_render(const char* html, const char* css, int page_size, float margin_pt, const char* out_path,
-                   const char* base_dir, const char* header, const char* footer,
-                   const char* page_background, char* errbuf, int errbuf_len, int single_page)
+static int render_pdf(const char* html, const char* css, int page_size, float margin_pt,
+               const char* base_dir, const char* header, const char* footer,
+               const char* page_background, char* errbuf, int errbuf_len, int single_page,
+               char** out_data, size_t* out_len)
 {
     if (errbuf && errbuf_len > 0)
     {
@@ -3279,15 +3280,85 @@ int litepdf_render(const char* html, const char* css, int page_size, float margi
         }
     }
 
-    g_last_op = "saving " + std::string(out_path);
-    if (HPDF_SaveToFile(pdf, out_path) != HPDF_OK)
+    g_last_op = "saving to memory stream";
+    if (HPDF_SaveToStream(pdf) != HPDF_OK)
     {
-        std::snprintf(errbuf, errbuf_len, "failed to write %s: %s", out_path,
+        std::snprintf(errbuf, errbuf_len, "failed to save the document: %s",
                       describe_hpdf_error().c_str());
         HPDF_Free(pdf);
         return -1;
     }
+
+    HPDF_UINT32 pdf_size = HPDF_GetStreamSize(pdf);
+    char* buffer = static_cast<char*>(std::malloc(pdf_size));
+    if (!buffer)
+    {
+        std::snprintf(errbuf, errbuf_len,
+                      "out of memory holding the rendered PDF (%u bytes)", pdf_size);
+        HPDF_Free(pdf);
+        return -1;
+    }
+    HPDF_UINT32 read_size = pdf_size;
+    if (HPDF_GetContents(pdf, reinterpret_cast<HPDF_BYTE*>(buffer), &read_size) != HPDF_OK ||
+        read_size != pdf_size)
+    {
+        std::snprintf(errbuf, errbuf_len, "failed to read back the rendered document: %s",
+                      describe_hpdf_error().c_str());
+        std::free(buffer);
+        HPDF_Free(pdf);
+        return -1;
+    }
     HPDF_Free(pdf);
+    *out_data = buffer;
+    *out_len = pdf_size;
     return page_count;
+}
+
+// Render to a malloc'd buffer the caller frees with litepdf_free_buffer.
+int litepdf_render_to_memory(const char* html, const char* css, int page_size, float margin_pt,
+                             const char* base_dir, const char* header, const char* footer,
+                             const char* page_background, char* errbuf, int errbuf_len,
+                             int single_page, char** out_data, size_t* out_len)
+{
+    return render_pdf(html, css, page_size, margin_pt, base_dir, header, footer,
+                      page_background, errbuf, errbuf_len, single_page, out_data, out_len);
+}
+
+void litepdf_free_buffer(char* buffer)
+{
+    std::free(buffer);
+}
+
+// Convenience for file-based callers: render to memory, then spill to
+// out_path.
+int litepdf_render(const char* html, const char* css, int page_size, float margin_pt, const char* out_path,
+                   const char* base_dir, const char* header, const char* footer,
+                   const char* page_background, char* errbuf, int errbuf_len, int single_page)
+{
+    char* data = nullptr;
+    size_t len = 0;
+    int pages = litepdf_render_to_memory(html, css, page_size, margin_pt, base_dir, header,
+                                         footer, page_background, errbuf, errbuf_len,
+                                         single_page, &data, &len);
+    if (pages < 0)
+    {
+        return pages;
+    }
+    FILE* file = std::fopen(out_path, "wb");
+    if (!file)
+    {
+        std::snprintf(errbuf, errbuf_len, "failed to open %s for writing", out_path);
+        std::free(data);
+        return -1;
+    }
+    size_t written = std::fwrite(data, 1, len, file);
+    std::fclose(file);
+    std::free(data);
+    if (written != len)
+    {
+        std::snprintf(errbuf, errbuf_len, "short write to %s", out_path);
+        return -1;
+    }
+    return pages;
 }
 }

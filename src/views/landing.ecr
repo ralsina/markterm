@@ -104,8 +104,10 @@
     <section id="playground">
       <h2>Playground</h2>
       <p>Edit the markdown, tweak the knobs, and the PDF updates. Documents are
-      saved in your browser and can be shared as a link; the server keeps
-      nothing. The demo doesn't fetch remote images — the CLI does.</p>
+      saved in your browser and can be shared as a link. Rendering happens on
+      this server: your markdown is uploaded with the request, rendered in
+      memory, and the PDF is streamed straight back — it never touches disk.
+      The demo doesn't fetch remote images — the CLI does.</p>
       <noscript><p role="alert">The playground needs JavaScript to talk to the
       renderer. The CLI, meanwhile, needs nothing at all.</p></noscript>
 
@@ -223,8 +225,10 @@
     <section id="install">
       <h2>Install</h2>
       <p>The playground renders with the same engine as the <code>markpdf</code>
-      command, which renders <em>your</em> files locally — nothing is uploaded
-      anywhere.</p>
+      command. The CLI renders <em>your</em> files locally — nothing ever
+      leaves your machine. The playground is different: your markdown is
+      uploaded to the server, rendered in memory, streamed back with the
+      response, and not kept anywhere.</p>
       <div class="grid">
         <article>
           <h3>Arch Linux</h3>
