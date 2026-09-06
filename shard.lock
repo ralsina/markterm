@@ -4,6 +4,10 @@ shards:
     git: https://github.com/crystal-ameba/ameba.git
     version: 1.7.0
 
+  backtracer:
+    git: https://github.com/sija/backtracer.cr.git
+    version: 1.2.4
+
   baked_file_system:
     git: https://github.com/ralsina/baked_file_system.git
     version: 0.10.0+git.commit.beb373124c7a235cfb9cd94e36849d8168eaa04b
@@ -20,13 +24,25 @@ shards:
     git: https://github.com/ralsina/docopt.cr.git
     version: 0.3.1
 
+  exception_page:
+    git: https://github.com/crystal-loot/exception_page.git
+    version: 0.5.0
+
   hyphen:
     path: ./hyphen
     version: 0.1.0
 
+  kemal:
+    git: https://github.com/kemalcr/kemal.git
+    version: 1.13.0
+
   markd:
     git: https://github.com/ralsina/markd.git
-    version: 0.6.0+git.commit.abda7a54467d33bdc728b0973f2bfc9f9ff12ec5
+    version: 0.6.0+git.commit.490f0bc3129d1e625464b3f4da7336a2a978cffe
+
+  radix:
+    git: https://github.com/luislavena/radix.git
+    version: 0.4.1
 
   sixteen:
     git: https://github.com/ralsina/sixteen.git

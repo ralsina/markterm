@@ -19,10 +19,11 @@ dependencies:
   # the pin contains is a lookup, not a raw commit. footnotes-v2 is
   # the footnotes branch as reviewed on icyleaf/markd#78, which also
   # carries the GFM features (tables, alerts, strikethrough, task
-  # lists) that icyleaf/master has.
+  # lists) that icyleaf/master has. footnotes-v3 adds the byte-offset
+  # fix for footnote reference labels after multibyte characters.
   markd:
     github: ralsina/markd
-    tag: footnotes-v2
+    tag: footnotes-v3
   # Kept in-tree (path dependency) so it can be extracted into its
   # own repository later without changing the require.
   hyphen:
