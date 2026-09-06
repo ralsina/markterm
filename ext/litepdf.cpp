@@ -1517,8 +1517,10 @@ class PdfContainer : public litehtml::document_container
             return 0;
         }
         float width = 0;
-        for (const auto& segment : segment_text(text, f))
+        std::vector<TextPiece> segments = segment_text(text, f);
+        for (size_t i = 0; i < segments.size(); i++)
         {
+            const TextPiece& segment = segments[i];
             const PdfFont* segment_font = segment.font;
             if (!segment_font)
             {
@@ -1527,6 +1529,14 @@ class PdfContainer : public litehtml::document_container
             set_measure_font(*segment_font);
             std::string piece = segment_font->utf8 ? segment.text : to_cp1252(segment.text.c_str());
             width += HPDF_Page_TextWidth(measure_page, piece.c_str());
+            // Emoji glyphs run flush against the following glyph, and a
+            // raised superscript right after one visually collides with
+            // the emoji's top corner. Give emoji a little air; draw_text
+            // pads by the same amount so layout stays honest.
+            if (is_emoji_codepoint(segment.codepoint))
+            {
+                width += segment_font->size * 0.25f;
+            }
         }
         return width;
     }
@@ -1591,8 +1601,10 @@ class PdfContainer : public litehtml::document_container
         // Draw segment by segment; emoji-range codepoints the primary font
         // lacks come from the emoji font at the shared baseline.
         float cursor = context->pdf_x(px(pos.x));
-        for (const auto& segment : segment_text(text, f))
+        std::vector<TextPiece> segments = segment_text(text, f);
+        for (size_t i = 0; i < segments.size(); i++)
         {
+            const TextPiece& segment = segments[i];
             const PdfFont* segment_font = segment.font;
             if (!segment_font)
             {
@@ -1610,6 +1622,12 @@ class PdfContainer : public litehtml::document_container
             g_last_op = "segment: measure";
             set_measure_font(*segment_font);
             cursor += measure_page ? HPDF_Page_TextWidth(measure_page, piece.c_str()) : 0.0f;
+            // Keep measure and draw in sync: text_width pads emoji for
+            // the same reason (see there).
+            if (is_emoji_codepoint(segment.codepoint))
+            {
+                cursor += segment_font->size * 0.25f;
+            }
         }
 
         int decoration = f.decoration;

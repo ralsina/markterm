@@ -106,7 +106,7 @@ build/libhpdf.a: build-libharu.sh libharu-cid-fixes.patch | build
 
 # Standalone test driver: ./build/litepdf_test file.html [file.css] out.pdf
 test: $(LIB) build/litepdf_test.o
-	$(CXX) $(CXXFLAGS) $(INCLUDES) build/litepdf_test.o $(LIB) -Lbuild -lhpdf -o build/litepdf_test
+	$(CXX) $(CXXFLAGS) $(INCLUDES) build/litepdf_test.o $(LIB) -Lbuild -lhpdf -lpng -lz -lm -lstdc++ -o build/litepdf_test
 
 build/litepdf_test.o: litepdf_test.cpp | build
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
