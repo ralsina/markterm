@@ -157,6 +157,52 @@ describe Markd::Pdf do
   end
 end
 
+describe "Markd::Pdf image fetch guard" do
+  it "refuses non-public and non-http targets" do
+    Markd::Pdf.image_fetch_allowed?("http://127.0.0.1/secret.png").should be_false
+    Markd::Pdf.image_fetch_allowed?("http://169.254.169.254/latest/meta-data").should be_false
+    Markd::Pdf.image_fetch_allowed?("http://192.168.1.10/router.png").should be_false
+    Markd::Pdf.image_fetch_allowed?("http://10.0.0.5/internal.png").should be_false
+    Markd::Pdf.image_fetch_allowed?("http://[::1]/secret.png").should be_false
+    Markd::Pdf.image_fetch_allowed?("file:///etc/passwd").should be_false
+    Markd::Pdf.image_fetch_allowed?("ftp://example.com/x.png").should be_false
+  end
+
+  it "accepts public literal-IP targets without touching the network" do
+    Markd::Pdf.image_fetch_allowed?("https://93.184.216.34/photo.jpg").should be_true
+  end
+
+  it "classifies unsafe IPv6 forms" do
+    Markd::Pdf.unsafe_ip?("::1").should be_true
+    Markd::Pdf.unsafe_ip?("::").should be_true
+    Markd::Pdf.unsafe_ip?("fe80::1").should be_true
+    Markd::Pdf.unsafe_ip?("fc00::1").should be_true
+    Markd::Pdf.unsafe_ip?("::ffff:192.168.1.1").should be_true
+    Markd::Pdf.unsafe_ip?("2606:4700::1111").should be_false
+  end
+end
+
+describe "MarkpdfWeb temp sweeper" do
+  it "removes stale orphan PDFs but keeps fresh ones" do
+    dir = File.join(Dir.tempdir, "markpdf-web-sweep-spec")
+    Dir.mkdir_p(dir)
+    old_orphan = File.join(dir, "markpdf-webOLD.pdf")
+    fresh_render = File.join(dir, "markpdf-webNEW.pdf")
+    File.write(old_orphan, "%PDF-stale")
+    File.write(fresh_render, "%PDF-fresh")
+    File.touch(old_orphan, Time.utc - 2.hours)
+    begin
+      removed = MarkpdfWeb.sweep_temp_pdfs(dir, max_age: 1.hour)
+      File.exists?(old_orphan).should be_false
+      File.exists?(fresh_render).should be_true
+      removed.should eq(1)
+    ensure
+      Dir.glob(File.join(dir, "*")).each { |path| File.delete?(path) }
+      Dir.delete?(dir)
+    end
+  end
+end
+
 describe "markpdf-web routes" do
   it "serves the landing page" do
     response = WEB_CLIENT.get("/")

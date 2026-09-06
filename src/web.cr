@@ -16,17 +16,45 @@ module MarkpdfWeb
   class ParamError < Exception
   end
 
+  class QueueFullError < Exception
+  end
+
+  class RenderTimeoutError < Exception
+  end
+
   # Rendering runs through the C++ shim and libharu, whose
   # thread-safety is unknown, and markpdf's font and emoji font
   # registration are process-global. Serialize renders instead of
   # finding out the hard way.
   RENDER_MUTEX = Mutex.new
 
-  MAX_MARKDOWN_BYTES   = 512 * 1024
+  # How many requests may be waiting for (or running) a render before
+  # the server starts answering 429.
+  BUSY_RENDERS = Atomic(Int32).new(0)
+
+  # All limits are env-tunable so a deployment can tighten them without
+  # a recompile.
+  MAX_MARKDOWN_KB      = env_int("MARKPDF_WEB_MAX_MARKDOWN_KB", 512)
+  MAX_MARKDOWN_BYTES   = MAX_MARKDOWN_KB * 1024
   MAX_TEXT_FIELD_CHARS = 500
   MAX_CSS_BYTES        = 64 * 1024
+  MAX_RENDER_WAIT      = env_int("MARKPDF_WEB_MAX_QUEUE", 8)
+  RENDER_TIMEOUT       = env_int("MARKPDF_WEB_MAX_RENDER_SECONDS", 30).seconds
   PAGE_SIZES           = %w[a4 letter]
   LANGUAGES            = %w[en es]
+
+  # Local/relative image sources resolve against this directory, which
+  # is created empty and never written to: server files must not be
+  # reachable as "images" through a submitted markdown.
+  EMPTY_BASE_DIR = begin
+    dir = File.join(Dir.tempdir, "markpdf-web-no-local-images")
+    Dir.mkdir_p(dir)
+    dir
+  end
+
+  def self.env_int(name : String, default : Int32) : Int32
+    ENV[name]?.try(&.to_i?) || default
+  end
 
   struct RenderParams
     getter markdown : String
@@ -56,7 +84,7 @@ module MarkpdfWeb
       raise ParamError.new("a 'markdown' field is required") unless markdown
 
       if markdown.bytesize > MAX_MARKDOWN_BYTES
-        raise ParamError.new("markdown is too large (limit: #{MAX_MARKDOWN_BYTES / 1024} KB)")
+        raise ParamError.new("markdown is too large (limit: #{MAX_MARKDOWN_KB} KB)")
       end
 
       style = form.fetch("style", "default")
@@ -120,36 +148,103 @@ module MarkpdfWeb
   end
 
   # Render the document to PDF bytes. Writes through a temporary file
-  # because that is the shim's interface; callers never see it.
+  # because that is the shim's interface; callers never see it. Local
+  # image sources resolve against an empty directory on purpose: the
+  # server's own files must not be reachable as "images".
+  @@last_render_seconds = 0.0
+
+  def self.last_render_seconds : Float64
+    @@last_render_seconds
+  end
+
   def self.render_to_bytes(render_params : RenderParams) : Bytes
     output_path = File.tempname("markpdf-web", ".pdf")
     RENDER_MUTEX.synchronize do
       options = Markd::Options.new
       options.gfm = true
-      Markd::Pdf.render(
-        render_params.markdown,
-        output_path,
-        options: options,
-        page_size: render_params.page_size,
-        margin_mm: render_params.margin_mm,
-        base_dir: ".",
-        header: render_params.header,
-        footer: render_params.footer,
-        code_theme: Markd::Pdf.pick_code_theme(
-          render_params.code_theme,
-          render_params.theme,
-          render_params.style,
-        ),
-        theme: render_params.theme,
-        style: render_params.style,
-        pageless: render_params.pageless?,
-        hyphenate: render_params.hyphenate?,
-        language: render_params.language,
-        css: render_params.custom_css,
-      )
+      elapsed = Time.measure do
+        Markd::Pdf.render(
+          render_params.markdown,
+          output_path,
+          options: options,
+          page_size: render_params.page_size,
+          margin_mm: render_params.margin_mm,
+          base_dir: EMPTY_BASE_DIR,
+          header: render_params.header,
+          footer: render_params.footer,
+          code_theme: Markd::Pdf.pick_code_theme(
+            render_params.code_theme,
+            render_params.theme,
+            render_params.style,
+          ),
+          theme: render_params.theme,
+          style: render_params.style,
+          pageless: render_params.pageless?,
+          hyphenate: render_params.hyphenate?,
+          language: render_params.language,
+          css: render_params.custom_css,
+        )
+      end
+      @@last_render_seconds = elapsed.total_seconds
       File.read(output_path).to_slice
     ensure
       File.delete?(output_path)
+    end
+  end
+
+  # Rendering cannot be interrupted once started (the C shim has no
+  # cancellation), but the client does not have to wait forever: the
+  # render runs in a fiber and this returns 503 when it outlives
+  # RENDER_TIMEOUT. The abandoned fiber finishes on its own and the
+  # render mutex stays fair for whoever is next.
+  def self.render_to_bytes_limited(render_params : RenderParams) : Bytes
+    if BUSY_RENDERS.add(1) + 1 > MAX_RENDER_WAIT
+      raise QueueFullError.new("the renderer is busy, try again shortly")
+    end
+    result = Channel(Bytes | Exception).new
+    spawn do
+      result.send(render_to_bytes(render_params))
+    rescue error
+      result.send(error)
+    end
+    pdf_bytes = select
+    when delivered = result.receive
+      raise delivered if delivered.is_a?(Exception)
+      delivered.as(Bytes)
+    when timeout(RENDER_TIMEOUT)
+      raise RenderTimeoutError.new("rendering took longer than #{RENDER_TIMEOUT.total_seconds} seconds")
+    end
+    pdf_bytes
+  ensure
+    BUSY_RENDERS.sub(1)
+  end
+
+  # Renders write through temp files that are deleted the moment their
+  # bytes are read; a crash mid-render could still leave orphans, so a
+  # sweeper removes anything with our prefix that has outlived its age.
+  def self.sweep_temp_pdfs(dir : String = Dir.tempdir, max_age : Time::Span = 1.hour) : Int32
+    removed = 0
+    Dir.glob(File.join(dir, "markpdf-web*.pdf")).each do |path|
+      next unless info = File.info?(path)
+      next unless Time.utc - info.modification_time > max_age
+      File.delete?(path)
+      removed += 1
+    end
+    removed
+  rescue
+    0
+  end
+
+  def self.start_temp_sweeper(interval : Time::Span = 10.minutes) : Nil
+    spawn do
+      loop do
+        sleep interval
+        begin
+          sweep_temp_pdfs
+        rescue
+          # a failed sweep must never kill the sweeper fiber
+        end
+      end
     end
   end
 
@@ -343,14 +438,21 @@ post "/render" do |env|
   pdf_bytes = Bytes.new(0)
   begin
     render_params = MarkpdfWeb::RenderParams.from_form(env.params.body)
-    render_seconds = Time.measure do
-      pdf_bytes = MarkpdfWeb.render_to_bytes(render_params)
-    end.total_seconds
+    pdf_bytes = MarkpdfWeb.render_to_bytes_limited(render_params)
   rescue error : MarkpdfWeb::ParamError | Markd::Pdf::Error
     env.response.content_type = "text/plain; charset=utf-8"
     halt env, status_code: 422, response: error.message || "could not render this document"
+  rescue error : MarkpdfWeb::QueueFullError
+    env.response.headers.add("Retry-After", "5")
+    env.response.content_type = "text/plain; charset=utf-8"
+    halt env, status_code: 429, response: error.message
+  rescue error : MarkpdfWeb::RenderTimeoutError
+    env.response.headers.add("Retry-After", "10")
+    env.response.content_type = "text/plain; charset=utf-8"
+    halt env, status_code: 503, response: error.message
   end
 
+  render_seconds = MarkpdfWeb.last_render_seconds
   env.response.content_type = "application/pdf"
   env.response.headers.add("Content-Disposition", %(inline; filename="markpdf.pdf"))
   env.response.headers.add("X-Render-Time", render_seconds.round(2).to_s)

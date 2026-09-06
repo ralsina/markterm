@@ -253,9 +253,83 @@ module Markd
       nil
     end
 
+    # Remote image bodies larger than this are refused (MARKPDF_MAX_IMAGE_MB
+    # overrides the 8 MB default).
+    MAX_IMAGE_BYTES = (ENV["MARKPDF_MAX_IMAGE_MB"]?.try(&.to_i?) || 8) * 1024 * 1024
+
+    # Server-side fetches (the web playground renders untrusted markdown)
+    # must only reach public http(s) hosts: loopback, private ranges and
+    # link-local addresses — cloud metadata lives at 169.254.169.254 —
+    # would turn the renderer into a prober of the machine it runs on.
+    # Hostnames resolve (3s timeout, fail closed) and every answer must
+    # be public; a DNS rebinding race between check and fetch is accepted.
+    def self.image_fetch_allowed?(url : String) : Bool
+      uri = URI.parse(url)
+      return false unless {"http", "https"}.includes?(uri.scheme.try(&.downcase))
+      host = uri.host
+      return false unless host
+      return false if host.empty?
+      begin
+        Socket::Addrinfo.resolve(host, uri.port || (uri.scheme == "https" ? 443 : 80),
+          type: Socket::Type::STREAM, timeout: 3.seconds).each do |addrinfo|
+          return false if unsafe_ip?(addrinfo.ip_address)
+        end
+      rescue Socket::Error
+        return false
+      end
+      true
+    end
+
+    # Addresses a server-side fetcher must never touch.
+    def self.unsafe_ip?(ip : Socket::IPAddress) : Bool
+      unsafe_ip?(ip.address)
+    end
+
+    def self.unsafe_ip?(ip : String) : Bool
+      ip.includes?(":") ? unsafe_ipv6?(ip) : unsafe_ipv4?(ip)
+    end
+
+    # {first octet, range of allowed second octets or nil for "any"}:
+    # this-network, RFC1918, loopback, link-local (cloud metadata),
+    # CGNAT, and anything at or above multicast.
+    private UNSAFE_V4_PREFIXES = [
+      {0, nil},
+      {10, nil},
+      {127, nil},
+      {169, 254..254},
+      {172, 16..31},
+      {192, 168..168},
+      {100, 64..127},
+    ]
+
+    private def self.unsafe_ipv4?(ip : String) : Bool
+      values = ip.split(".").compact_map(&.to_i?)
+      return true if values.size != 4
+      return true if values[0] >= 224
+      first, second = values[0], values[1]
+      UNSAFE_V4_PREFIXES.any? do |prefix, range|
+        prefix == first && (range.nil? || second.in?(range))
+      end
+    end
+
+    private def self.unsafe_ipv6?(ip : String) : Bool
+      normalized = ip.downcase
+      return true if {"::", "::1"}.includes?(normalized)
+      return true if normalized.starts_with?("::ffff:")
+      first = normalized.split(":").reject(&.empty?).first?.try(&.to_i?(16))
+      return true if first && ((0xfc00..0xfdff).covers?(first) ||
+                     (0xfe80..0xfebf).covers?(first) ||
+                     (0xff00..0xffff).covers?(first))
+      false
+    rescue
+      true
+    end
+
     private def self.fetch_image(url : String) : Bytes?
       uri = URI.parse(url)
       3.times do
+        # Redirects come back through here, so every hop is re-validated.
+        return unless image_fetch_allowed?(uri.to_s)
         client = HTTP::Client.new(uri)
         client.read_timeout = 15.seconds
         client.connect_timeout = 15.seconds
@@ -268,7 +342,7 @@ module Markd
             return unless location
             uri = URI.parse(location)
           when .success?
-            return response.body.to_slice
+            return read_capped(response.body_io, MAX_IMAGE_BYTES)
           else
             return
           end
@@ -282,6 +356,15 @@ module Markd
       nil
     rescue
       nil
+    end
+
+    # One byte past the cap is read to detect an oversized body; it is
+    # then dropped rather than passed on.
+    private def self.read_capped(io : IO, cap : Int) : Bytes?
+      memory = IO::Memory.new
+      copied = IO.copy(io, memory, cap + 1)
+      return if copied > cap
+      memory.to_slice
     end
 
     # libharu loads PNG and JPEG natively; anything else becomes PNG.

@@ -6,4 +6,5 @@ require "./web"
 
 port = ENV["PORT"]?.try(&.to_i?) || 3000
 Kemal.config.port = port
+MarkpdfWeb.start_temp_sweeper
 Kemal.run

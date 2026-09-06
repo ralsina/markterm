@@ -1,0 +1,12 @@
+.git
+bin
+lib
+ext/build
+spec
+compare
+doc.pdf
+output.pdf
+xx.pdf
+x.md
+table.md
+*.d

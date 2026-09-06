@@ -1,0 +1,63 @@
+# markpdf-web: the playground site as a self-contained image.
+#
+#   docker build -f Dockerfile.web -t markpdf-web .
+#   docker run -p 3000:3000 markpdf-web
+#
+# Multi-stage: an alpine:edge builder with Crystal compiles the shim and
+# a static markpdf-web binary (the same pipeline as build_static.sh,
+# including the patched libharu from ext/), then a small runtime image
+# installs only the fonts the PDF engine scans for fallback glyphs.
+
+FROM alpine:edge AS build
+RUN apk add --no-cache \
+    crystal \
+    shards \
+    yaml-dev \
+    yaml-static \
+    openssl-dev \
+    openssl-libs-static \
+    libxml2-dev \
+    libxml2-static \
+    zlib-dev \
+    zlib-static \
+    libpng-dev \
+    libpng-static \
+    xz-dev \
+    xz-static \
+    gc-static \
+    gc-dev \
+    pcre2-dev \
+    pcre2-static \
+    readline-dev \
+    readline-static \
+    ncurses-static \
+    libharu-dev \
+    g++ \
+    git \
+    cmake \
+    make
+WORKDIR /app
+COPY . .
+# Host-built ext objects cannot link into a static musl build; rebuild
+# the shim and the patched libharu from scratch, then the web binary.
+RUN make -C ext clean \
+ && ext/build-libharu.sh \
+ && make -C ext \
+ && shards install \
+ && shards build --without-development --static markpdf-web
+
+FROM alpine:edge
+# Fonts the PDF engine scans for fallback glyphs (DejaVu for the styles'
+# font stacks, Noto Emoji + Noto Sans Symbols for emoji and symbols) and
+# CA certificates for remote images.
+RUN apk add --no-cache font-dejavu font-noto-emoji font-noto-symbols \
+    ca-certificates wget \
+ && addgroup -S markpdf && adduser -S markpdf -G markpdf
+WORKDIR /app
+COPY --from=build /app/bin/markpdf-web ./
+USER markpdf
+ENV PORT=3000
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+  CMD wget -qO /dev/null "http://127.0.0.1:${PORT}/" || exit 1
+ENTRYPOINT ["/app/markpdf-web"]
