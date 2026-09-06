@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="markpdf turns Markdown into beautiful, print-ready PDFs. Edit markdown, tweak the styling knobs, and see the output live.">
+  <title>markpdf — Markdown to beautiful PDFs</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    .hero { text-align: center; padding: 3.5rem 0 1.5rem; }
+    .hero h1 { margin-bottom: .5rem; }
+    .hero .lead { font-size: 1.15rem; max-width: 46rem; margin: 0 auto 1.5rem; }
+    .grid-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+    .grid-features article { margin: 0; }
+    .grid-features h3 { font-size: 1rem; margin-bottom: .25rem; }
+    .grid-features p { margin-bottom: 0; font-size: .9rem; }
+    .playground-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+    @media (max-width: 920px) { .playground-grid { grid-template-columns: 1fr; } }
+    #markdown { font-family: var(--pico-font-family-monospace); font-size: .85rem; height: 58vh; min-height: 20rem; resize: vertical; margin-bottom: .5rem; }
+    #preview { width: 100%; height: 78vh; min-height: 24rem; border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); background: #fff; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .5rem; }
+    .toolbar select { width: auto; margin: 0; }
+    .toolbar [role="button"], .toolbar button { margin: 0; }
+    .toolbar .toolbar-check { display: flex; align-items: center; gap: .4rem; margin: 0 0 0 auto; font-size: .85rem; }
+    .toolbar .toolbar-check input { width: auto; margin: 0; }    .knob-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .75rem 1.25rem; }
+    .knob-grid label, .knob-grid > label { display: flex; flex-direction: column; gap: .3rem; margin-bottom: 0; }
+    .knob-grid input, .knob-grid select { margin-bottom: 0; }
+    [role="tablist"] { display: flex; gap: .25rem; border-bottom: 1px solid var(--pico-muted-border-color); margin: 1.5rem 0 1rem; overflow-x: auto; }
+    [role="tab"] { width: auto; margin: 0; padding: .4rem .9rem; background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; box-shadow: none; color: var(--pico-muted-color); font-weight: 500; }
+    [role="tab"]:hover { color: var(--pico-primary); border-bottom-color: var(--pico-muted-border-color); }
+    [role="tab"][aria-selected="true"] { color: var(--pico-primary); border-bottom-color: var(--pico-primary); font-weight: 600; }
+    [role="tabpanel"] { margin-bottom: .75rem; }
+    .checks { display: flex; flex-wrap: wrap; gap: 1.25rem; margin: .75rem 0 0; }
+    .checks label { display: flex; align-items: center; gap: .4rem; font-size: .9rem; }
+    .checks input { width: auto; margin: 0; }
+    /* Pico v2 boxes checkboxes into 25px-tall styled pills; restore
+       plain native checkboxes (accent-color keeps them on-brand). */
+    .checks input[type="checkbox"], .toolbar .toolbar-check input[type="checkbox"] {
+      appearance: auto;
+      width: 1rem;
+      height: 1rem;
+      margin: 0;
+      padding: 0;
+      border: none;
+      background: none;
+    }
+    #status { font-size: .85rem; color: var(--pico-muted-color); margin: .25rem 0 0; }
+    .knob-hint { font-size: .85rem; color: var(--pico-muted-color); margin: .5rem 0 0; }
+    #error-box { display: none; margin-top: .5rem; }
+    #error-box pre { white-space: pre-wrap; margin: 0; }
+    section { margin-bottom: 3rem; }
+    code { font-size: .85em; }
+    footer { text-align: center; padding: 1.5rem 0; }
+  </style>
+</head>
+<body>
+  <nav class="container">
+    <ul>
+      <li><strong>markpdf</strong></li>
+    </ul>
+    <ul>
+      <li><a href="#playground">Playground</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#install">Install</a></li>
+      <li><a href="https://github.com/ralsina/markterm">GitHub ↗</a></li>
+    </ul>
+  </nav>
+
+  <main class="container">
+    <div class="hero">
+      <h1>Markdown in. Beautiful PDF out.</h1>
+      <p class="lead">
+        <strong>markpdf</strong> turns Markdown into print-ready PDFs with real
+        typography: styles, 300+ themes, hyphenation, headers and footers, math,
+        emoji and syntax highlighting. One static binary, zero configuration —
+        and the playground below <em>is</em> the real thing.
+      </p>
+      <a href="#playground" role="button">Try it live</a>
+      <a href="https://github.com/ralsina/markterm" role="button" class="outline">Source on GitHub</a>
+    </div>
+
+    <section id="features">
+      <h2>Features</h2>
+      <div class="grid-features">
+        <article>
+          <h3>Styles, not settings</h3>
+          <p>Four built-in stylesheets — <code>default</code>, <code>book</code>,
+          <code>dark</code>, <code>sepia</code> — and every one of them is plain
+          CSS you can override and extend.</p>
+        </article>
+        <article>
+          <h3>Themes for days</h3>
+          <p>Color the page and the code blocks with the base16 and tartrazine
+          theme rosters. Dark pages automatically get non-glowing code.</p>
+        </article>
+        <article>
+          <h3>Full GitHub Flavored Markdown</h3>
+          <p>Tables, task lists, alerts, strikethrough, and real footnotes with
+          backlinks.</p>
+        </article>
+        <article>
+          <h3>Print-perfect typography</h3>
+          <p>Justified paragraphs with proper hyphenation (English and Spanish),
+          running headers and footers with <code>%p</code>age numbers.</p>
+        </article>
+        <article>
+          <h3>Made for screens, too</h3>
+          <p>Pageless mode outputs one tall, scrollable page for on-screen
+          reading — and the dark style keeps it easy on the eyes.</p>
+        </article>
+        <article>
+          <h3>Math, emoji, code</h3>
+          <p>LaTeX math rendered as crisp text, emoji via fallback fonts, and
+          syntax highlighting for a small warehouse of languages.</p>
+        </article>
+        <article>
+          <h3>One static binary</h3>
+          <p>No runtime, no daemon, no accounts: the CLI renders entirely on
+          your machine. Documents in this playground never leave the server's
+          memory.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="playground">
+      <h2>Playground</h2>
+      <p>Edit the markdown, tweak the knobs, and the PDF updates. Documents are
+      saved in your browser and can be shared as a link; the server keeps
+      nothing.</p>
+      <noscript><p role="alert">The playground needs JavaScript to talk to the
+      renderer. The CLI, meanwhile, needs nothing at all.</p></noscript>
+
+      <div class="playground-grid">
+        <div>
+          <div class="toolbar">
+            <select id="sample-select" aria-label="Load a sample document">
+              <option value="">Samples…</option>
+            </select>
+            <button id="render-btn" class="primary" type="button">Render</button>
+            <button id="share-btn" class="outline" type="button">Copy link</button>
+            <a id="download-link" role="button" class="outline" href="#" download="markpdf.pdf">Download</a>
+            <label class="toolbar-check"><input type="checkbox" id="auto-render" checked> Auto-render</label>
+          </div>
+          <textarea id="markdown" spellcheck="false" aria-label="Markdown source"></textarea>
+          <p id="status">Ready.</p>
+          <div id="error-box" role="alert"><article><pre></pre></article></div>
+        </div>
+
+        <div>
+          <iframe id="preview" title="PDF preview"></iframe>
+          <p><a id="open-tab" href="#" target="_blank" rel="noopener">Open the PDF in its own tab ↗</a></p>
+        </div>
+      </div>
+
+      <div role="tablist" aria-label="Styling knobs">
+        <button type="button" role="tab" id="tab-document" aria-controls="panel-document" aria-selected="true">Document</button>
+        <button type="button" role="tab" id="tab-themes" aria-controls="panel-themes" aria-selected="false">Themes</button>
+        <button type="button" role="tab" id="tab-text" aria-controls="panel-text" aria-selected="false">Text &amp; pages</button>
+        <button type="button" role="tab" id="tab-advanced" aria-controls="panel-advanced" aria-selected="false">Advanced</button>
+      </div>
+
+      <div role="tabpanel" id="panel-document" aria-labelledby="tab-document">
+        <div class="knob-grid">
+          <label>Style
+            <select id="style">
+              <% styles.each do |style| %>
+              <option value="<%= style[:name] %>"><%= style[:name] %> — <%= style[:description] %></option>
+              <% end %>
+            </select>
+          </label>
+          <label>Page size
+            <select id="page-size">
+              <option value="a4">A4</option>
+              <option value="letter">Letter</option>
+            </select>
+          </label>
+          <label>Margin (mm)
+            <input type="number" id="margin" min="0" max="100" step="1" value="20">
+          </label>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="pageless"> Pageless (one tall page)</label>
+        </div>
+        <p id="pageless-hint" class="knob-hint" hidden>
+          Pageless output is one tall screen page: headers and footers don't
+          apply. Uncheck pageless to use them.
+        </p>
+      </div>
+
+      <div role="tabpanel" id="panel-themes" aria-labelledby="tab-themes" hidden>
+        <div class="knob-grid">
+          <label>Page theme
+            <select id="theme">
+              <option value="">— none —</option>
+              <% page_themes.each do |page_theme| %>
+              <option value="<%= page_theme %>"><%= page_theme %></option>
+              <% end %>
+            </select>
+          </label>
+          <label>Code theme
+            <select id="code-theme">
+              <option value="">— auto —</option>
+              <% code_themes.each do |code_theme| %>
+              <option value="<%= code_theme %>"><%= code_theme %></option>
+              <% end %>
+            </select>
+          </label>
+        </div>
+        <p class="knob-hint">Page themes are the base16 roster; with no explicit
+        code theme, the dark style picks a dark one automatically.</p>
+      </div>
+
+      <div role="tabpanel" id="panel-text" aria-labelledby="tab-text" hidden>
+        <div class="knob-grid">
+          <label>Language
+            <select id="language">
+              <option value="en">English</option>
+              <option value="es">Spanish</option>
+            </select>
+          </label>
+          <label>Header
+            <input type="text" id="header" placeholder="Page %p of %t" maxlength="200">
+          </label>
+          <label>Footer
+            <input type="text" id="footer" placeholder="markpdf playground" maxlength="200">
+          </label>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="hyphenate"> Hyphenate</label>
+        </div>
+        <p class="knob-hint">The language is used for hyphenation. Header and
+        footer placeholders: <code>%p</code> page number, <code>%t</code> total
+        pages.</p>
+      </div>
+
+      <div role="tabpanel" id="panel-advanced" aria-labelledby="tab-advanced" hidden>
+        <label for="custom-css">Custom CSS</label>
+        <textarea id="custom-css" spellcheck="false" placeholder='h1 { color: purple; } — layered on top of the style, last declaration wins' rows="5"></textarea>
+        <p class="knob-hint">Layered on top of the selected style; the last
+        declaration wins, just like repeatable <code>--css</code> in the CLI.</p>
+      </div>
+    </section>
+
+    <section id="install">
+      <h2>Install</h2>
+      <p>The playground renders with the same engine as the <code>markpdf</code>
+      command, which renders <em>your</em> files locally — nothing is uploaded
+      anywhere.</p>
+      <div class="grid">
+        <article>
+          <h3>Arch Linux</h3>
+          <p><code>yay -S markterm</code><br>From the AUR, via your favorite
+          helper.</p>
+        </article>
+        <article>
+          <h3>From source</h3>
+          <p><code>git clone https://github.com/ralsina/markterm</code><br>
+          <code>cd markterm && make -C ext && shards build</code><br>
+          Binaries land in <code>bin/</code>.</p>
+        </article>
+        <article>
+          <h3>GitHub releases</h3>
+          <p>Static builds of <code>markpdf</code> are attached to each
+          <a href="https://github.com/ralsina/markterm/releases">release</a>.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="container">
+    <p><small>markpdf is part of <a href="https://github.com/ralsina/markterm">MARKTerm</a>
+    — MIT licensed, made with Crystal, litehtml, libharu and Kemal.</small></p>
+  </footer>
+
+<script>
+const SAMPLES = <%= samples_json %>;
+
+const knobIds = ["style", "theme", "code-theme", "page-size", "margin",
+                 "language", "header", "footer"];
+const checkboxes = ["pageless", "hyphenate"];
+
+const markdownBox = document.getElementById("markdown");
+const previewFrame = document.getElementById("preview");
+const renderButton = document.getElementById("render-btn");
+const statusLine = document.getElementById("status");
+const errorBox = document.getElementById("error-box");
+const errorText = errorBox.querySelector("pre");
+const downloadLink = document.getElementById("download-link");
+const openTabLink = document.getElementById("open-tab");
+const sampleSelect = document.getElementById("sample-select");
+
+const STORAGE_KEY = "markpdf-web-state";
+let currentBlobUrl = null;
+let inFlight = false;
+let rerenderQueued = false;
+let renderTimer = null;
+let saveTimer = null;
+
+function collectState() {
+  const state = { markdown: markdownBox.value };
+  knobIds.forEach((knobId) => {
+    state[knobId.replace(/-/g, "_")] = document.getElementById(knobId).value;
+  });
+  checkboxes.forEach((checkboxId) => {
+    state[checkboxId] = document.getElementById(checkboxId).checked;
+  });
+  state.custom_css = document.getElementById("custom-css").value;
+  return state;
+}
+
+function applyState(state) {
+  markdownBox.value = state.markdown || "";
+  knobIds.forEach((knobId) => {
+    const key = knobId.replace(/-/g, "_");
+    if (state[key] !== undefined) document.getElementById(knobId).value = state[key];
+  });
+  checkboxes.forEach((checkboxId) => {
+    if (state[checkboxId] !== undefined) {
+      document.getElementById(checkboxId).checked = Boolean(state[checkboxId]);
+    }
+  });
+  if (state.custom_css !== undefined) {
+    document.getElementById("custom-css").value = state.custom_css;
+  }
+  syncPagelessKnobs();
+}
+
+function b64urlEncode(text) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function b64urlDecode(text) {
+  let normalized = text.replace(/-/g, "+").replace(/_/g, "/");
+  while (normalized.length % 4) normalized += "=";
+  const bytes = Uint8Array.from(atob(normalized), (character) => character.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function saveLocal() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState()));
+  } catch {
+    /* private browsing or full quota: autosave is best-effort */
+  }
+}
+
+function setStatus(message) {
+  statusLine.textContent = message;
+}
+
+function showError(message) {
+  errorText.textContent = message;
+  errorBox.style.display = "block";
+}
+
+function hideError() {
+  errorBox.style.display = "none";
+}
+
+function setPdfBlob(blob) {
+  const url = URL.createObjectURL(blob);
+  if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+  currentBlobUrl = url;
+  previewFrame.src = url;
+  downloadLink.href = url;
+  openTabLink.href = url;
+}
+
+async function renderNow() {
+  if (inFlight) {
+    // A knob or the text changed mid-render: remember to re-render the
+    // newest state instead of dropping the request.
+    rerenderQueued = true;
+    return;
+  }
+  inFlight = true;
+  renderButton.disabled = true;
+  setStatus("Rendering…");
+  hideError();
+  const state = collectState();
+  const body = new URLSearchParams();
+  body.set("markdown", state.markdown);
+  knobIds.forEach((knobId) => {
+    body.set(knobId.replace(/-/g, "_"), state[knobId.replace(/-/g, "_")]);
+  });
+  checkboxes.forEach((checkboxId) => {
+    body.set(checkboxId, state[checkboxId] ? "true" : "false");
+  });
+  body.set("custom_css", state.custom_css);
+  try {
+    const response = await fetch("/render", { method: "POST", body });
+    if (!response.ok) {
+      const detail = await response.text();
+      showError(detail || "The renderer refused this document.");
+      setStatus("Something in the document or knobs made the renderer unhappy.");
+      return;
+    }
+    const blob = await response.blob();
+    setPdfBlob(blob);
+    let status = "Ready — " + Math.max(1, Math.round(blob.size / 1024)) + " KB of PDF";
+    const renderHeader = response.headers.get("X-Render-Time");
+    const renderSeconds = renderHeader === null ? NaN : Number(renderHeader);
+    if (!Number.isNaN(renderSeconds)) {
+      status += ", rendered in " + renderSeconds.toFixed(2) + " s";
+    }
+    setStatus(status + ".");
+  } catch (error) {
+    showError("Could not reach the renderer: " + error.message);
+    setStatus("The renderer is unreachable.");
+  } finally {
+    inFlight = false;
+    renderButton.disabled = false;
+    if (rerenderQueued) {
+      rerenderQueued = false;
+      renderNow();
+    }
+  }
+}
+
+function scheduleRender() {
+  if (!document.getElementById("auto-render").checked) return;
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(renderNow, 700);
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveLocal, 400);
+}
+
+// Pageless output has no headers or footers: grey the fields out and
+// say why, so the knobs never lie.
+const headerInput = document.getElementById("header");
+const footerInput = document.getElementById("footer");
+const pagelessHint = document.getElementById("pageless-hint");
+
+function syncPagelessKnobs() {
+  const pageless = document.getElementById("pageless").checked;
+  headerInput.disabled = pageless;
+  footerInput.disabled = pageless;
+  pagelessHint.hidden = !pageless;
+}
+
+function loadInitialState() {
+  if (location.hash.startsWith("#d=")) {
+    try {
+      applyState(JSON.parse(b64urlDecode(location.hash.slice(3))));
+      return;
+    } catch {
+      /* a broken hash falls through to localStorage */
+    }
+  }
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      applyState(JSON.parse(saved));
+      return;
+    } catch {
+      /* corrupted autosave falls through to the sample */
+    }
+  }
+  applyState(SAMPLES[0]);
+}
+
+SAMPLES.forEach((sample, index) => {
+  const option = document.createElement("option");
+  option.value = String(index);
+  option.textContent = sample.title;
+  sampleSelect.appendChild(option);
+});
+
+sampleSelect.addEventListener("change", () => {
+  const sample = SAMPLES[Number(sampleSelect.value)];
+  if (!sample) return;
+  applyState({
+    markdown: sample.markdown,
+    style: sample.style,
+    theme: "",
+    code_theme: "",
+    page_size: "a4",
+    margin: "20",
+    language: "en",
+    header: "",
+    footer: "",
+    pageless: sample.pageless,
+    hyphenate: false,
+    custom_css: "",
+  });
+  sampleSelect.value = "";
+  renderNow();
+});
+
+document.getElementById("share-btn").addEventListener("click", async () => {
+  const url = location.origin + location.pathname + "#d=" + b64urlEncode(JSON.stringify(collectState()));
+  history.replaceState(null, "", "#d=" + b64urlEncode(JSON.stringify(collectState())));
+  try {
+    await navigator.clipboard.writeText(url);
+    setStatus("Shareable link copied to the clipboard.");
+  } catch {
+    setStatus("The shareable link is in the address bar.");
+  }
+});
+
+markdownBox.addEventListener("input", () => { scheduleSave(); scheduleRender(); });
+knobIds.forEach((knobId) => {
+  document.getElementById(knobId).addEventListener("input", () => { scheduleSave(); scheduleRender(); });
+});
+checkboxes.forEach((checkboxId) => {
+  document.getElementById(checkboxId).addEventListener("change", () => {
+    syncPagelessKnobs();
+    scheduleSave();
+    scheduleRender();
+  });
+});
+document.getElementById("custom-css").addEventListener("input", () => { scheduleSave(); scheduleRender(); });
+markdownBox.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    event.preventDefault();
+    renderNow();
+  }
+});
+renderButton.addEventListener("click", renderNow);
+
+// Knob tabs: one visible panel per selected tab, arrow keys included.
+const tabButtons = Array.from(document.querySelectorAll('[role="tab"]'));
+
+function selectTab(selectedButton) {
+  tabButtons.forEach((button) => {
+    const selected = button === selectedButton;
+    button.setAttribute("aria-selected", String(selected));
+    document.getElementById(button.getAttribute("aria-controls")).hidden = !selected;
+  });
+}
+
+tabButtons.forEach((button) => {
+  button.addEventListener("click", () => selectTab(button));
+  button.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    event.preventDefault();
+    const offset = event.key === "ArrowRight" ? 1 : tabButtons.length - 1;
+    const nextButton = tabButtons[(tabButtons.indexOf(button) + offset) % tabButtons.length];
+    nextButton.focus();
+    selectTab(nextButton);
+  });
+});
+
+loadInitialState();
+renderNow();
+</script>
+</body>
+</html>
