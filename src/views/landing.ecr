@@ -7,7 +7,26 @@
   <title>markpdf — Markdown to beautiful PDFs</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <style>
-    .hero { text-align: center; padding: 3.5rem 0 1.5rem; }
+    /* Quirky drifting-pages backdrop, tinted with the theme colors like
+       nicolino.ralsina.me's hero: a translucent page-color to accent
+       gradient over a repeating SVG of scattered little documents. */
+    .hero {
+      text-align: center;
+      padding: 4rem 2rem;
+      border-radius: 1em;
+      overflow: hidden;
+      background-image:
+        linear-gradient(
+          color-mix(in srgb, var(--pico-background-color) 86%, transparent),
+          color-mix(in srgb, var(--pico-background-color) 58%, transparent),
+          color-mix(in srgb, var(--pico-primary) 12%, transparent)
+        ),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='340' viewBox='0 0 340 340'%3E  %3Cg fill='none' stroke='%235b6b7f' stroke-width='2' stroke-linejoin='round' stroke-linecap='round'%3E   %3Cg transform='rotate(-10 80 80)'%3E    %3Cpath d='M45 40 h42 l16 16 v52 h-58 z' fill='%237c8ea3' fill-opacity='0.14'/%3E    %3Cpath d='M87 40 l16 16 h-16 z' fill='%231b7fd4' fill-opacity='0.30' stroke='none'/%3E    %3Cpath d='M55 68 h34 M55 78 h34 M55 88 h24' stroke-opacity='0.4'/%3E   %3C/g%3E   %3Cg transform='rotate(9 200 190)'%3E    %3Cpath d='M160 150 h50 l18 18 v64 h-68 z' fill='%237c8ea3' fill-opacity='0.11'/%3E    %3Cpath d='M210 150 l18 18 h-18 z' fill='%231b7fd4' fill-opacity='0.25' stroke='none'/%3E    %3Cpath d='M172 182 h44 M172 192 h44 M172 202 h30' stroke-opacity='0.35'/%3E    %3Ccircle cx='236' cy='232' r='9' fill='%232e9e5b' fill-opacity='0.35' stroke='none'/%3E    %3Cpath d='M231 232 l4 4 l7 -8' stroke='%232e9e5b' stroke-opacity='0.55'/%3E   %3C/g%3E   %3Cg transform='rotate(-14 70 250)'%3E    %3Cpath d='M40 215 h36 l14 14 v44 h-50 z' fill='%237c8ea3' fill-opacity='0.10'/%3E    %3Cpath d='M76 215 l14 14 h-14 z' fill='%231b7fd4' fill-opacity='0.22' stroke='none'/%3E    %3Cpath d='M50 242 h28 M50 252 h28 M50 262 h18' stroke-opacity='0.32'/%3E   %3C/g%3E   %3Cg transform='rotate(16 300 60)'%3E    %3Cpath d='M270 30 h40 l16 16 v50 h-56 z' fill='%237c8ea3' fill-opacity='0.12'/%3E    %3Cpath d='M310 30 l16 16 h-16 z' fill='%231b7fd4' fill-opacity='0.28' stroke='none'/%3E    %3Cpath d='M282 60 h36 M282 70 h36 M282 80 h22' stroke-opacity='0.35'/%3E   %3C/g%3E   %3Cg transform='rotate(-6 290 300)'%3E    %3Cpath d='M255 265 h44 l16 16 v59 h-60 z' fill='%237c8ea3' fill-opacity='0.13'/%3E    %3Cpath d='M299 265 l16 16 h-16 z' fill='%231b7fd4' fill-opacity='0.24' stroke='none'/%3E    %3Cpath d='M266 295 h40 M266 305 h40 M266 315 h26' stroke-opacity='0.34'/%3E   %3C/g%3E  %3C/g%3E %3C/svg%3E");
+      background-size: cover, 340px 340px;
+      background-repeat: no-repeat, repeat;
+      background-position: center, top left;
+      margin-bottom: 2rem;
+    }
     .hero h1 { margin-bottom: .5rem; }
     .hero .lead { font-size: 1.15rem; max-width: 46rem; margin: 0 auto 1.5rem; }
     .grid-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
@@ -62,25 +81,19 @@
       <li><a href="#playground">Playground</a></li>
       <li><a href="#features">Features</a></li>
       <li><a href="#install">Install</a></li>
-      <li><a href="https://github.com/ralsina/markterm">GitHub ↗</a></li>
+      <li><a href="https://github.com/ralsina/markterm">GitHub</a></li>
     </ul>
   </nav>
 
   <main class="container">
     <div class="hero">
       <h1>Markdown in. Beautiful PDF out.</h1>
-      <p class="lead">
-        <strong>markpdf</strong> turns Markdown into print-ready PDFs with real
-        typography: styles, 300+ themes, hyphenation, headers and footers, math,
-        emoji and syntax highlighting. One static binary, zero configuration —
-        and the playground below <em>is</em> the real thing.
-      </p>
+      <p class="lead">One static binary, real typography, zero fuss.</p>
       <a href="#playground" role="button">Try it live</a>
       <a href="https://github.com/ralsina/markterm" role="button" class="outline">Source on GitHub</a>
     </div>
 
     <section id="features">
-      <h2>Features</h2>
       <div class="grid-features">
         <article>
           <h3>GitHub Flavoured Markdown</h3>
@@ -129,7 +142,7 @@
 
         <div>
           <iframe id="preview" title="PDF preview"></iframe>
-          <p><a id="open-tab" href="#" target="_blank" rel="noopener">Open the PDF in its own tab ↗</a></p>
+          <p><a id="open-tab" href="#" target="_blank" rel="noopener">Open the PDF in its own tab</a></p>
         </div>
       </div>
 
