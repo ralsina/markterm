@@ -22,6 +22,47 @@ module MarkpdfWeb
   class RenderTimeoutError < Exception
   end
 
+  # Per-key fixed-window budget, used to keep auto-render-as-you-type
+  # from turning one visitor into a render farm. Keys that go quiet are
+  # pruned once the table grows past a few hundred entries.
+  class RateLimiter
+    def initialize(@max_per_window : Int32, @window : Time::Span)
+      @windows = Hash(String, {Time, Int32}).new
+      @mutex = Mutex.new
+    end
+
+    def allow?(key : String) : Bool
+      @mutex.synchronize do
+        now = Time.utc
+        prune(now) if @windows.size > 256
+        window_start, count = @windows.fetch(key, {now, 0})
+        if now - window_start >= @window
+          window_start, count = now, 0
+        end
+        if count >= @max_per_window
+          @windows[key] = {window_start, count}
+          false
+        else
+          @windows[key] = {window_start, count + 1}
+          true
+        end
+      end
+    end
+
+    # Seconds until the key's current window resets (0 when allowed).
+    def retry_after(key : String) : Int32
+      @mutex.synchronize do
+        now = Time.utc
+        window_start, _ = @windows.fetch(key, {now, 0})
+        {(@window - (now - window_start)).total_seconds + 1, 1}.max.to_i
+      end
+    end
+
+    private def prune(now : Time)
+      @windows.reject! { |_, pair| now - pair[0] >= @window }
+    end
+  end
+
   # Rendering runs through the C++ shim and libharu, whose
   # thread-safety is unknown, and markpdf's font and emoji font
   # registration are process-global. Serialize renders instead of
@@ -39,6 +80,7 @@ module MarkpdfWeb
   MAX_TEXT_FIELD_CHARS = 500
   MAX_CSS_BYTES        = 64 * 1024
   MAX_RENDER_WAIT      = env_int("MARKPDF_WEB_MAX_QUEUE", 8)
+  MAX_RENDERS_PER_MIN  = env_int("MARKPDF_WEB_MAX_RENDERS_PER_MINUTE", 30)
   RENDER_TIMEOUT       = env_int("MARKPDF_WEB_MAX_RENDER_SECONDS", 30).seconds
   PAGE_SIZES           = %w[a4 letter]
   LANGUAGES            = %w[en es]
@@ -402,7 +444,17 @@ get "/" do |env|
   MarkpdfWeb::LandingPage.new.to_s
 end
 
+RENDER_LIMITER = MarkpdfWeb::RateLimiter.new(MarkpdfWeb::MAX_RENDERS_PER_MIN, 1.minute)
+
 post "/render" do |env|
+  client_key = env.request.remote_address.as(Socket::IPAddress).address
+  unless RENDER_LIMITER.allow?(client_key)
+    env.response.headers.add("Retry-After", RENDER_LIMITER.retry_after(client_key).to_s)
+    env.response.content_type = "text/plain; charset=utf-8"
+    halt env, status_code: 429,
+      response: "too many renders from your address — wait a few seconds, or use the Download button to keep the last PDF"
+  end
+
   pdf_bytes = Bytes.new(0)
   begin
     render_params = MarkpdfWeb::RenderParams.from_form(env.params.body)

@@ -298,6 +298,7 @@ Limits (all env-tunable) keep the demo from being set on fire:
 | `MARKPDF_WEB_MAX_MARKDOWN_KB` | 512 | Largest accepted markdown body |
 | `MARKPDF_WEB_MAX_RENDER_SECONDS` | 30 | Render timeout, answers 503 |
 | `MARKPDF_WEB_MAX_QUEUE` | 8 | Waiting renders before answers turn 429 |
+| `MARKPDF_WEB_MAX_RENDERS_PER_MINUTE` | 30 | Renders per minute per client IP |
 | `MARKPDF_WEB_FETCH_IMAGES` | off | Set to 1 to fetch remote images |
 | `MARKPDF_MAX_IMAGE_MB` | 8 | Largest remote image body fetched |
 

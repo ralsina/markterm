@@ -192,6 +192,26 @@ describe "Markd::Pdf image fetch guard" do
   end
 end
 
+describe "MarkpdfWeb::RateLimiter" do
+  it "allows the budget per window, then refuses until it resets" do
+    limiter = MarkpdfWeb::RateLimiter.new(2, 50.milliseconds)
+    limiter.allow?("a").should be_true
+    limiter.allow?("a").should be_true
+    limiter.allow?("a").should be_false
+    sleep 80.milliseconds
+    limiter.allow?("a").should be_true
+  end
+
+  it "tracks keys independently and reports the retry delay" do
+    limiter = MarkpdfWeb::RateLimiter.new(1, 500.milliseconds)
+    limiter.allow?("x").should be_true
+    limiter.allow?("y").should be_true
+    limiter.allow?("x").should be_false
+    limiter.retry_after("x").should be > 0
+    limiter.retry_after("y").should be > 0
+  end
+end
+
 describe "markpdf-web routes" do
   it "serves the landing page" do
     response = WEB_CLIENT.get("/")

@@ -291,6 +291,10 @@ let inFlight = false;
 let rerenderQueued = false;
 let renderTimer = null;
 let saveTimer = null;
+let lastRenderStart = 0;
+// Auto-render as you type is rate-limited: at most one render per gap,
+// however fast you type. Manual Render clicks are never delayed.
+const MIN_AUTO_RENDER_GAP = 2000;
 
 function collectState() {
   const state = { markdown: markdownBox.value };
@@ -373,6 +377,7 @@ async function renderNow() {
     return;
   }
   inFlight = true;
+  lastRenderStart = Date.now();
   renderButton.disabled = true;
   setStatus("Rendering…");
   hideError();
@@ -419,7 +424,9 @@ async function renderNow() {
 function scheduleRender() {
   if (!document.getElementById("auto-render").checked) return;
   clearTimeout(renderTimer);
-  renderTimer = setTimeout(renderNow, 700);
+  const sinceLast = Date.now() - lastRenderStart;
+  const gapLeft = Math.max(0, MIN_AUTO_RENDER_GAP - sinceLast);
+  renderTimer = setTimeout(renderNow, Math.max(700, gapLeft));
 }
 
 function scheduleSave() {
