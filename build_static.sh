@@ -5,6 +5,10 @@ set -e
 # all binaries. The clean is required: the repo may carry shim objects
 # built by the host toolchain, which cannot link into a static musl build.
 build_binaries() {
+  # Runs through `docker run ... /bin/sh -c`, where the script-level
+  # set -e does not apply: without this, a failed shim build (say, a
+  # compiler segfault under qemu) sails on to a confusing link error.
+  set -e
   make -C ext clean
   ext/build-libharu.sh
   make -C ext
