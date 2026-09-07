@@ -21,8 +21,13 @@ require "./hyphenation"
 # Link order matters for static builds (archives resolve in a single
 # pass), and the compiler emits @[Link] directives in reverse declaration
 # order: litepdf, then libhpdf (searched in ext/build), then zlib/libpng
-# for libharu's PNG support, then libstdc++ for the C++ shim.
-@[Link(ldflags: "-lstdc++")]
+# for libharu's PNG support, then the C++ runtime for the C++ shim
+# (macOS ships no libstdc++; libc++ is its C++ runtime).
+{% if flag?(:darwin) %}
+  @[Link(ldflags: "-lc++")]
+{% else %}
+  @[Link(ldflags: "-lstdc++")]
+{% end %}
 @[Link(ldflags: "-lpng -lz")]
 @[Link("hpdf", ldflags: "-L #{__DIR__}/../ext/build")]
 @[Link("litepdf")]

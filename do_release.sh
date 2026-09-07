@@ -5,10 +5,6 @@ VERSION=$(git cliff --bumped-version |cut -dv -f2)
 rm -rf aur-markterm
 
 sed "s/^version:.*$/version: $VERSION/g" -i shard.yml
-hace static
-# build_static.sh removes shard.lock and shards regenerates it without
-# development dependencies; restore the tracked one
-git checkout -- shard.lock
 git add shard.yml
 hace lint test
 git cliff --bump -o
@@ -16,15 +12,9 @@ git commit -a -m "bump: Release v$VERSION"
 git tag "v$VERSION"
 git push
 git push --tags
-gh release create "v$VERSION" \
-  "bin/markterm-static-linux-amd64" \
-  "bin/markterm-static-linux-arm64" \
-  "bin/markmark-static-linux-amd64" \
-  "bin/markmark-static-linux-arm64" \
-  "bin/markpdf-static-linux-amd64" \
-  "bin/markpdf-static-linux-arm64" \
-  --title "Release v$VERSION" --notes "$(git cliff -l -s all)"
 
-# The AUR update (do_aur.sh) runs manually after the release: the
-# PKGBUILD gained a markpdf build and its checksums need the tag to
-# exist first.
+# Binaries for every OS/architecture are built and attached to the
+# release by .github/workflows/release.yml when the tag lands; here we
+# only create the release with the changelog notes.
+gh release create "v$VERSION" \
+  --title "Release v$VERSION" --notes "$(git cliff -l -s all)"

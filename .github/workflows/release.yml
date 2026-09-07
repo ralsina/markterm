@@ -1,0 +1,186 @@
+name: Release
+
+# Builds the release binaries for every supported OS/architecture and
+# attaches them to the GitHub release of the pushed tag. The release
+# itself (notes) is created by do_release.sh before CI finishes; the
+# release job uploads into it, or creates one for manually pushed tags.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build static Linux binaries (amd64 + arm64)
+        run: ./build_static.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-static
+          path: bin/*-static-linux-*
+          if-no-files-found: error
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-13
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: latest
+      # libharu's PNG support needs libpng, but a Homebrew dylib would
+      # become a runtime dependency of the released binary, and plain
+      # macOS has none. Build a static libpng into a private prefix and
+      # point the C and CMake builds at it; zlib comes from the macOS
+      # SDK (every Mac ships libz).
+      - name: Build a static libpng
+        run: |
+          set -e
+          deps="$HOME/ci-deps"
+          curl -fsSL -o /tmp/libpng.tar.xz \
+            https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.44.tar.gz
+          tar -C /tmp -xf /tmp/libpng.tar.xz
+          cmake -S /tmp/libpng-1.6.44 -B /tmp/libpng-build \
+            -DCMAKE_INSTALL_PREFIX="$deps" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DPNG_SHARED=OFF -DPNG_STATIC=ON \
+            -DPNG_TESTS=OFF -DPNG_TOOLS=OFF
+          cmake --build /tmp/libpng-build
+          cmake --install /tmp/libpng-build
+      - name: Build binaries
+        run: |
+          set -e
+          deps="$HOME/ci-deps"
+          export LIBRARY_PATH="$deps/lib"
+          export CPATH="$deps/include${CPATH:+:$CPATH}"
+          export CMAKE_PREFIX_PATH="$deps"
+          make -C ext
+          shards install --without-development
+          shards build --without-development --release markterm markmark markpdf
+      # The binaries must not depend on Homebrew dylibs end users don't
+      # have (the static libpng above exists exactly for this).
+      - name: Check for Homebrew dependencies
+        run: |
+          if otool -L bin/markpdf bin/markterm bin/markmark | grep -E 'homebrew|/usr/local/'; then
+            echo "binary depends on a Homebrew dylib" >&2
+            exit 1
+          fi
+      - name: Smoke test
+        run: |
+          set -e
+          bin/markterm table.md --no-pager > /dev/null
+          bin/markmark table.md > /dev/null
+          bin/markpdf table.md -o smoke.pdf
+          test -s smoke.pdf
+      - name: Pack
+        run: |
+          mkdir dist
+          tar -czf "dist/markterm-macos-${{ matrix.arch }}.tar.gz" -C bin markterm markmark markpdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      # The GNU (mingw-w64) toolchain keeps the project's GNU-style
+      # @[Link] flags and the ext/ Makefile working unchanged; the
+      # UCRT64 environment is MSYS2's current default runtime.
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: git make zip
+          pacboy: >-
+            crystal:p
+            shards:p
+            gcc:p
+            cmake:p
+            ninja:p
+            libpng:p
+            zlib:p
+      - name: Build binaries
+        shell: msys2 {0}
+        run: |
+          set -e
+          make -C ext
+          shards install --without-development
+          shards build --without-development --release markterm markmark markpdf
+      # The exes link some UCRT64 DLLs dynamically (libpng, zlib, ...);
+      # ship the ones they actually need next to the exes.
+      - name: Bundle runtime DLLs
+        shell: msys2 {0}
+        run: |
+          set -e
+          mkdir bundle
+          cp bin/*.exe bundle/
+          for exe in bundle/*.exe; do
+            for dll in $(objdump -p "$exe" | grep -oP '(?<=DLL Name: )\S+'); do
+              if [ -f "/ucrt64/bin/$dll" ] && [ ! -f "bundle/$dll" ]; then
+                cp "/ucrt64/bin/$dll" bundle/
+              fi
+            done
+          done
+          ls bundle
+      - name: Smoke test (from the bundle, like end users run it)
+        shell: msys2 {0}
+        run: |
+          set -e
+          cd bundle
+          ./markterm.exe ../table.md --no-pager > /dev/null
+          ./markmark.exe ../table.md > /dev/null
+          ./markpdf.exe ../table.md -o smoke.pdf
+          test -s smoke.pdf
+      - name: Pack
+        shell: msys2 {0}
+        run: |
+          cd bundle
+          zip -qr ../markterm-windows-x86_64.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: markterm-windows-x86_64.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux-static, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Upload artifacts to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -e
+          gh release view "$TAG" > /dev/null 2>&1 \
+            || gh release create "$TAG" --verify-tag --title "Release $TAG" --generate-notes
+          gh release upload "$TAG" dist/* --clobber
+          ls -l dist
