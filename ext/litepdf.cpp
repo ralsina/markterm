@@ -3187,7 +3187,9 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
         }
         else
         {
-            sections = mirror ? std::vector<std::pair<std::string, char>>{{parts[2], 'r'}, {parts[1], 'c'}, {parts[0], 'l'}}
+            // The template names its sections for the recto view
+            // (inner|center|outer); a mirrored verso swaps the sides.
+            sections = mirror ? std::vector<std::pair<std::string, char>>{{parts[0], 'r'}, {parts[1], 'c'}, {parts[2], 'l'}}
                               : std::vector<std::pair<std::string, char>>{{parts[0], 'l'}, {parts[1], 'c'}, {parts[2], 'r'}};
         }
 

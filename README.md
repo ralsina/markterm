@@ -178,6 +178,10 @@ via the C++ shim in `ext/`. Styling is CSS: `markpdf` ships a roster of
 built-in stylesheets (pick one with `--style`), and you can add your own
 rules on top with `--css`.
 
+For print-on-demand, `--kdp` mode makes the output Amazon-KDP-compliant
+(embedded fonts, gutter by page count, recto chapter starts, even page
+count) — see [KDP.md](KDP.md) for the full print-production guide.
+
 ```docopt
 Markpdf - A tool to render markdown to PDF
 

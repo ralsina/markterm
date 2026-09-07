@@ -485,6 +485,32 @@ describe "markpdf mirrored running heads" do
       File.delete?(path)
     end
   end
+
+  it "swaps all three footer sections on verso pages" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+
+    source = "text.\n\n<div style=\"page-break-before: always\"></div>\n\nmore text."
+
+    path = temp_pdf_path
+    begin
+      renderer = Markd::Pdf::Renderer.new(
+        options: Markd::Options.new,
+        style: "default",
+        footer: "INNERSECTION|CENTERSECTION|OUTERSECTION",
+        mirror_headers: true,
+      )
+      pages = renderer.render(source, path)
+      pages.should eq(2)
+
+      # The template names its sections for the recto view: page 1
+      # reads them inner to outer; the mirrored page 2 swaps the sides.
+      page_text(pdftotext, path, 1).should match(/INNERSECTION\s+CENTERSECTION\s+OUTERSECTION/)
+      page_text(pdftotext, path, 2).should match(/OUTERSECTION\s+CENTERSECTION\s+INNERSECTION/)
+    ensure
+      File.delete?(path)
+    end
+  end
 end
 
 # Named-page breaks (page-break-before: right): chapters open on a
