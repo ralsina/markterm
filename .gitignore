@@ -18,3 +18,4 @@
 # shards artifacts from running shards inside the in-tree shard
 hyphen/lib/
 hyphen/shard.lock
+aur-markterm/
