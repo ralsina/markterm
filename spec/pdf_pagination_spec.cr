@@ -426,3 +426,61 @@ describe "markpdf manual page breaks" do
     end
   end
 end
+
+# Mirrored running heads: --mirror-headers swaps the header/footer
+# sections on verso (even) pages, so the same "left|right" template
+# puts the page number on the outer edge of both pages.
+describe "markpdf mirrored running heads" do
+  it "swaps footer sides on verso pages" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+    pdftoppm = Process.find_executable("pdftoppm")
+    pending!("pdftoppm not available") unless pdftoppm
+
+    source = <<-MARKDOWN
+      # One
+
+      first sentinel text.
+
+      <div style="page-break-before: always"></div>
+
+      # Two
+
+      second sentinel text.
+      MARKDOWN
+
+    path = temp_pdf_path
+    begin
+      renderer = Markd::Pdf::Renderer.new(
+        options: Markd::Options.new,
+        style: "default",
+        header: "LEFTSECTION|",
+        footer: "LEFTSECTION|",
+        mirror_headers: true,
+      )
+      pages = renderer.render(source, path)
+      pages.should eq(2)
+
+      # Rasterize both pages and find the horizontal ink span in the
+      # footer band (the bottom margin area, ~39px at 50dpi for 20mm).
+      spans = (1..2).map do |page|
+        width, height, pixels = page_pixels(pdftoppm, path, page)
+        ink_columns = Array(Int32).new
+        (height - 60).upto(height - 1) do |row|
+          row_pixels = pixels + (row * width)
+          width.times do |column|
+            ink_columns << column if row_pixels[column] < 200
+          end
+        end
+        {ink_columns.min? || 0, ink_columns.max? || 0}
+      end
+
+      # Page 1 (recto) footer starts at the left edge; page 2 (verso,
+      # mirrored) starts well past it — the sections swapped sides.
+      spans[0][0].should be < 60
+      spans[1][0].should be > 120
+    ensure
+      File.delete?(path)
+    end
+  end
+end

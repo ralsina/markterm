@@ -37,7 +37,8 @@ lib Litepdf
                               margin_bottom : LibC::Float, margin_left : LibC::Float, margin_gutter : LibC::Float,
                               out_path : LibC::Char*, base_dir : LibC::Char*, header : LibC::Char*,
                               footer : LibC::Char*, page_background : LibC::Char*, errbuf : LibC::Char*,
-                              errbuf_len : LibC::Int, single_page : LibC::Int, kdp : LibC::Int) : LibC::Int
+                              errbuf_len : LibC::Int, single_page : LibC::Int, kdp : LibC::Int,
+                              mirror_headers : LibC::Int) : LibC::Int
   fun render_to_memory = litepdf_render_to_memory(html : LibC::Char*, css : LibC::Char*,
                                                   page_width_mm : LibC::Float, page_height_mm : LibC::Float,
                                                   margin_top : LibC::Float, margin_right : LibC::Float,
@@ -46,6 +47,7 @@ lib Litepdf
                                                   header : LibC::Char*, footer : LibC::Char*,
                                                   page_background : LibC::Char*, errbuf : LibC::Char*,
                                                   errbuf_len : LibC::Int, single_page : LibC::Int, kdp : LibC::Int,
+                                                  mirror_headers : LibC::Int,
                                                   out_data : LibC::Char**, out_len : LibC::SizeT*) : LibC::Int
   fun free_buffer = litepdf_free_buffer(buffer : LibC::Char*)
   fun register_font = litepdf_register_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,

@@ -16,6 +16,7 @@ module Markd
                      @theme : String? = nil, @code_theme : String? = nil,
                      @page_size : String = "a4", @margin_mm : Float64 = 20.0,
                      @margins : String? = nil, @kdp : Bool = false,
+                     @mirror_headers : Bool = false,
                      @base_dir : String = ".", @header : String = "",
                      @footer : String = "", @html_input : Bool = false,
                      @pageless : Bool = false, @hyphenate : Bool = false,
@@ -57,7 +58,7 @@ module Markd
             geometry[:margin_right].to_f32, geometry[:margin_bottom].to_f32,
             geometry[:margin_left].to_f32, geometry[:margin_gutter].to_f32, output_path,
             @base_dir, @header, @footer, geometry[:background], errbuf, errbuf.size,
-            @pageless ? 1 : 0, @kdp ? 1 : 0)
+            @pageless ? 1 : 0, @kdp ? 1 : 0, @mirror_headers ? 1 : 0)
           if pages < 0
             message = String.new(errbuf).strip
             raise Error.new(message.empty? ? "PDF rendering failed" : message)
@@ -90,7 +91,8 @@ module Markd
             geometry[:margin_right].to_f32, geometry[:margin_bottom].to_f32,
             geometry[:margin_left].to_f32, geometry[:margin_gutter].to_f32, @base_dir,
             @header, @footer, geometry[:background], errbuf, errbuf.size,
-            @pageless ? 1 : 0, @kdp ? 1 : 0, pointerof(out_data), pointerof(out_len))
+            @pageless ? 1 : 0, @kdp ? 1 : 0, @mirror_headers ? 1 : 0,
+            pointerof(out_data), pointerof(out_len))
           if pages < 0
             message = String.new(errbuf).strip
             raise Error.new(message.empty? ? "PDF rendering failed" : message)
@@ -107,9 +109,6 @@ module Markd
         end
       end
 
-      # Everything both render methods share: markdown or HTML in, final
-      # document HTML out, with images materialized into temp_dir and the
-      # page geometry resolved.
       # Everything both render methods share: markdown or HTML in, final
       # document HTML out, with images materialized into temp_dir and the
       # page geometry resolved.

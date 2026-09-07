@@ -968,7 +968,10 @@ class PdfContainer : public litehtml::document_container
     HPDF_Doc pdf = nullptr;
     std::string base_dir;
     litehtml::pixel_t content_width = 0;
-    bool kdp_embed = false; // kdp mode: base-14 fonts become embedded TrueTypes
+    bool kdp_embed = false;      // kdp mode: base-14 fonts become embedded TrueTypes
+    bool mirror_headers = false; // mirrored running heads: swap header/footer sides on verso pages
+    bool dpi_audit = false;      // warn when raster images render below 300 DPI
+    std::set<std::string> dpi_warned;
 
     // Per-render page furniture, set by litepdf_render: header/footer
     // templates ("%p" page number, "%t" total) and the page background
@@ -1928,6 +1931,19 @@ class PdfContainer : public litehtml::document_container
             return;
         }
         const litehtml::position& box = layer.border_box;
+        if (dpi_audit && px(box.width) > 0)
+        {
+            // Effective print DPI: pixel width over the displayed width
+            // in inches (box is in points). One warning per image per
+            // render — these land in server logs otherwise.
+            float dpi = HPDF_Image_GetSize(image).x / (px(box.width) / 72.0f);
+            if (dpi < 300 && dpi_warned.insert(url).second)
+            {
+                std::fprintf(stderr,
+                             "markpdf: image '%.80s' renders at about %d DPI (below the 300 DPI print recommendation)\n",
+                             url.c_str(), (int)dpi);
+            }
+        }
         HPDF_Page_DrawImage(context->page, image, context->pdf_x(px(box.x)),
                             context->pdf_y(px(box.y)) - px(box.height), px(box.width), px(box.height));
     }
@@ -2681,7 +2697,7 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
                float margin_top, float margin_right, float margin_bottom, float margin_left,
                float margin_gutter, const char* base_dir, const char* header, const char* footer,
                const char* page_background, char* errbuf, int errbuf_len, int single_page, int kdp,
-               char** out_data, size_t* out_len)
+               int mirror_headers, char** out_data, size_t* out_len)
 {
     if (errbuf && errbuf_len > 0)
     {
@@ -2787,6 +2803,8 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
 
     PdfContainer container(pdf);
     container.kdp_embed = kdp != 0;
+    container.dpi_audit = kdp != 0;
+    container.mirror_headers = mirror_headers != 0;
     // Per-render page furniture: these used to be process globals set
     // by separate litepdf_set_* calls, which made the renderer unsafe
     // to use as a library.
@@ -3058,7 +3076,8 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     int page_count = 0;
     int total_pages = (int)windows.size();
     // Headers/footers use the body font (the first one created).
-    auto draw_page_text = [&](const std::string& templ, bool top, float left_margin, float right_margin)
+    auto draw_page_text = [&](const std::string& templ, bool top, float left_margin, float right_margin,
+                              bool mirror)
     {
         if (templ.empty() || !context.page)
         {
@@ -3087,11 +3106,15 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
         }
         else if (parts.size() == 2)
         {
-            sections = {{parts[0], 'l'}, {parts[1], 'r'}};
+            // Mirrored verso pages swap the outer/inner sections so page
+            // numbers and titles sit on the mirrored edges.
+            sections = mirror ? std::vector<std::pair<std::string, char>>{{parts[0], 'r'}, {parts[1], 'l'}}
+                              : std::vector<std::pair<std::string, char>>{{parts[0], 'l'}, {parts[1], 'r'}};
         }
         else
         {
-            sections = {{parts[0], 'l'}, {parts[1], 'c'}, {parts[2], 'r'}};
+            sections = mirror ? std::vector<std::pair<std::string, char>>{{parts[2], 'r'}, {parts[1], 'c'}, {parts[0], 'l'}}
+                              : std::vector<std::pair<std::string, char>>{{parts[0], 'l'}, {parts[1], 'c'}, {parts[2], 'r'}};
         }
 
         // The body font draws the page text when there is one (full
@@ -3229,6 +3252,7 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
         }
         context.x_offset = left_margin;
         context.top_margin = margin_top_v;
+        bool mirror_now = container.mirror_headers && !recto;
         // Physically clip drawing to this page's window (content area
         // slice): litehtml only culls elements whose boxes intersect the
         // clip, and draws list markers unculled, relying on the container.
@@ -3287,8 +3311,8 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
         // pageless document has no pages to decorate.
         if (!single_page)
         {
-            draw_page_text(container.header_template, true, left_margin, right_margin);
-            draw_page_text(container.footer_template, false, left_margin, right_margin);
+            draw_page_text(container.header_template, true, left_margin, right_margin, mirror_now);
+            draw_page_text(container.footer_template, false, left_margin, right_margin, mirror_now);
         }
 
         // Link annotations for every anchor rectangle on this page's window.
@@ -3500,12 +3524,13 @@ int litepdf_render_to_memory(const char* html, const char* css, float page_width
                              float margin_bottom, float margin_left, float margin_gutter,
                              const char* base_dir, const char* header, const char* footer,
                              const char* page_background, char* errbuf, int errbuf_len,
-                             int single_page, int kdp, char** out_data, size_t* out_len)
+                             int single_page, int kdp, int mirror_headers, char** out_data,
+                             size_t* out_len)
 {
     return render_pdf(html, css, page_width_mm, page_height_mm, margin_top, margin_right,
                       margin_bottom, margin_left, margin_gutter, base_dir, header, footer,
-                      page_background, errbuf, errbuf_len, single_page, kdp, out_data,
-                      out_len);
+                      page_background, errbuf, errbuf_len, single_page, kdp, mirror_headers,
+                      out_data, out_len);
 }
 
 void litepdf_free_buffer(char* buffer)
@@ -3519,14 +3544,15 @@ int litepdf_render(const char* html, const char* css, float page_width_mm, float
                    float margin_top, float margin_right, float margin_bottom, float margin_left,
                    float margin_gutter, const char* out_path,
                    const char* base_dir, const char* header, const char* footer,
-                   const char* page_background, char* errbuf, int errbuf_len, int single_page, int kdp)
+                   const char* page_background, char* errbuf, int errbuf_len, int single_page, int kdp,
+                   int mirror_headers)
 {
     char* data = nullptr;
     size_t len = 0;
     int pages = litepdf_render_to_memory(html, css, page_width_mm, page_height_mm, margin_top,
                                          margin_right, margin_bottom, margin_left, margin_gutter,
                                          base_dir, header, footer, page_background, errbuf,
-                                         errbuf_len, single_page, kdp, &data, &len);
+                                         errbuf_len, single_page, kdp, mirror_headers, &data, &len);
     if (pages < 0)
     {
         return pages;

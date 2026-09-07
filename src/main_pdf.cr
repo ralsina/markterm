@@ -24,6 +24,8 @@ doc = <<-DOC
     --margin <margins>         Page margins in mm, CSS-style: 1 value (all sides),
                                2 (top/bottom, left/right), 4 (top, right, bottom,
                                left) or 5 (... plus gutter) [default: 20]
+    --mirror-headers           Mirror running headers and footers on verso
+                               (even) pages — pairs with a gutter margin
     --kdp                      KDP print mode: embed every font, drop the
                                outline, scrub metadata and pad odd page
                                counts to even
@@ -103,7 +105,7 @@ def register_fonts(font_paths : Array(String))
   end
 end
 
-def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language, no_remote_images, kdp)
+def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language, no_remote_images, kdp, mirror_headers)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
 
@@ -125,6 +127,7 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
       page_size: page_size,
       margins: margin,
       kdp: kdp,
+      mirror_headers: mirror_headers,
       base_dir: base_dir,
       header: header || "",
       footer: footer || "",
@@ -204,6 +207,7 @@ begin
     Cli.option_string(options["--language"], "en"),
     Cli.option_flag(options["--no-remote-images"]),
     Cli.option_flag(options["--kdp"]),
+    Cli.option_flag(options["--mirror-headers"]),
   )
 rescue error
   abort_with(error.message.to_s)

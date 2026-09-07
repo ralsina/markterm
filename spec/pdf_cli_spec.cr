@@ -1,5 +1,72 @@
 require "./spec_helper"
 
+# zlib stream with stored (uncompressed) deflate blocks: PNG requires
+# a zlib wrapper around its image data, and the spec avoids depending
+# on any compression library.
+private def zlib_stored(data : Bytes) : Bytes
+  io = IO::Memory.new
+  io.write_bytes(0x78_u8, IO::ByteFormat::BigEndian)
+  io.write_byte(0x01_u8) # CMF/FLG: fastest, no dictionary
+  offset = 0
+  while offset < data.size
+    chunk = Math.min(65535, data.size - offset)
+    final = offset + chunk == data.size
+    io.write_byte(final ? 1_u8 : 0_u8)
+    io.write_bytes(chunk.to_u16, IO::ByteFormat::LittleEndian)
+    io.write_bytes((~chunk.to_u16), IO::ByteFormat::LittleEndian)
+    io.write(data[offset, chunk])
+    offset += chunk
+  end
+  a = 1_u32
+  b = 0_u32
+  data.each do |byte|
+    a = (a + byte) % 65521
+    b = (b + a) % 65521
+  end
+  io.write_bytes(((b << 16) | a).to_u32, IO::ByteFormat::BigEndian)
+  io.to_slice
+end
+
+# A minimal valid RGB PNG written by hand (zlib + CRC32), so specs can
+# control exact pixel dimensions without binary fixtures.
+private def write_png_chunk(io : IO, type : String, data : Bytes) : Nil
+  io.write_bytes(data.size.to_u32, IO::ByteFormat::BigEndian)
+  io.write(type.to_slice)
+  io.write(data)
+  crc = Digest::CRC32.new
+  crc.update(type.to_slice)
+  crc.update(data)
+  crc_bytes = crc.final
+  crc_value = IO::ByteFormat::BigEndian.decode(UInt32, crc_bytes)
+  io.write_bytes(crc_value.to_u32, IO::ByteFormat::BigEndian)
+end
+
+private def make_png(path : String, width : Int32, height : Int32) : Nil
+  io = File.open(path, "wb")
+  begin
+    io.write(Bytes[137, 80, 78, 71, 13, 10, 26, 10])
+    ihdr = IO::Memory.new
+    ihdr.write_bytes(width.to_u32, IO::ByteFormat::BigEndian)
+    ihdr.write_bytes(height.to_u32, IO::ByteFormat::BigEndian)
+    ihdr.write_byte(8_u8) # bit depth
+    ihdr.write_byte(2_u8) # color type: truecolor
+    ihdr.write_byte(0_u8) # compression
+    ihdr.write_byte(0_u8) # filter
+    ihdr.write_byte(0_u8) # interlace
+    write_png_chunk(io, "IHDR", ihdr.to_slice)
+    raw = IO::Memory.new
+    height.times do
+      raw.write_byte(0_u8)
+      width.times { raw.write(Bytes[200, 30, 30]) }
+    end
+    idat = zlib_stored(raw.to_slice)
+    write_png_chunk(io, "IDAT", idat)
+    write_png_chunk(io, "IEND", Bytes.empty)
+  ensure
+    io.close
+  end
+end
+
 def run_cli(binary : String, args : Array(String), input : String? = nil)
   stdout = IO::Memory.new
   stderr = IO::Memory.new
@@ -64,6 +131,40 @@ describe "markpdf CLI" do
       File.delete?(path)
       File.delete?("/tmp/markpdf_cli_kdp.pdf")
       File.delete?("/tmp/markpdf_cli_kdp2.pdf")
+    end
+  end
+
+  it "warns when a raster image renders below 300 DPI" do
+    tiny = File.tempname("markpdf_spec", ".png")
+    make_png(tiny, 20, 20)
+    md = File.tempname("markpdf_cli", ".md")
+    File.write(md, "![tiny](#{tiny})")
+    pdf = File.tempname("markpdf_cli", ".pdf")
+    begin
+      status, _output, error = run_cli(BIN_MARKPDF, [md, "--page-size", "6x9", "--kdp", "-o", pdf])
+      status.exit_code.should eq(0)
+      error.should contain("300 DPI")
+    ensure
+      File.delete?(tiny)
+      File.delete?(md)
+      File.delete?(pdf)
+    end
+  end
+
+  it "stays quiet for high-resolution images" do
+    big = File.tempname("markpdf_spec", ".png")
+    make_png(big, 1200, 1200)
+    md = File.tempname("markpdf_cli2", ".md")
+    File.write(md, "![big](#{big})")
+    pdf = File.tempname("markpdf_cli2", ".pdf")
+    begin
+      status, _output, error = run_cli(BIN_MARKPDF, [md, "--page-size", "6x9", "-o", pdf])
+      status.exit_code.should eq(0)
+      error.should_not contain("300 DPI")
+    ensure
+      File.delete?(big)
+      File.delete?(md)
+      File.delete?(pdf)
     end
   end
 
