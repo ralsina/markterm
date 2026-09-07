@@ -33,13 +33,14 @@ module Markd
       end
 
       # The complete stylesheet this renderer uses: the built-in style,
-      # then the theme (when set), then user layers — each later block
-      # winning on equal specificity.
+      # then the theme (when set), then the kdp production layer, then
+      # user layers — each later block winning on equal specificity.
       def css : String
         layers = [Pdf.style_css(@style)]
         if theme = @theme
           layers << Pdf.theme_css(theme)
         end
+        layers << Pdf::KDP_CSS if @kdp
         layers.concat(@css_layers)
         layers.join("\n")
       end

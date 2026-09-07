@@ -194,13 +194,18 @@ Options:
   --version                  Show version.
   -o <output>, --output <output>  Write the PDF to a file (defaults to standard output)
   --page-size <size>         Page size: a0..a6, b0..b6, letter, legal, or
-                             custom WxH — values under 12 are
-                               inches (6x9 = 152.4x228.6mm) [default: a4]
+                             custom WxH — values under 12 are inches
+                             (6x9 = 152.4x228.6mm) [default: a4]
   --margin <margins>         Page margins in mm, CSS-style: 1 value (all sides),
                              2 (top/bottom, left/right), 4 (top, right, bottom,
                              left) or 5 (... plus gutter) [default: 20]
+  --mirror-headers           Mirror running headers and footers on verso
+                             (even) pages — pairs with a gutter margin
   --kdp                      KDP print mode: embed every font, drop the
-                             outline and scrub metadata
+                             outline, scrub metadata, size the gutter
+                             from the page count (unless --margin sets
+                             one), start chapters on recto pages and
+                             pad odd page counts to even
   --style <style>            Built-in stylesheet setting layout and typography
                              (themes set colors instead): see --list-styles
                              [default: default]
@@ -264,7 +269,11 @@ h2 { page-break-before: always; }
 ```
 
 `break-before: page`, `page-break-after: always` and `break-after: page`
-work the same way.
+work the same way. Named pages work too: `page-break-before: right`
+(`recto`, and `left`/`verso`) opens the element on a right-hand page,
+inserting a blank page when it would otherwise land on a wrong-parity
+one — the classic convention that chapters start on odd pages. Blank
+filler pages carry no content and no header or footer.
 
 #### Styles
 

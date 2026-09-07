@@ -2494,7 +2494,11 @@ class PdfContainer : public litehtml::document_container
     {
         none,
         before,
-        after
+        before_right,
+        before_left,
+        after,
+        after_right,
+        after_left
     };
 
     page_break_kind element_page_break(const litehtml::element::ptr& el)
@@ -2518,6 +2522,31 @@ class PdfContainer : public litehtml::document_container
         {
             return page_break_kind::before;
         }
+        // Named-page breaks: trade books open chapters on a right-hand
+        // (recto, odd) page, with blank filler pages when the previous
+        // chapter ends on the wrong one. recto/verso are the logical
+        // spellings of right/left. break-after variants behave
+        // identically at scan time — both concern the page that follows.
+        if (ident_of("page-break-before", "right") || ident_of("page-break-before", "recto") ||
+            ident_of("break-before", "right") || ident_of("break-before", "recto"))
+        {
+            return page_break_kind::before_right;
+        }
+        if (ident_of("page-break-before", "left") || ident_of("page-break-before", "verso") ||
+            ident_of("break-before", "left") || ident_of("break-before", "verso"))
+        {
+            return page_break_kind::before_left;
+        }
+        if (ident_of("page-break-after", "right") || ident_of("page-break-after", "recto") ||
+            ident_of("break-after", "right") || ident_of("break-after", "recto"))
+        {
+            return page_break_kind::after_right;
+        }
+        if (ident_of("page-break-after", "left") || ident_of("page-break-after", "verso") ||
+            ident_of("break-after", "left") || ident_of("break-after", "verso"))
+        {
+            return page_break_kind::after_left;
+        }
         if (ident_of("page-break-after", "always") || ident_of("break-after", "page"))
         {
             return page_break_kind::after;
@@ -2527,7 +2556,7 @@ class PdfContainer : public litehtml::document_container
 
     void collect_breaks(const std::shared_ptr<litehtml::render_item>& item, float offset_x, float offset_y,
                         bool inside_atomic, bool ancestor_breaks, std::set<int>& candidates,
-                        std::set<int>& heading_candidates, std::set<int>& forced_breaks)
+                        std::set<int>& heading_candidates, std::map<int, page_break_kind>& forced_breaks)
     {
         if (!item)
         {
@@ -2562,15 +2591,19 @@ class PdfContainer : public litehtml::document_container
         {
             litehtml::element::ptr src = item->src_el();
             page_break_kind kind = element_page_break(src);
-            breaks_before = kind == page_break_kind::before && !ancestor_breaks;
-            breaks_after = kind == page_break_kind::after;
+            breaks_before = (kind == page_break_kind::before ||
+                             kind == page_break_kind::before_right ||
+                             kind == page_break_kind::before_left) && !ancestor_breaks;
+            breaks_after = (kind == page_break_kind::after ||
+                            kind == page_break_kind::after_right ||
+                            kind == page_break_kind::after_left);
             if (breaks_before)
             {
-                forced_breaks.insert((int)std::floor(offset_y + px(item->top())));
+                forced_breaks[(int)std::floor(offset_y + px(item->top()))] = kind;
             }
             if (breaks_after)
             {
-                forced_breaks.insert((int)std::floor(offset_y + px(item->top()) + px(pos.height)));
+                forced_breaks[(int)std::floor(offset_y + px(item->top()) + px(pos.height))] = kind;
             }
         }
         // Tables report one box per row: their tops become candidates so
@@ -2913,7 +2946,8 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     float content_height = page_height - margin_top_v - margin_bottom_v;
     std::set<int> raw_candidates;
     std::set<int> raw_headings;
-    std::set<int> raw_forced;
+    using PageBreak = PdfContainer::page_break_kind;
+    std::map<int, PageBreak> raw_forced;
     container.collect_breaks(doc->root_render(), 0, 0, false, false, raw_candidates, raw_headings, raw_forced);
     container.collect_links(doc->root_render(), 0, 0);
     container.finalize_wide_tables();
@@ -2941,15 +2975,25 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     {
         heading_flows.insert(container.flow_y((float)heading));
     }
-    // Forced breaks (page-break-before/after: always) are hard window
-    // boundaries: the flow is pre-cut at each of them, and keep-with-next
-    // and other candidate heuristics only apply inside a segment.
-    std::vector<float> forced;
-    for (int point : raw_forced)
+    // Forced breaks (page-break-before/after: always/right/left) are
+    // hard window boundaries: the flow is pre-cut at each of them, and
+    // keep-with-next and other candidate heuristics only apply inside a
+    // segment. Cuts carry their named-page side for the filler logic in
+    // the scan; the map iterates in Y order, so forced comes out sorted.
+    struct ForcedCut
     {
-        forced.push_back(container.flow_y((float)point));
+        float y;
+        bool right; // the following page must be recto (odd page number)
+        bool left;  // the following page must be verso (even page number)
+    };
+    std::vector<ForcedCut> forced;
+    for (const auto& cut : raw_forced)
+    {
+        PageBreak kind = cut.second;
+        forced.push_back({container.flow_y((float)cut.first),
+                          kind == PageBreak::before_right || kind == PageBreak::after_right,
+                          kind == PageBreak::before_left || kind == PageBreak::after_left});
     }
-    std::sort(forced.begin(), forced.end());
     std::vector<bool> avoid(candidates.size(), false);
     bool prev_was_heading = false;
     for (size_t i = 0; i < candidates.size(); i++)
@@ -2989,11 +3033,20 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     }
 
     if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "total_height=%.1f flow_height=%.1f content_height=%.1f candidates=%zu headings=%zu wide_tables=%zu\n", total_height, total_flow_height, content_height, candidates.size(), raw_headings.size(), container.wide_tables.size());
-    std::vector<std::pair<float, float>> windows;
+    // One page per window: the flow-space Y range it shows, plus a
+    // blank flag. Filler pages — named-page chapter starts and the kdp
+    // parity pad — draw no content and carry no header or footer.
+    struct PageWindow
+    {
+        float first;
+        float second;
+        bool blank;
+    };
+    std::vector<PageWindow> windows;
     if (single_page)
     {
         // One window: the whole flow, no breaks.
-        windows.emplace_back(0.0f, total_flow_height);
+        windows.push_back({0.0f, total_flow_height, false});
     }
     else
     {
@@ -3003,24 +3056,35 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
         {
             // Forced breaks at or under the current start are window
             // boundaries this loop has already emitted.
-            while (next_forced < forced.size() && forced[next_forced] <= start)
+            while (next_forced < forced.size() && forced[next_forced].y <= start)
             {
                 next_forced++;
             }
             // Hard cut at the next forced break when it fits on this
             // page: the user asked for the break, so nothing overrides
             // it and the window may end shorter than a full page.
-            if (next_forced < forced.size() && forced[next_forced] <= start + content_height)
+            if (next_forced < forced.size() && forced[next_forced].y <= start + content_height)
             {
-                windows.emplace_back(start, forced[next_forced]);
-                start = forced[next_forced];
+                ForcedCut cut = forced[next_forced];
+                windows.push_back({start, cut.y, false});
+                start = cut.y;
                 next_forced++;
+                // A chapter opening on a named page gets a blank filler
+                // when the cut would land on the wrong parity: right
+                // opens on recto (odd page number, even index), left on
+                // verso. The blank flips the parity of every later
+                // page, so mirror margins and running heads follow.
+                if ((cut.right && windows.size() % 2 == 1) ||
+                    (cut.left && windows.size() % 2 == 0))
+                {
+                    windows.push_back({cut.y, cut.y, true});
+                }
                 continue;
             }
             float limit = start + content_height;
             if (limit >= total_flow_height)
             {
-                windows.emplace_back(start, total_flow_height);
+                windows.push_back({start, total_flow_height, false});
                 break;
             }
             // Largest non-avoid candidate <= limit; if every candidate
@@ -3065,7 +3129,7 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
                     }
                 }
             }
-            windows.emplace_back(start, next);
+            windows.push_back({start, next, false});
             start = next;
         }
     }
@@ -3076,7 +3140,7 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     if (kdp && !single_page && windows.size() % 2 == 1)
     {
         float flow_end = windows.back().second;
-        windows.emplace_back(flow_end, flow_end);
+        windows.push_back({flow_end, flow_end, true});
     }
 
     if (getenv("LITEPDF_DEBUG")) { for (auto& w : windows) std::fprintf(stderr, "window %.1f..%.1f\n", w.first, w.second); }
@@ -3318,8 +3382,9 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
             HPDF_Page_GRestore(page);
         }
         // Header/footer go in the margins, outside the window clip; a
-        // pageless document has no pages to decorate.
-        if (!single_page)
+        // pageless document has no pages to decorate, and a blank
+        // filler page stays blank.
+        if (!single_page && !window.blank)
         {
             draw_page_text(container.header_template, true, left_margin, right_margin, mirror_now);
             draw_page_text(container.footer_template, false, left_margin, right_margin, mirror_now);

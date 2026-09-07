@@ -29,7 +29,8 @@ doc = <<-DOC
     --kdp                      KDP print mode: embed every font, drop the
                                outline, scrub metadata, size the gutter
                                from the page count (unless --margin sets
-                               one) and pad odd page counts to even
+                               one), start chapters on recto pages and
+                               pad odd page counts to even
     --style <style>            Built-in stylesheet setting layout and typography
                                (themes set colors instead): see --list-styles
                                [default: default]

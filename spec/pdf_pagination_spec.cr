@@ -318,11 +318,13 @@ describe "markpdf kdp parity padding" do
       File.delete?(odd_path)
     end
 
-    even_source = "# One\n\ntext.\n\n<div style=\"page-break-before: always\"></div>\n\n# Two\n\ntext."
+    # No h1 here: kdp mode's recto chapter default would add a filler
+    # page of its own, and this spec isolates the parity pad.
+    even_source = "text.\n\n<div style=\"page-break-before: always\"></div>\n\nmore text."
     even_path = temp_pdf_path
     begin
       Markd::Pdf.render(even_source, even_path, kdp: true).should eq(2)
-      page_text(pdftotext, even_path, 2).should contain("Two")
+      page_text(pdftotext, even_path, 2).should contain("more")
     ensure
       File.delete?(even_path)
     end
@@ -479,6 +481,50 @@ describe "markpdf mirrored running heads" do
       # mirrored) starts well past it — the sections swapped sides.
       spans[0][0].should be < 60
       spans[1][0].should be > 120
+    ensure
+      File.delete?(path)
+    end
+  end
+end
+
+# Named-page breaks (page-break-before: right): chapters open on a
+# recto (right-hand, odd) page, with a blank verso filler when the
+# previous chapter ended on a recto one. Blank pages carry no content
+# and no header or footer.
+describe "markpdf named-page chapter breaks" do
+  it "opens a right-break chapter on a recto page, filling with a blank verso" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+    source = "# One\n\nonly text.\n\n# Two\n\nsentinel text."
+
+    path = temp_pdf_path
+    begin
+      # KDP mode forces h1 to break right by default: chapter Two's cut
+      # lands on a verso index, the blank filler pushes it to recto page
+      # 3, and the odd count gets a parity pad page 4.
+      pages = Markd::Pdf.render(source, path, kdp: true, header: "head %p", footer: "foot %p")
+      pages.should eq(4)
+      page_text(pdftotext, path, 1).should contain("only text")
+      page_text(pdftotext, path, 2).strip.should be_empty
+      page_text(pdftotext, path, 3).should contain("sentinel")
+      page_text(pdftotext, path, 3).should contain("head 3")
+      page_text(pdftotext, path, 4).strip.should be_empty
+    ensure
+      File.delete?(path)
+    end
+  end
+
+  it "honors break-before: right from a stylesheet without kdp mode" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+    source = "# One\n\nonly text.\n\n# Two\n\nsentinel text."
+
+    path = temp_pdf_path
+    begin
+      pages = Markd::Pdf.render(source, path, css: "h1 { page-break-before: right }")
+      pages.should eq(3)
+      page_text(pdftotext, path, 2).strip.should be_empty
+      page_text(pdftotext, path, 3).should contain("sentinel")
     ensure
       File.delete?(path)
     end

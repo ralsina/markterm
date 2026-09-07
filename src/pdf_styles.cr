@@ -234,6 +234,13 @@ module Markd
     # The original name of the base stylesheet, kept for compatibility.
     DEFAULT_CSS = STYLES["default"]
 
+    # The production layer kdp mode adds on top of the style: chapters
+    # (top-level headings) open on a right-hand page, with blank filler
+    # pages when the previous chapter ended on a verso one. User layers
+    # (--css) win over it, so retargeting or turning it off is a
+    # one-line override.
+    KDP_CSS = "h1 { page-break-before: right }"
+
     # Names of the built-in styles, in roster order.
     def self.style_names : Array(String)
       STYLES.keys
