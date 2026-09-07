@@ -17,14 +17,23 @@ set -e
 #      command needs are alpine packages already present in the
 #      container; it only runs the captured link commands.
 
+# musl.cc's toolchain (github mirror first: musl.cc itself refuses
+# datacenter connections often enough to break CI runs; the binaries
+# are static and musl-linked, so they run inside the alpine builders,
+# unlike glibc-hosted toolchains such as bootlin's).
 CROSS_TC_DIR="aarch64-linux-musl-cross"
-CROSS_TC_URL="https://musl.cc/aarch64-linux-musl-cross.tgz"
+CROSS_TC_URL="https://github.com/OpenListTeam/musl-compilers/releases/download/2025-06-12/$CROSS_TC_DIR.tgz"
+CROSS_TC_FALLBACK_URL="https://musl.cc/$CROSS_TC_DIR.tgz"
 ZLIB_VERSION="1.3.1"
 LIBPNG_VERSION="1.6.44"
 
 download() {
   local destination="$1" url="$2"
-  [ -f "$destination" ] || curl -fsSL -o "$destination" "$url"
+  if [ ! -f "$destination" ]; then
+    echo "fetching $url"
+    curl -fSL --retry 3 --retry-delay 5 -o "$destination" "$url"
+  fi
+  test -f "$destination"
 }
 
 # The cross toolchain and the third-party sources are fetched on the
@@ -40,7 +49,9 @@ download ".cross-src/libpng-$LIBPNG_VERSION.tar.gz" \
   "https://github.com/pnggroup/libpng/archive/refs/tags/v$LIBPNG_VERSION.tar.gz"
 [ -d ".cross-src/libpng-$LIBPNG_VERSION" ] ||
   tar -C .cross-src -xf ".cross-src/libpng-$LIBPNG_VERSION.tar.gz"
-[ -d "$CROSS_TC_DIR" ] || tar -C . -xf /tmp/aarch64-toolchain.tgz
+download "/tmp/$CROSS_TC_DIR.tgz" "$CROSS_TC_URL" ||
+  download "/tmp/$CROSS_TC_DIR.tgz" "$CROSS_TC_FALLBACK_URL"
+[ -d "$CROSS_TC_DIR" ] || tar -C . -xf "/tmp/$CROSS_TC_DIR.tgz"
 
 # Inside a container, and therefore subject to `docker run ...
 # /bin/sh -c`, where the script-level set -e does not apply: without
@@ -98,7 +109,8 @@ EOF
   export LIBRARY_PATH="$deps/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
 
   # zlib, then libpng against it, then the shim's build-libharu.sh
-  # picks both up from $deps through CMAKE_PREFIX_PATH.
+  # picks both up from $deps through CMAKE_PREFIX_PATH. The sources
+  # are already extracted by the host preamble.
   (cd ".cross-src/zlib-$zlib_version" &&
     CHOST=aarch64-linux-musl ./configure --static --prefix="$deps" &&
     make -j2 && make install)
