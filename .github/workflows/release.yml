@@ -34,7 +34,7 @@ jobs:
         include:
           - runner: macos-14
             arch: arm64
-          - runner: macos-13
+          - runner: macos-15-intel
             arch: x86_64
     runs-on: ${{ matrix.runner }}
     steps:
@@ -48,14 +48,12 @@ jobs:
       # become a runtime dependency of the released binary, and plain
       # macOS has none. Build a static libpng into a private prefix and
       # point the C and CMake builds at it; zlib comes from the macOS
-      # SDK (every Mac ships libz). Crystal's HTTP client drags in
-      # OpenSSL the same way: give pkg-config a static-only openssl.pc
-      # so the linker picks up archives instead of Homebrew dylibs.
-      - name: Vendor static libpng and OpenSSL archives
+      # SDK (every Mac ships libz).
+      - name: Build a static libpng
         run: |
           set -e
           deps="$HOME/ci-deps"
-          mkdir -p "$deps/lib/pkgconfig"
+          mkdir -p "$deps/lib"
           curl -fsSL -o /tmp/libpng.tar.xz \
             https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.44.tar.gz
           tar -C /tmp -xf /tmp/libpng.tar.xz
@@ -66,13 +64,6 @@ jobs:
             -DPNG_TESTS=OFF -DPNG_TOOLS=OFF
           cmake --build /tmp/libpng-build
           cmake --install /tmp/libpng-build
-          openssl="$(brew --prefix openssl@1.1)"
-          ln -sf "$openssl/lib/libssl.a" "$deps/lib/libssl.a"
-          ln -sf "$openssl/lib/libcrypto.a" "$deps/lib/libcrypto.a"
-          sed -e "s|^libdir=.*|libdir=$deps/lib|" \
-              -e "s|^includedir=.*|includedir=$openssl/include|" \
-            "$openssl/lib/pkgconfig/openssl.pc" > "$deps/lib/pkgconfig/openssl.pc"
-          echo "PKG_CONFIG_PATH=$deps/lib/pkgconfig" >> "$GITHUB_ENV"
       - name: Build binaries
         run: |
           set -e
@@ -84,29 +75,45 @@ jobs:
           shards install --without-development
           shards build --without-development --release markterm markmark markpdf
       # The binaries must not depend on Homebrew dylibs end users don't
-      # have (the static libpng and OpenSSL archives above exist
-      # exactly for this).
-      - name: Check for Homebrew dependencies
+      # have. OpenSSL (dragged in by Crystal's HTTP client for remote
+      # images) is the accepted exception: the next step rewrites those
+      # references and ships the dylibs along.
+      - name: Check for unexpected Homebrew dependencies
         run: |
-          if otool -L bin/markpdf bin/markterm bin/markmark | grep -E 'homebrew|/usr/local/'; then
-            echo "binary depends on a Homebrew dylib" >&2
+          if otool -L bin/markpdf bin/markterm bin/markmark | grep -E 'homebrew|/usr/local/' | grep -v openssl; then
+            echo "binary depends on an unexpected Homebrew dylib" >&2
             exit 1
           fi
-      - name: Smoke test
+      - name: Bundle OpenSSL dylibs
         run: |
           set -e
-          bin/markterm table.md --no-pager > /dev/null
-          bin/markmark table.md > /dev/null
-          bin/markpdf table.md -o smoke.pdf
-          test -s smoke.pdf
+          mkdir dist
+          for binary in markterm markmark markpdf; do
+            for dep in $(otool -L "bin/$binary" | awk '/homebrew|\/usr\/local\// {print $1}'); do
+              dylib="$(basename "$dep")"
+              install_name_tool -change "$dep" "@executable_path/$dylib" "bin/$binary"
+              [ -f "dist/$dylib" ] || cp "$dep" "dist/$dylib"
+            done
+            cp "bin/$binary" dist/
+            # modifying a Mach-O binary invalidates its (ad-hoc)
+            # signature, and arm64 refuses to run unsigned code
+            codesign --force --sign - "dist/$binary"
+          done
+      - name: Smoke test (from dist, like end users run it)
+        run: |
+          set -e
+          cd dist
+          ./markterm ../table.md --no-pager > /dev/null
+          ./markmark ../table.md > /dev/null
+          ./markpdf ../table.md -o /tmp/smoke.pdf
+          test -s /tmp/smoke.pdf
       - name: Pack
         run: |
-          mkdir dist
-          tar -czf "dist/markterm-macos-${{ matrix.arch }}.tar.gz" -C bin markterm markmark markpdf
+          tar -czf "markterm-macos-${{ matrix.arch }}.tar.gz" -C dist .
       - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}
-          path: dist/*
+          path: markterm-macos-*.tar.gz
           if-no-files-found: error
 
   windows:
