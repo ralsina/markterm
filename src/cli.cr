@@ -21,6 +21,46 @@ module Cli
     File.join(config_home, app_name, "config.yml")
   end
 
+  # Handle the --config <path> option: pull it out of argv (both the
+  # "--config path" and "--config=path" forms; tokens after "--" are
+  # positional and never options) and return the stripped argv plus the
+  # config file path to use: the one given, or the tool's XDG default.
+  # An explicitly given file must exist; a --config with no value is
+  # left in argv so docopt reports the missing argument.
+  def self.config_argv(app_name : String, argv : Array(String)) : {Array(String), String}
+    config_path : String? = nil
+    remaining = [] of String
+    index = 0
+    while index < argv.size
+      argument = argv[index]
+      if argument == "--"
+        remaining.concat(argv[index..])
+        break
+      elsif argument == "--config"
+        value = argv[index + 1]?
+        if value
+          config_path = value
+          index += 2
+        else
+          remaining << argument
+          index += 1
+        end
+      elsif argument.starts_with?("--config=")
+        config_path = argument["--config=".size..]
+        index += 1
+      else
+        remaining << argument
+        index += 1
+      end
+    end
+    if override = config_path
+      abort "#{app_name}: config file not found: #{override}" unless File.exists?(override)
+      {remaining, override}
+    else
+      {remaining, config_path(app_name)}
+    end
+  end
+
   # docopt-config returns config file values with their YAML types, so an
   # option documented as taking a string can come back as a number (e.g.
   # "margin: 20" as Int32, "margin: 20.5" as Float64, or a numeric docopt

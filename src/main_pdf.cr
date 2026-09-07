@@ -59,6 +59,8 @@ doc = <<-DOC
     --no-remote-images         Skip http(s) image sources instead of fetching
                                them; remote fetching can also be turned off
                                programmatically with Markd::Pdf
+    --config <path>            Read options from this YAML file instead of
+                               ~/.config/markpdf/config.yml
 
   If you use "-" as the file argument, markpdf will read from stdin.
   Complete HTML documents (and .html files) are rendered directly,
@@ -162,8 +164,9 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
   end
 end
 
-options = Docopt.docopt_config(doc, argv: ARGV,
-  config_file_path: Cli.config_path("markpdf"), env_prefix: "MARKPDF",
+argv, config_path = Cli.config_argv("markpdf", ARGV)
+options = Docopt.docopt_config(doc, argv: argv,
+  config_file_path: config_path, env_prefix: "MARKPDF",
   print_config_option: "--print-config")
 
 if options["--version"]

@@ -27,6 +27,8 @@ doc = <<-DOC
     --images                   Force images where the terminal can show them
     --no-images                Never draw images; show placeholders instead
     --no-pager                 Never pipe output to $PAGER
+    --config <path>            Read options from this YAML file instead of
+                               ~/.config/markterm/config.yml
 
   If you use "-" as the file argument, markterm will read from stdin.
 
@@ -122,8 +124,9 @@ private def pipe_to_pager(text : String, pager : String)
   end
 end
 
-options = Docopt.docopt_config(doc, argv: ARGV,
-  config_file_path: Cli.config_path("markterm"), env_prefix: "MARKTERM",
+argv, config_path = Cli.config_argv("markterm", ARGV)
+options = Docopt.docopt_config(doc, argv: argv,
+  config_file_path: config_path, env_prefix: "MARKTERM",
   print_config_option: "--print-config")
 
 if options["--version"]

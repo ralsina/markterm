@@ -123,6 +123,8 @@ Options:
   --images                   Force images where the terminal can show them
   --no-images                Never draw images; show placeholders instead
   --no-pager                 Never pipe output to $PAGER
+  --config <path>            Read options from this YAML file instead of
+                             ~/.config/markterm/config.yml
 
 If you use "-" as the file argument, markterm will read from stdin.
 
@@ -188,6 +190,10 @@ language: en
 `markterm` and `markmark` still require their file argument, so pass
 one (or `-` for stdin) when printing their configuration, e.g.
 `markterm --print-config - < document.md`.
+
+Pass `--config <path>` to read the configuration from a specific file
+instead of the default one; the file must exist. The flag itself can
+only come from the command line.
 
 A missing config file is not an error; without one the tools behave
 exactly as they always have. A config file that exists but cannot be
@@ -258,6 +264,8 @@ Options:
   --no-remote-images         Skip http(s) image sources instead of fetching
                              them; remote fetching can also be turned off
                              programmatically with Markd::Pdf
+  --config <path>            Read options from this YAML file instead of
+                             ~/.config/markpdf/config.yml
 
 If you use "-" as the file argument, markpdf will read from stdin.
 Complete HTML documents (and .html files) are rendered directly,
