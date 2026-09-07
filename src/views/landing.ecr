@@ -165,9 +165,13 @@
           </label>
           <label>Page size
             <select id="page-size">
-              <option value="a4">A4</option>
-              <option value="letter">Letter</option>
+              <% page_size_names.each do |size| %>
+              <option value="<%= size %>"><%= size %></option>
+              <% end %>
             </select>
+          </label>
+          <label>Custom size (WxH mm)
+            <input type="text" id="page-size-custom" placeholder="e.g. 100x200">
           </label>
           <label>Margin (mm)
             <input type="number" id="margin" min="0" max="100" step="1" value="20">
@@ -302,6 +306,8 @@ function collectState() {
   knobIds.forEach((knobId) => {
     state[knobId.replace(/-/g, "_")] = document.getElementById(knobId).value;
   });
+  const customSize = document.getElementById("page-size-custom").value.trim();
+  if (customSize) state.page_size = customSize;
   checkboxes.forEach((checkboxId) => {
     state[checkboxId] = document.getElementById(checkboxId).checked;
   });
@@ -323,6 +329,13 @@ function applyState(state) {
   if (state.custom_css !== undefined) {
     document.getElementById("custom-css").value = state.custom_css;
   }
+  // A WxH page size lives in the custom input; names go to the select.
+  const pageSize = state.page_size || document.getElementById("page-size").value;
+  const isCustom = /^[0-9]+(\.[0-9]+)?x[0-9]+(\.[0-9]+)?$/i.test(pageSize);
+  document.getElementById("page-size-custom").value = isCustom ? pageSize : "";
+  const sizeSelect = document.getElementById("page-size");
+  sizeSelect.value = isCustom ? "a4" : pageSize;
+  if (sizeSelect.selectedIndex === -1) sizeSelect.value = "a4";
   syncPagelessKnobs();
 }
 
@@ -520,6 +533,7 @@ checkboxes.forEach((checkboxId) => {
   });
 });
 document.getElementById("custom-css").addEventListener("input", () => { scheduleSave(); scheduleRender(); });
+document.getElementById("page-size-custom").addEventListener("input", () => { scheduleSave(); scheduleRender(); });
 markdownBox.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
     event.preventDefault();

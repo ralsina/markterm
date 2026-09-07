@@ -27,11 +27,13 @@ require "./hyphenation"
 @[Link("hpdf", ldflags: "-L #{__DIR__}/../ext/build")]
 @[Link("litepdf")]
 lib Litepdf
-  fun render = litepdf_render(html : LibC::Char*, css : LibC::Char*, page_size : LibC::Int,
-                              margin_pt : LibC::Float, out_path : LibC::Char*, base_dir : LibC::Char*,
-                              header : LibC::Char*, footer : LibC::Char*, page_background : LibC::Char*,
-                              errbuf : LibC::Char*, errbuf_len : LibC::Int, single_page : LibC::Int) : LibC::Int
-  fun render_to_memory = litepdf_render_to_memory(html : LibC::Char*, css : LibC::Char*, page_size : LibC::Int,
+  fun render = litepdf_render(html : LibC::Char*, css : LibC::Char*, page_width_mm : LibC::Float,
+                              page_height_mm : LibC::Float, margin_pt : LibC::Float, out_path : LibC::Char*,
+                              base_dir : LibC::Char*, header : LibC::Char*, footer : LibC::Char*,
+                              page_background : LibC::Char*, errbuf : LibC::Char*, errbuf_len : LibC::Int,
+                              single_page : LibC::Int) : LibC::Int
+  fun render_to_memory = litepdf_render_to_memory(html : LibC::Char*, css : LibC::Char*,
+                                                  page_width_mm : LibC::Float, page_height_mm : LibC::Float,
                                                   margin_pt : LibC::Float, base_dir : LibC::Char*,
                                                   header : LibC::Char*, footer : LibC::Char*,
                                                   page_background : LibC::Char*, errbuf : LibC::Char*,
@@ -49,8 +51,57 @@ module Markd
     class Error < Exception
     end
 
-    # Page sizes understood by the shim
-    PAGE_SIZES = {"a4" => 0, "letter" => 1}
+    # Page sizes by name: the ISO 216 A and B series (portrait, in mm)
+    # plus the US sizes people keep asking for. Custom sizes pass a
+    # "WxH" string in millimeters instead of a name.
+    PAGE_SIZES = {
+      "a0"     => {841.0, 1189.0},
+      "a1"     => {594.0, 841.0},
+      "a2"     => {420.0, 594.0},
+      "a3"     => {297.0, 420.0},
+      "a4"     => {210.0, 297.0},
+      "a5"     => {148.0, 210.0},
+      "a6"     => {105.0, 148.0},
+      "b0"     => {1000.0, 1414.0},
+      "b1"     => {707.0, 1000.0},
+      "b2"     => {500.0, 707.0},
+      "b3"     => {353.0, 500.0},
+      "b4"     => {250.0, 353.0},
+      "b5"     => {176.0, 250.0},
+      "b6"     => {125.0, 176.0},
+      "letter" => {215.9, 279.4},
+      "legal"  => {215.9, 355.6},
+    }
+
+    # Largest page dimension the PDF format allows (14400pt), and a
+    # floor small enough that a margin still leaves room to draw.
+    MIN_PAGE_DIMENSION =   10.0
+    MAX_PAGE_DIMENSION = 5000.0
+
+    # Named sizes for pickers and docs.
+    def self.page_size_names : Array(String)
+      PAGE_SIZES.keys
+    end
+
+    # Resolve a page size: a name from PAGE_SIZES (case-insensitive), or
+    # "WxH" in millimeters for custom sizes (e.g. "100x200", also valid
+    # as landscape "200x100"). Returns {width_mm, height_mm}; raises
+    # Error with a user-presentable message otherwise.
+    def self.parse_page_size(value : String) : {Float64, Float64}
+      normalized = value.strip.downcase
+      if dims = PAGE_SIZES[normalized]?
+        return dims
+      end
+      if match = normalized.match(/^([0-9]+(?:\.[0-9]+)?)x([0-9]+(?:\.[0-9]+)?)$/)
+        width, height = match[1].to_f, match[2].to_f
+        if width.in?(MIN_PAGE_DIMENSION..MAX_PAGE_DIMENSION) &&
+           height.in?(MIN_PAGE_DIMENSION..MAX_PAGE_DIMENSION)
+          return {width, height}
+        end
+        raise Error.new("custom page size #{width}x#{height}mm is out of range (#{MIN_PAGE_DIMENSION.to_i}-#{MAX_PAGE_DIMENSION.to_i}mm per side)")
+      end
+      raise Error.new("unknown page size '#{value}' (expected a name like a4 or letter, or WxH in mm like 100x200)")
+    end
 
     # Syntax highlighting theme used when nothing better is known: a
     # classic light style that reads well on the default light page.

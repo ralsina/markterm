@@ -387,7 +387,7 @@ describe Markd::Pdf do
       path = temp_pdf_path
       begin
         expect_raises(Markd::Pdf::Error, "unknown page size") do
-          Markd::Pdf.render(sample_markdown, path, page_size: "a5")
+          Markd::Pdf.render(sample_markdown, path, page_size: "bogus")
         end
       ensure
         File.delete?(path)

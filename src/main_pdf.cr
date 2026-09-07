@@ -18,7 +18,8 @@ doc = <<-DOC
     --code-theme <code-theme>  Theme to use for coloring code blocks
     --version                  Show version.
     -o <output>                Write the PDF to a file (defaults to standard output)
-    --page-size <size>         Page size: a4 or letter [default: a4]
+    --page-size <size>         Page size: a0..a6, b0..b6, letter, legal, or
+                               custom WxH in mm (e.g. 100x200) [default: a4]
     --margin <margin>          Page margin in millimeters [default: 20]
     --style <style>            Built-in stylesheet setting layout and typography
                                (themes set colors instead): see --list-styles

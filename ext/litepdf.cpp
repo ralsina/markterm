@@ -2572,11 +2572,12 @@ int litepdf_set_emoji_font(const char* ttf_path, char* errbuf, int errbuf_len)
 
 // Render HTML to a PDF file. css is the author stylesheet (the caller
 // concatenates the default stylesheet and any user CSS). base_dir resolves
-// relative image paths. page_size: 0 = A4, 1 = Letter. margin_pt is the
+// relative image paths. page_width_mm/page_height_mm size the page in
+// millimeters. margin_pt is the
 // uniform page margin. Returns the number of pages, or -1 and fills
 // errbuf on failure.
-static int render_pdf(const char* html, const char* css, int page_size, float margin_pt,
-               const char* base_dir, const char* header, const char* footer,
+static int render_pdf(const char* html, const char* css, float page_width_mm, float page_height_mm,
+               float margin_pt, const char* base_dir, const char* header, const char* footer,
                const char* page_background, char* errbuf, int errbuf_len, int single_page,
                char** out_data, size_t* out_len)
 {
@@ -2714,8 +2715,8 @@ static int render_pdf(const char* html, const char* css, int page_size, float ma
         return -1;
     }
 
-    float page_width = page_size == 1 ? 612.0f : 595.276f;
-    float page_height = page_size == 1 ? 792.0f : 841.89f;
+    float page_width = page_width_mm * 72.0f / 25.4f;
+    float page_height = page_height_mm * 72.0f / 25.4f;
     float margin = margin_pt;
     if (margin * 2 >= page_width || (!single_page && margin * 2 >= page_height))
     {
@@ -3315,13 +3316,15 @@ static int render_pdf(const char* html, const char* css, int page_size, float ma
 }
 
 // Render to a malloc'd buffer the caller frees with litepdf_free_buffer.
-int litepdf_render_to_memory(const char* html, const char* css, int page_size, float margin_pt,
+int litepdf_render_to_memory(const char* html, const char* css, float page_width_mm,
+                             float page_height_mm, float margin_pt,
                              const char* base_dir, const char* header, const char* footer,
                              const char* page_background, char* errbuf, int errbuf_len,
                              int single_page, char** out_data, size_t* out_len)
 {
-    return render_pdf(html, css, page_size, margin_pt, base_dir, header, footer,
-                      page_background, errbuf, errbuf_len, single_page, out_data, out_len);
+    return render_pdf(html, css, page_width_mm, page_height_mm, margin_pt, base_dir, header,
+                      footer, page_background, errbuf, errbuf_len, single_page, out_data,
+                      out_len);
 }
 
 void litepdf_free_buffer(char* buffer)
@@ -3331,15 +3334,16 @@ void litepdf_free_buffer(char* buffer)
 
 // Convenience for file-based callers: render to memory, then spill to
 // out_path.
-int litepdf_render(const char* html, const char* css, int page_size, float margin_pt, const char* out_path,
+int litepdf_render(const char* html, const char* css, float page_width_mm, float page_height_mm,
+                   float margin_pt, const char* out_path,
                    const char* base_dir, const char* header, const char* footer,
                    const char* page_background, char* errbuf, int errbuf_len, int single_page)
 {
     char* data = nullptr;
     size_t len = 0;
-    int pages = litepdf_render_to_memory(html, css, page_size, margin_pt, base_dir, header,
-                                         footer, page_background, errbuf, errbuf_len,
-                                         single_page, &data, &len);
+    int pages = litepdf_render_to_memory(html, css, page_width_mm, page_height_mm, margin_pt,
+                                         base_dir, header, footer, page_background, errbuf,
+                                         errbuf_len, single_page, &data, &len);
     if (pages < 0)
     {
         return pages;

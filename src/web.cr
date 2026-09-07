@@ -82,7 +82,6 @@ module MarkpdfWeb
   MAX_RENDER_WAIT      = env_int("MARKPDF_WEB_MAX_QUEUE", 8)
   MAX_RENDERS_PER_MIN  = env_int("MARKPDF_WEB_MAX_RENDERS_PER_MINUTE", 30)
   RENDER_TIMEOUT       = env_int("MARKPDF_WEB_MAX_RENDER_SECONDS", 30).seconds
-  PAGE_SIZES           = %w[a4 letter]
   LANGUAGES            = %w[en es]
 
   # Local/relative image sources resolve against this directory, which
@@ -135,8 +134,10 @@ module MarkpdfWeb
       end
 
       page_size = form.fetch("page_size", "a4")
-      unless PAGE_SIZES.includes?(page_size)
-        raise ParamError.new("unknown page size '#{page_size}'")
+      begin
+        Markd::Pdf.parse_page_size(page_size)
+      rescue error : Markd::Pdf::Error
+        raise ParamError.new(error.message)
       end
 
       margin_mm = parse_margin(form["margin"]?)
@@ -422,6 +423,7 @@ module MarkpdfWeb
     getter styles : Array(NamedTuple(name: String, description: String))
     getter page_themes : Array(String)
     getter code_themes : Array(String)
+    getter page_size_names : Array(String)
     getter samples_json : String
 
     def initialize
@@ -430,6 +432,7 @@ module MarkpdfWeb
       end
       @page_themes = MarkpdfWeb.page_themes
       @code_themes = Tartrazine.themes
+      @page_size_names = Markd::Pdf.page_size_names
       # Sample documents travel inside a <script> tag: escape "<" so
       # markdown code fences can never close it early.
       @samples_json = SAMPLES.to_json.gsub("<", "\\u003c")

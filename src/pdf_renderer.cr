@@ -49,10 +49,10 @@ module Markd
         Dir.mkdir(temp_dir, 0o700)
         converted = [] of String
         begin
-          html, size_code, margin_pt, background = prepare(source, temp_dir, converted)
+          html, page_width_mm, page_height_mm, margin_pt, background = prepare(source, temp_dir, converted)
           errbuf = Bytes.new(512)
-          pages = Litepdf.render(html, nil, size_code, margin_pt.to_f32,
-            output_path, @base_dir, @header, @footer, background,
+          pages = Litepdf.render(html, nil, page_width_mm.to_f32, page_height_mm.to_f32,
+            margin_pt.to_f32, output_path, @base_dir, @header, @footer, background,
             errbuf, errbuf.size, @pageless ? 1 : 0)
           if pages < 0
             message = String.new(errbuf).strip
@@ -77,12 +77,12 @@ module Markd
         Dir.mkdir(temp_dir, 0o700)
         converted = [] of String
         begin
-          html, size_code, margin_pt, background = prepare(source, temp_dir, converted)
+          html, page_width_mm, page_height_mm, margin_pt, background = prepare(source, temp_dir, converted)
           errbuf = Bytes.new(512)
           out_data = Pointer(LibC::Char).null
           out_len = LibC::SizeT.new(0)
-          pages = Litepdf.render_to_memory(html, nil, size_code, margin_pt.to_f32,
-            @base_dir, @header, @footer, background,
+          pages = Litepdf.render_to_memory(html, nil, page_width_mm.to_f32, page_height_mm.to_f32,
+            margin_pt.to_f32, @base_dir, @header, @footer, background,
             errbuf, errbuf.size, @pageless ? 1 : 0, pointerof(out_data), pointerof(out_len))
           if pages < 0
             message = String.new(errbuf).strip
@@ -104,7 +104,7 @@ module Markd
       # document HTML out, with images materialized into temp_dir and the
       # page geometry resolved.
       private def prepare(source : String, temp_dir : String,
-                          converted : Array(String)) : {String, LibC::Int, LibC::Float, String}
+                          converted : Array(String)) : {String, Float64, Float64, Float64, String}
         highlighted_theme = @code_theme || Pdf.tartrazine_known_theme?(@theme) || Pdf::DEFAULT_CODE_THEME
         formatter = Tartrazine::Html.new(
           theme: Tartrazine.theme(highlighted_theme),
@@ -125,10 +125,9 @@ module Markd
           body_html = Pdf.hyphenate_body(body_html, @hyphenate, @language)
           html = Pdf.document_html(body_html, css, extra_css: formatter.style_defs)
         end
-        size_code = PAGE_SIZES[@page_size.downcase]?
-        raise Error.new("unknown page size '#{@page_size}' (expected a4 or letter)") unless size_code
+        page_width_mm, page_height_mm = Pdf.parse_page_size(@page_size)
         margin_pt = @margin_mm * 72.0 / 25.4
-        {html, size_code, margin_pt.to_f32, background}
+        {html, page_width_mm, page_height_mm, margin_pt, background}
       end
     end
   end

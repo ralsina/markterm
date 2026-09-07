@@ -73,7 +73,7 @@ describe MarkpdfWeb::RenderParams do
       web_params("markdown=x&style=gothic")
     end
     expect_raises(MarkpdfWeb::ParamError, "page size") do
-      web_params("markdown=x&page_size=a5")
+      web_params("markdown=x&page_size=bogus")
     end
     expect_raises(MarkpdfWeb::ParamError, "language") do
       web_params("markdown=x&language=fr")
@@ -157,6 +157,53 @@ describe Markd::Pdf do
   end
 end
 
+describe "Markd::Pdf.parse_page_size" do
+  it "resolves named sizes case-insensitively" do
+    Markd::Pdf.parse_page_size("a4").should eq({210.0, 297.0})
+    Markd::Pdf.parse_page_size("A3").should eq({297.0, 420.0})
+    Markd::Pdf.parse_page_size("Letter").should eq({215.9, 279.4})
+  end
+
+  it "parses custom WxH sizes in millimeters" do
+    Markd::Pdf.parse_page_size("100x200").should eq({100.0, 200.0})
+    Markd::Pdf.parse_page_size("210.5x297").should eq({210.5, 297.0})
+  end
+
+  it "rejects garbage and out-of-range sizes" do
+    expect_raises(Markd::Pdf::Error, "unknown page size") do
+      Markd::Pdf.parse_page_size("bogus")
+    end
+    expect_raises(Markd::Pdf::Error, "out of range") do
+      Markd::Pdf.parse_page_size("5x5")
+    end
+    expect_raises(Markd::Pdf::Error, "out of range") do
+      Markd::Pdf.parse_page_size("9999x100")
+    end
+  end
+end
+
+describe "Markd::Pdf page sizes end to end" do
+  it "renders named and custom sizes at the right dimensions" do
+    pdfinfo = Process.find_executable("pdfinfo")
+    pending!("pdfinfo not available") unless pdfinfo
+    {
+      {"a5", "419.528 x 595.276 pts"},
+      {"100x200", "283.465 x 566.929 pts"},
+    }.each do |page_size, expected|
+      pdf = Markd::Pdf.render_to_memory("hi", page_size: page_size)
+      path = File.tempname("markpdf-spec", ".pdf")
+      begin
+        File.write(path, pdf)
+        output = IO::Memory.new
+        Process.run(pdfinfo, [path], output: output, error: IO::Memory.new)
+        output.to_s.should contain(expected)
+      ensure
+        File.delete?(path)
+      end
+    end
+  end
+end
+
 describe "Markd::Pdf image fetch guard" do
   it "skips remote images entirely when fetching is disabled" do
     Markd::Pdf.fetch_remote_images = false
@@ -235,6 +282,22 @@ describe "markpdf-web routes" do
       headers: HTTP::Headers{"Content-Type" => "application/x-www-form-urlencoded"})
     response.status_code.should eq(422)
     response.body.should contain("margin")
+  end
+
+  it "accepts ISO names and custom WxH page sizes, refusing bad ones" do
+    ok = WEB_CLIENT.post("/render", body: "markdown=hi&page_size=a3",
+      headers: HTTP::Headers{"Content-Type" => "application/x-www-form-urlencoded"})
+    ok.status_code.should eq(200)
+    ok.headers["Content-Type"].should contain("application/pdf")
+
+    custom = WEB_CLIENT.post("/render", body: "markdown=hi&page_size=100x200",
+      headers: HTTP::Headers{"Content-Type" => "application/x-www-form-urlencoded"})
+    custom.status_code.should eq(200)
+
+    bad = WEB_CLIENT.post("/render", body: "markdown=hi&page_size=bogus",
+      headers: HTTP::Headers{"Content-Type" => "application/x-www-form-urlencoded"})
+    bad.status_code.should eq(422)
+    bad.body.should contain("page size")
   end
 
   it "answers 422 when markdown is missing" do
