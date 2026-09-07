@@ -107,6 +107,10 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
 
   Markd::Pdf.fetch_remote_images = !no_remote_images
 
+  if kdp && font_paths.empty?
+    STDERR.puts "markpdf: warning: no --font given; kdp mode embeds whatever system fonts cover the text. Pass --font to control the embedded typefaces."
+  end
+
   options = Markd::Options.new
   options.gfm = true
 

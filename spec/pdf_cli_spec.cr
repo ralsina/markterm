@@ -48,6 +48,25 @@ describe "markpdf CLI" do
     output.should contain("--page-size")
   end
 
+  it "warns when kdp mode runs without explicit fonts" do
+    path = File.tempname("markpdf_cli", ".md")
+    File.write(path, "content")
+    font = Dir.glob("/usr/share/fonts/**/*.ttf").first?
+    begin
+      status, _output, error = run_cli(BIN_MARKPDF, [path, "--kdp", "-o", "/tmp/markpdf_cli_kdp.pdf"])
+      status.exit_code.should eq(0)
+      error.should contain("no --font given")
+
+      next unless font # no fonts installed: the quiet case is covered by the warning test
+      status, _output, error = run_cli(BIN_MARKPDF, [path, "--kdp", "--font", font, "-o", "/tmp/markpdf_cli_kdp2.pdf"])
+      error.should_not contain("no --font given")
+    ensure
+      File.delete?(path)
+      File.delete?("/tmp/markpdf_cli_kdp.pdf")
+      File.delete?("/tmp/markpdf_cli_kdp2.pdf")
+    end
+  end
+
   it "fails for an unknown page size" do
     path = File.tempname("markpdf_cli", ".md")
     File.write(path, "content")
