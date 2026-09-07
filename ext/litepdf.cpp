@@ -2487,9 +2487,20 @@ class PdfContainer : public litehtml::document_container
             item->src_el() ? item->src_el()->get_tagName() : "?", abs_y, px(pos.height), (int)inside_atomic);
         // Candidates use the margin/border-box top: breaking there keeps
         // backgrounds and borders of the element together with its text.
+        // A heading's own bottom edge is never a cut point: breaking
+        // there strands the heading at the bottom of a page.
+        bool is_heading = tag.size() == 3 && tag[0] == 'h' && tag[1] >= '1' && tag[1] <= '6';
         if (px(pos.width) > 0 || px(pos.height) > 0)
         {
             candidates.insert((int)std::floor(offset_y + px(item->top())));
+            // A block's bottom edge is a cut point too: breaking exactly
+            // at a completed block keeps its borders and backgrounds
+            // whole, instead of a sliver of left border leaking onto the
+            // next page (admonitions and blockquotes).
+            if (!is_heading)
+            {
+                candidates.insert((int)std::floor(offset_y + px(item->top()) + px(pos.height)));
+            }
         }
         bool breaks_before = false;
         bool breaks_after = false;

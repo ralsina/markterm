@@ -52,7 +52,7 @@ describe "markpdf CLI" do
     path = File.tempname("markpdf_cli", ".md")
     File.write(path, "content")
     begin
-      status, _output, error = run_cli(BIN_MARKPDF, [path, "--page-size", "a0", "-o", "/tmp/markpdf_cli_x.pdf"])
+      status, _output, error = run_cli(BIN_MARKPDF, [path, "--page-size", "bogus", "-o", "/tmp/markpdf_cli_x.pdf"])
       status.exit_code.should eq(1)
       error.should contain("unknown page size")
     ensure
