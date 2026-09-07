@@ -127,6 +127,33 @@ module Markd
       end
     end
 
+    # KDP paperback gutter by page count (Amazon's table, in mm).
+    KDP_GUTTER_TABLE = [{24, 150, 9.525}, {151, 300, 12.7}, {301, 500, 15.875},
+                        {501, 700, 19.05}, {701, 828, 22.225}]
+
+    # The KDP minimum gutter for a given page count (table entries are
+    # {lowest page count, highest page count, gutter in mm}). Counts
+    # outside KDP's printable range clamp to the nearest tier so drafts
+    # still render; the caller warns about out-of-range counts.
+    def self.kdp_gutter_mm(pages : Int32) : Float64
+      KDP_GUTTER_TABLE.each do |tier|
+        return tier[2] if pages <= tier[1]
+      end
+      KDP_GUTTER_TABLE.last[2]
+    end
+
+    # A margin spec with the gutter appended (the other sides unchanged).
+    def self.margins_with_gutter(parsed : PageMargins, gutter : Float64) : String
+      "#{parsed.top},#{parsed.right},#{parsed.bottom},#{parsed.left},#{gutter}"
+    end
+
+    # The warning for a final page count outside KDP's printable range,
+    # or nil when the count is printable.
+    def self.kdp_range_warning(pages : Int32) : String?
+      return if pages.in?(24..828)
+      "KDP paperbacks need 24 to 828 pages (got #{pages}); the PDF still renders"
+    end
+
     # Resolve a page size: a name from PAGE_SIZES (case-insensitive), or
     # "WxH" for custom sizes. Dimension values under 12 read as inches —
     # "6x9" is the classic trim and nobody prints a 6mm-wide page — and
@@ -244,6 +271,32 @@ module Markd
                     theme : String? = nil, html_input : Bool = false, style : String? = nil,
                     pageless : Bool = false, hyphenate : Bool = false, language : String = "en",
                     css : String? = nil, margins : String? = nil, kdp : Bool = false) : Int32
+      if kdp && (margins.nil? || Pdf.parse_margins(margins).gutter < 0)
+        # KDP mode with no explicit gutter: size the gutter from the page
+        # count (Amazon's table). Page count depends on the margins, so
+        # iterate render -> gutter until it stabilizes (coarse brackets
+        # converge in one or two steps).
+        base = margins || margin_mm.to_s
+        parsed = parse_margins(base)
+        gutter = KDP_GUTTER_TABLE.first[2]
+        pages = 0
+        4.times do
+          guttered = margins_with_gutter(parsed, gutter)
+          renderer = Renderer.new(options: options, style: style || "default", theme: theme,
+            code_theme: code_theme, page_size: page_size, margins: guttered, kdp: true,
+            base_dir: base_dir, header: header, footer: footer, html_input: html_input,
+            pageless: pageless, hyphenate: hyphenate, language: language)
+          renderer.add_css(css) if css
+          pages = renderer.render(source, output_path)
+          needed = kdp_gutter_mm(pages)
+          break if needed == gutter
+          gutter = needed
+        end
+        range_warning = kdp_range_warning(pages)
+        STDERR.puts "markpdf: warning: #{range_warning}" if range_warning
+        return pages
+      end
+
       renderer = Renderer.new(options: options, style: style || "default", theme: theme,
         code_theme: code_theme, page_size: page_size, margin_mm: margin_mm, margins: margins,
         kdp: kdp, base_dir: base_dir, header: header, footer: footer, html_input: html_input,

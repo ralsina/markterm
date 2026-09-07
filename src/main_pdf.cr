@@ -27,8 +27,9 @@ doc = <<-DOC
     --mirror-headers           Mirror running headers and footers on verso
                                (even) pages — pairs with a gutter margin
     --kdp                      KDP print mode: embed every font, drop the
-                               outline, scrub metadata and pad odd page
-                               counts to even
+                               outline, scrub metadata, size the gutter
+                               from the page count (unless --margin sets
+                               one) and pad odd page counts to even
     --style <style>            Built-in stylesheet setting layout and typography
                                (themes set colors instead): see --list-styles
                                [default: default]
@@ -105,6 +106,47 @@ def register_fonts(font_paths : Array(String))
   end
 end
 
+def build_renderer(options, style, theme, code_theme, page_size, margins, kdp, mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language)
+  Markd::Pdf::Renderer.new(
+    options: options,
+    style: style,
+    theme: theme,
+    code_theme: Markd::Pdf.pick_code_theme(code_theme, theme, style),
+    page_size: page_size,
+    margins: margins,
+    kdp: kdp,
+    mirror_headers: mirror_headers,
+    base_dir: base_dir,
+    header: header || "",
+    footer: footer || "",
+    html_input: html_input,
+    pageless: pageless,
+    hyphenate: hyphenate,
+    language: language,
+  )
+rescue error : Markd::Pdf::Error
+  abort_with(error.message.to_s)
+end
+
+# The gutter feeds back into the page count: size it from the first
+# pass and re-render when the table asks for a different one.
+def render_kdp_guttered(input, output, pages, margin, css_bodies, options, style, theme, code_theme, page_size, mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language)
+  gutter = Markd::Pdf.kdp_gutter_mm(pages)
+  parsed = Markd::Pdf.parse_margins(margin)
+  if parsed.gutter < 0 && gutter != parsed.gutter
+    guttered = Markd::Pdf.margins_with_gutter(parsed, gutter)
+    renderer = build_renderer(options, style, theme, code_theme, page_size, guttered, true,
+      mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language)
+    css_bodies.each do |css_body|
+      renderer.add_css(css_body)
+    end
+    pages = renderer.render(input, output)
+  end
+  page_warning = Markd::Pdf.kdp_range_warning(pages)
+  STDERR.puts "markpdf: warning: #{page_warning}" if page_warning
+  pages
+end
+
 def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language, no_remote_images, kdp, mirror_headers)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
@@ -118,37 +160,29 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
   options = Markd::Options.new
   options.gfm = true
 
-  begin
-    renderer = Markd::Pdf::Renderer.new(
-      options: options,
-      style: style,
-      theme: theme,
-      code_theme: Markd::Pdf.pick_code_theme(code_theme, theme, style),
-      page_size: page_size,
-      margins: margin,
-      kdp: kdp,
-      mirror_headers: mirror_headers,
-      base_dir: base_dir,
-      header: header || "",
-      footer: footer || "",
-      html_input: html_input,
-      pageless: pageless,
-      hyphenate: hyphenate,
-      language: language,
-    )
-  rescue error : Markd::Pdf::Error
-    abort_with(error.message.to_s)
-  end
+  renderer = build_renderer(options, style, theme, code_theme, page_size, margin, kdp,
+    mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language)
 
+  css_bodies = [] of String
   css_paths.each do |css_path|
     abort_with("CSS file not found: #{css_path}") unless File.file?(css_path)
-    renderer.add_css(File.read(css_path))
+    css_bodies << File.read(css_path)
+  end
+  css_bodies.each do |css_body|
+    renderer.add_css(css_body)
   end
   setup_emoji_font(emoji_font) if emoji_font
   register_fonts(font_paths)
 
   if output
-    renderer.render(input, output)
+    pages = renderer.render(input, output)
+    if kdp
+      # The re-render and range warning happen inside; the final count
+      # is not needed here.
+      render_kdp_guttered(input, output, pages, margin, css_bodies, options,
+        style, theme, code_theme, page_size, mirror_headers, base_dir, header, footer,
+        html_input, pageless, hyphenate, language)
+    end
   else
     # No output file: render to a temporary file and stream to stdout
     temp_path = File.tempname("markpdf", ".pdf")

@@ -972,6 +972,7 @@ class PdfContainer : public litehtml::document_container
     bool mirror_headers = false; // mirrored running heads: swap header/footer sides on verso pages
     bool dpi_audit = false;      // warn when raster images render below 300 DPI
     std::set<std::string> dpi_warned;
+    std::set<int> small_font_warned; // kdp mode: font sizes already warned about
 
     // Per-render page furniture, set by litepdf_render: header/footer
     // templates ("%p" page number, "%t" total) and the page background
@@ -1172,6 +1173,15 @@ class PdfContainer : public litehtml::document_container
                 fm->draw_spaces = true;
             }
             return handle;
+        }
+
+        // KDP recommends at least 7pt: warn once per size. Superscript
+        // markers are legitimately smaller; the author can judge.
+        if (kdp_embed && size < 7.0f && small_font_warned.insert((int)size).second)
+        {
+            std::fprintf(stderr,
+                         "markpdf: kdp mode: a font renders at %.2fpt (KDP recommends at least 7pt)\n",
+                         size);
         }
 
         // Base-14 fonts are never embedded; print pipelines (KDP)
