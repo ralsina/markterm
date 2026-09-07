@@ -115,9 +115,9 @@ module Markd
       # page geometry resolved.
       private def prepare(source : String, temp_dir : String,
                           converted : Array(String)) : NamedTuple(
-                            html: String, width_mm: Float64, height_mm: Float64,
-                            margin_top: Float64, margin_right: Float64, margin_bottom: Float64,
-                            margin_left: Float64, margin_gutter: Float64, background: String)
+        html: String, width_mm: Float64, height_mm: Float64,
+        margin_top: Float64, margin_right: Float64, margin_bottom: Float64,
+        margin_left: Float64, margin_gutter: Float64, background: String)
         highlighted_theme = @code_theme || Pdf.tartrazine_known_theme?(@theme) || Pdf::DEFAULT_CODE_THEME
         formatter = Tartrazine::Html.new(
           theme: Tartrazine.theme(highlighted_theme),

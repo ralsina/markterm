@@ -29,7 +29,7 @@ describe MarkpdfWeb::RenderParams do
     render_params.theme.should be_nil
     render_params.code_theme.should be_nil
     render_params.page_size.should eq("a4")
-    render_params.margin_mm.should eq(20.0)
+    render_params.margins.should eq("20")
     render_params.header.should eq("")
     render_params.footer.should eq("")
     render_params.pageless?.should be_false
@@ -46,7 +46,7 @@ describe MarkpdfWeb::RenderParams do
     render_params.theme.should eq("gruvbox-material-dark-medium")
     render_params.code_theme.should eq("monokai")
     render_params.page_size.should eq("letter")
-    render_params.margin_mm.should eq(5.5)
+    render_params.margins.should eq("5.5")
     render_params.header.should eq("Page %p")
     render_params.footer.should eq("the end")
     render_params.pageless?.should be_true
@@ -80,13 +80,17 @@ describe MarkpdfWeb::RenderParams do
     end
   end
 
-  it "rejects out-of-range and non-numeric margins" do
-    expect_raises(MarkpdfWeb::ParamError, "margin") do
-      web_params("markdown=x&margin=101")
-    end
+  it "rejects non-numeric and wrong-count margin specs" do
     expect_raises(MarkpdfWeb::ParamError, "margin") do
       web_params("markdown=x&margin=wide")
     end
+    expect_raises(MarkpdfWeb::ParamError, "margins") do
+      web_params("markdown=x&margin=20,15,30")
+    end
+  end
+
+  it "accepts large single margins (the engine falls back when sides overflow)" do
+    web_params("markdown=x&margin=101").margins.should eq("101")
   end
 
   it "trims whitespace and caps long header/footer text" do
