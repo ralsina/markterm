@@ -194,7 +194,8 @@ Options:
   --version                  Show version.
   -o <output>, --output <output>  Write the PDF to a file (defaults to standard output)
   --page-size <size>         Page size: a0..a6, b0..b6, letter, legal, or
-                             custom WxH in mm (e.g. 100x200) [default: a4]
+                             custom WxH — values under 12 are
+                               inches (6x9 = 152.4x228.6mm) [default: a4]
   --margin <margins>         Page margins in mm, CSS-style: 1 value (all sides),
                              2 (top/bottom, left/right), 4 (top, right, bottom,
                              left) or 5 (... plus gutter) [default: 20]

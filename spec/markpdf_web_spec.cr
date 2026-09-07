@@ -168,9 +168,13 @@ describe "Markd::Pdf.parse_page_size" do
     Markd::Pdf.parse_page_size("Letter").should eq({215.9, 279.4})
   end
 
-  it "parses custom WxH sizes in millimeters" do
+  it "parses custom WxH sizes: values under 12 are inches" do
     Markd::Pdf.parse_page_size("100x200").should eq({100.0, 200.0})
     Markd::Pdf.parse_page_size("210.5x297").should eq({210.5, 297.0})
+    result = Markd::Pdf.parse_page_size("6x9")
+    result[0].should be_close(152.4, 0.01)
+    result[1].should be_close(228.6, 0.01)
+    Markd::Pdf.parse_page_size("5x8").should eq({127.0, 203.2})
   end
 
   it "rejects garbage and out-of-range sizes" do
@@ -178,7 +182,7 @@ describe "Markd::Pdf.parse_page_size" do
       Markd::Pdf.parse_page_size("bogus")
     end
     expect_raises(Markd::Pdf::Error, "out of range") do
-      Markd::Pdf.parse_page_size("5x5")
+      Markd::Pdf.parse_page_size("0.2x0.2")
     end
     expect_raises(Markd::Pdf::Error, "out of range") do
       Markd::Pdf.parse_page_size("9999x100")

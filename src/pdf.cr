@@ -126,9 +126,11 @@ module Markd
     end
 
     # Resolve a page size: a name from PAGE_SIZES (case-insensitive), or
-    # "WxH" in millimeters for custom sizes (e.g. "100x200", also valid
-    # as landscape "200x100"). Returns {width_mm, height_mm}; raises
-    # Error with a user-presentable message otherwise.
+    # "WxH" for custom sizes. Dimension values under 12 read as inches —
+    # "6x9" is the classic trim and nobody prints a 6mm-wide page — and
+    # anything from 12 up reads as millimeters ("210x297" is A4).
+    # Returns {width_mm, height_mm}; raises Error with a
+    # user-presentable message otherwise.
     def self.parse_page_size(value : String) : {Float64, Float64}
       normalized = value.strip.downcase
       if dims = PAGE_SIZES[normalized]?
@@ -136,13 +138,15 @@ module Markd
       end
       if match = normalized.match(/^([0-9]+(?:\.[0-9]+)?)x([0-9]+(?:\.[0-9]+)?)$/)
         width, height = match[1].to_f, match[2].to_f
+        width = width * 25.4 if width < 12.0 # inches
+        height = height * 25.4 if height < 12.0
         if width.in?(MIN_PAGE_DIMENSION..MAX_PAGE_DIMENSION) &&
            height.in?(MIN_PAGE_DIMENSION..MAX_PAGE_DIMENSION)
           return {width, height}
         end
-        raise Error.new("custom page size #{width}x#{height}mm is out of range (#{MIN_PAGE_DIMENSION.to_i}-#{MAX_PAGE_DIMENSION.to_i}mm per side)")
+        raise Error.new("custom page size is out of range (#{MIN_PAGE_DIMENSION.to_i}-#{MAX_PAGE_DIMENSION.to_i}mm per side)")
       end
-      raise Error.new("unknown page size '#{value}' (expected a name like a4 or letter, or WxH in mm like 100x200)")
+      raise Error.new("unknown page size '#{value}' (expected a name like a4 or letter, or WxH like 6x9 (inches) or 100x200 (mm))")
     end
 
     # Syntax highlighting theme used when nothing better is known: a
