@@ -103,7 +103,8 @@ EOF
   export CXX=aarch64-linux-musl-g++
   export AR=aarch64-linux-musl-ar
   export RANLIB=aarch64-linux-musl-ranlib
-  export CMAKE_TOOLCHAIN_FILE="$(pwd)/cross-arm64/toolchain.cmake"
+  CMAKE_TOOLCHAIN_FILE="$(pwd)/cross-arm64/toolchain.cmake"
+  export CMAKE_TOOLCHAIN_FILE
   export CMAKE_PREFIX_PATH="$deps"
   export CPATH="$deps/include${CPATH:+:$CPATH}"
   export LIBRARY_PATH="$deps/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
