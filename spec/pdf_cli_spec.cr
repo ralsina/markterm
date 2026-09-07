@@ -58,7 +58,7 @@ describe "markpdf CLI" do
       error.should contain("no --font given")
 
       next unless font # no fonts installed: the quiet case is covered by the warning test
-      status, _output, error = run_cli(BIN_MARKPDF, [path, "--kdp", "--font", font, "-o", "/tmp/markpdf_cli_kdp2.pdf"])
+      _status, _output, error = run_cli(BIN_MARKPDF, [path, "--kdp", "--font", font, "-o", "/tmp/markpdf_cli_kdp2.pdf"])
       error.should_not contain("no --font given")
     ensure
       File.delete?(path)
