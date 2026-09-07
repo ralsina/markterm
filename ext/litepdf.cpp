@@ -9,6 +9,8 @@
 
 #include "litehtml.h"
 #include "litehtml/render_item.h"
+#include "litehtml/html_tag.h"
+#include "litehtml/string_id.h"
 
 #include <hpdf.h>
 #include <hpdf_error.h>
@@ -2430,8 +2432,48 @@ class PdfContainer : public litehtml::document_container
         return {0.0f, 0.0f};
     }
 
+    // Manual page breaks: litehtml stores unknown declarations verbatim,
+    // so page-break-before/after and break-before/after are readable as
+    // custom properties. before cuts at the element's top; after at its
+    // bottom.
+    enum class page_break_kind
+    {
+        none,
+        before,
+        after
+    };
+
+    page_break_kind element_page_break(const litehtml::element::ptr& el)
+    {
+        auto tag = std::dynamic_pointer_cast<litehtml::html_tag>(el);
+        if (!tag)
+        {
+            return page_break_kind::none;
+        }
+        litehtml::css_token_vector tokens;
+        auto ident_of = [&](const char* property, const char* keyword) {
+            tokens.clear();
+            if (tag->get_custom_property(litehtml::_id(property), tokens) && !tokens.empty() &&
+                tokens.front().ident() == keyword)
+            {
+                return true;
+            }
+            return false;
+        };
+        if (ident_of("page-break-before", "always") || ident_of("break-before", "page"))
+        {
+            return page_break_kind::before;
+        }
+        if (ident_of("page-break-after", "always") || ident_of("break-after", "page"))
+        {
+            return page_break_kind::after;
+        }
+        return page_break_kind::none;
+    }
+
     void collect_breaks(const std::shared_ptr<litehtml::render_item>& item, float offset_x, float offset_y,
-                        bool inside_atomic, std::set<int>& candidates, std::set<int>& heading_candidates)
+                        bool inside_atomic, bool ancestor_breaks, std::set<int>& candidates,
+                        std::set<int>& heading_candidates, std::set<int>& forced_breaks)
     {
         if (!item)
         {
@@ -2448,6 +2490,23 @@ class PdfContainer : public litehtml::document_container
         if (px(pos.width) > 0 || px(pos.height) > 0)
         {
             candidates.insert((int)std::floor(offset_y + px(item->top())));
+        }
+        bool breaks_before = false;
+        bool breaks_after = false;
+        if (!inside_atomic)
+        {
+            litehtml::element::ptr src = item->src_el();
+            page_break_kind kind = element_page_break(src);
+            breaks_before = kind == page_break_kind::before && !ancestor_breaks;
+            breaks_after = kind == page_break_kind::after;
+            if (breaks_before)
+            {
+                forced_breaks.insert((int)std::floor(offset_y + px(item->top())));
+            }
+            if (breaks_after)
+            {
+                forced_breaks.insert((int)std::floor(offset_y + px(item->top()) + px(pos.height)));
+            }
         }
         // Tables report one box per row: their tops become candidates so
         // a long table splits across pages at a row boundary. Each box is
@@ -2498,7 +2557,8 @@ class PdfContainer : public litehtml::document_container
         });
         for (const auto& child : item->children())
         {
-            collect_breaks(child, abs_x, abs_y, atomic, candidates, heading_candidates);
+            collect_breaks(child, abs_x, abs_y, atomic, breaks_before || breaks_after,
+                           candidates, heading_candidates, forced_breaks);
         }
     }
 };
@@ -2756,7 +2816,8 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     float content_height = page_height - margin * 2;
     std::set<int> raw_candidates;
     std::set<int> raw_headings;
-    container.collect_breaks(doc->root_render(), 0, 0, false, raw_candidates, raw_headings);
+    std::set<int> raw_forced;
+    container.collect_breaks(doc->root_render(), 0, 0, false, false, raw_candidates, raw_headings, raw_forced);
     container.collect_links(doc->root_render(), 0, 0);
     container.finalize_wide_tables();
     if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "links collected: %zu\n", container.links.size());
@@ -2783,6 +2844,15 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     {
         heading_flows.insert(container.flow_y((float)heading));
     }
+    // Forced breaks (page-break-before/after: always) are hard window
+    // boundaries: the flow is pre-cut at each of them, and keep-with-next
+    // and other candidate heuristics only apply inside a segment.
+    std::vector<float> forced;
+    for (int point : raw_forced)
+    {
+        forced.push_back(container.flow_y((float)point));
+    }
+    std::sort(forced.begin(), forced.end());
     std::vector<bool> avoid(candidates.size(), false);
     bool prev_was_heading = false;
     for (size_t i = 0; i < candidates.size(); i++)
@@ -2831,8 +2901,25 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     else
     {
         float start = 0;
+        size_t next_forced = 0;
         while (start < total_flow_height)
         {
+            // Forced breaks at or under the current start are window
+            // boundaries this loop has already emitted.
+            while (next_forced < forced.size() && forced[next_forced] <= start)
+            {
+                next_forced++;
+            }
+            // Hard cut at the next forced break when it fits on this
+            // page: the user asked for the break, so nothing overrides
+            // it and the window may end shorter than a full page.
+            if (next_forced < forced.size() && forced[next_forced] <= start + content_height)
+            {
+                windows.emplace_back(start, forced[next_forced]);
+                start = forced[next_forced];
+                next_forced++;
+                continue;
+            }
             float limit = start + content_height;
             if (limit >= total_flow_height)
             {

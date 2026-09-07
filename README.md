@@ -185,6 +185,28 @@ skipping the markdown conversion.
 Images are resolved relative to the input file's directory.
 ```
 
+#### Manual page breaks
+
+Force a new page anywhere with an empty marker div:
+
+```markdown
+...end of chapter one
+
+<div style="page-break-before: always"></div>
+
+# Chapter two
+```
+
+To break on a pattern — say, every chapter — put the property on a
+selector in your own CSS instead:
+
+```css
+h2 { page-break-before: always; }
+```
+
+`break-before: page`, `page-break-after: always` and `break-after: page`
+work the same way.
+
 #### Styles
 
 Built-in stylesheets set layout and typography; `-t` themes set colors.

@@ -302,3 +302,101 @@ it "never strands a section heading at the bottom of a page" do
     File.delete?(path)
   end
 end
+
+# Manual page breaks: <div style="page-break-before: always"></div>
+# between sections, and the property applied through a stylesheet rule
+# (h2 { page-break-before: always } breaks before every chapter).
+describe "markpdf manual page breaks" do
+  it "starts a new page at a page-break-before marker" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+
+    source = <<-MARKDOWN
+      # Chapter one
+
+      first sentinel chapterone text.
+
+      <div style="page-break-before: always"></div>
+
+      # Chapter two
+
+      second sentinel chaptertwo text.
+      MARKDOWN
+
+    path = temp_pdf_path
+    begin
+      pages = Markd::Pdf.render(source, path)
+      pages.should eq(2)
+
+      page_texts = (1..pages).map { |page| page_text(pdftotext, path, page) }
+      pages_containing(page_texts, "Chapter one").should eq([1])
+      pages_containing(page_texts, "Chapter two").should eq([2])
+      pages_containing(page_texts, "chapterone").should eq([1])
+      pages_containing(page_texts, "chaptertwo").should eq([2])
+    ensure
+      File.delete?(path)
+    end
+  end
+
+  it "supports the modern break-before: page spelling" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+
+    source = <<-MARKDOWN
+      first sentinel prebreak text.
+
+      <div style="break-before: page"></div>
+
+      second sentinel postbreak text.
+      MARKDOWN
+
+    path = temp_pdf_path
+    begin
+      pages = Markd::Pdf.render(source, path)
+      pages.should eq(2)
+
+      page_texts = (1..pages).map { |page| page_text(pdftotext, path, page) }
+      pages_containing(page_texts, "prebreak").should eq([1])
+      pages_containing(page_texts, "postbreak").should eq([2])
+    ensure
+      File.delete?(path)
+    end
+  end
+
+  it "breaks before every element matched by a stylesheet rule" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+
+    source = <<-MARKDOWN
+      <h2>Alpha</h2>
+
+      alpha sentinel text.
+
+      <h2>Beta</h2>
+
+      beta sentinel text.
+
+      <h2>Gamma</h2>
+
+      gamma sentinel text.
+      MARKDOWN
+
+    path = temp_pdf_path
+    begin
+      renderer = Markd::Pdf::Renderer.new(
+        options: Markd::Options.new,
+        style: "default",
+        css_layers: ["h2 { page-break-before: always }"],
+      )
+      pages = renderer.render(source, path)
+      pages.should eq(3)
+
+      page_texts = (1..pages).map { |page| page_text(pdftotext, path, page) }
+      pages_containing(page_texts, "Alpha").should eq([1])
+      pages_containing(page_texts, "Beta").should eq([2])
+      pages_containing(page_texts, "Gamma").should eq([3])
+    ensure
+      File.delete?(path)
+    end
+  end
+end
