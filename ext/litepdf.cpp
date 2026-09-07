@@ -3042,6 +3042,15 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
         }
     }
 
+    // KDP: an odd page count gets a trailing blank page — the printer
+    // pads duplex parity anyway. Pageless documents are one page by
+    // definition and skip this.
+    if (kdp && !single_page && windows.size() % 2 == 1)
+    {
+        float flow_end = windows.back().second;
+        windows.emplace_back(flow_end, flow_end);
+    }
+
     if (getenv("LITEPDF_DEBUG")) { for (auto& w : windows) std::fprintf(stderr, "window %.1f..%.1f\n", w.first, w.second); }
     DrawContext context;
     context.wide_tables = &container.wide_tables;

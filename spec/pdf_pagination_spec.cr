@@ -303,6 +303,32 @@ it "never strands a section heading at the bottom of a page" do
   end
 end
 
+# KDP mode pads odd page counts to even with a trailing blank page.
+describe "markpdf kdp parity padding" do
+  it "appends a blank page when the count is odd, leaves even counts alone" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+    source = "# One\n\nsentinel text."
+
+    odd_path = temp_pdf_path
+    begin
+      Markd::Pdf.render(source, odd_path).should eq(1)
+      Markd::Pdf.render(source, odd_path, kdp: true).should eq(2)
+    ensure
+      File.delete?(odd_path)
+    end
+
+    even_source = "# One\n\ntext.\n\n<div style=\"page-break-before: always\"></div>\n\n# Two\n\ntext."
+    even_path = temp_pdf_path
+    begin
+      Markd::Pdf.render(even_source, even_path, kdp: true).should eq(2)
+      page_text(pdftotext, even_path, 2).should contain("Two")
+    ensure
+      File.delete?(even_path)
+    end
+  end
+end
+
 # Manual page breaks: <div style="page-break-before: always"></div>
 # between sections, and the property applied through a stylesheet rule
 # (h2 { page-break-before: always } breaks before every chapter).

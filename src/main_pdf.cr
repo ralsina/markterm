@@ -25,7 +25,8 @@ doc = <<-DOC
                                2 (top/bottom, left/right), 4 (top, right, bottom,
                                left) or 5 (... plus gutter) [default: 20]
     --kdp                      KDP print mode: embed every font, drop the
-                               outline and scrub metadata
+                               outline, scrub metadata and pad odd page
+                               counts to even
     --style <style>            Built-in stylesheet setting layout and typography
                                (themes set colors instead): see --list-styles
                                [default: default]
