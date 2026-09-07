@@ -1,23 +1,23 @@
 require "./pdf"
 require "./cli"
-require "docopt"
+require "docopt-config"
 require "markd"
 
 doc = <<-DOC
   Markpdf - A tool to render markdown to PDF
 
   Usage:
-    markpdf [<file>] [options]
+    markpdf [<file>] [--font <font>...][--css <css>...][options]
     markpdf --list-styles
     markpdf -h | --help
     markpdf --version
 
   Options:
     -h --help                  Show this screen.
-    -t <theme>                 Theme to use for coloring output
+    -t <theme>, --theme <theme>  Theme to use for coloring output
     --code-theme <code-theme>  Theme to use for coloring code blocks
     --version                  Show version.
-    -o <output>                Write the PDF to a file (defaults to standard output)
+    -o <output>, --output <output>  Write the PDF to a file (defaults to standard output)
     --page-size <size>         Page size: a0..a6, b0..b6, letter, legal, or
                                custom WxH in mm (e.g. 100x200) [default: a4]
     --margin <margins>         Page margins in mm, CSS-style: 1 value (all sides),
@@ -38,9 +38,11 @@ doc = <<-DOC
                                are used automatically when available.
     --emoji-font <font>        TTF font used for emoji and symbols the main fonts
                                lack (auto-detected from system fonts by default)
-    --header <header>          Page header text; "%p" is the page number, "%t" the
-                               total page count
+    --header <header>          Page header text; "%p" is the page number, "%t"
+                               the total page count. Split it with "|" into
+                               left|center|right sections
     --footer <footer>          Page footer text; supports the same placeholders
+                               and sections
     --pageless                 Single-page output: one page as tall as the document,
                                no headers/footers — good for on-screen reading,
                                wrong for printing. Very long documents scale
@@ -58,6 +60,12 @@ doc = <<-DOC
   Complete HTML documents (and .html files) are rendered directly,
   skipping the markdown conversion.
   Images are resolved relative to the input file's directory.
+
+  Options can also be set in ~/.config/markpdf/config.yml (keys are the
+  long option names, e.g. "page-size: letter"; list-valued keys work for
+  repeatable options, e.g. "font: [font1.ttf, font2.ttf]") or through
+  MARKPDF_* environment variables (e.g. MARKPDF_STYLE). Command line
+  options win over environment variables, which win over the config file.
   DOC
 
 def abort_with(message : String)
@@ -144,7 +152,8 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
   end
 end
 
-options = Docopt.docopt(doc, ARGV)
+options = Docopt.docopt_config(doc, argv: ARGV,
+  config_file_path: Cli.config_path("markpdf"), env_prefix: "MARKPDF")
 
 if options["--version"]
   puts "Markpdf #{Cli::VERSION}"
@@ -152,14 +161,14 @@ if options["--version"]
 end
 
 if options["--list-styles"]
-  list_styles(options["--style"].as(String))
+  list_styles(Cli.option_string(options["--style"], "default"))
   exit 0
 end
 
 if options["--print-style"]
   # Which stylesheet to print comes from --style; docopt cannot express
   # an optional option argument, so there is no --print-style <style>.
-  name = options["--style"].as(String)
+  name = Cli.option_string(options["--style"], "default")
   begin
     puts Markd::Pdf.style_css(name)
   rescue error : Markd::Pdf::Error
@@ -170,39 +179,25 @@ end
 
 begin
   file = options["<file>"] || "-"
-  # docopt returns a String when --font occurs once, an Array when it
-  # repeats; normalize to an Array(String) either way.
-  font_option = options["--font"]?
-  fonts = case font_option
-          when Array  then font_option.map &.as(String)
-          when String then [font_option]
-          else             [] of String
-          end
-  css_option = options["--css"]?
-  css_paths = case css_option
-              when Array  then css_option.map &.as(String)
-              when String then [css_option]
-              else             [] of String
-              end
   main(
     file.as(String),
-    options["-o"].try &.as(String),
-    options["--page-size"].as(String),
-    options["--margin"].as(String),
-    css_paths,
-    fonts,
-    options["--emoji-font"].try &.as(String),
-    options["--header"].try &.as(String),
-    options["--footer"].try &.as(String),
-    options["-t"].try &.as(String),
-    options["--code-theme"].try &.as(String),
-    options["--style"].as(String),
+    Cli.option_string(options["--output"]),
+    Cli.option_string(options["--page-size"], "a4"),
+    Cli.option_string(options["--margin"], "20"),
+    Cli.option_list(options["--css"]?),
+    Cli.option_list(options["--font"]?),
+    Cli.option_string(options["--emoji-font"]),
+    Cli.option_string(options["--header"]),
+    Cli.option_string(options["--footer"]),
+    Cli.option_string(options["--theme"]),
+    Cli.option_string(options["--code-theme"]),
+    Cli.option_string(options["--style"], "default"),
     (file.as(String).ends_with?(".html") || file.as(String).ends_with?(".htm")),
-    options["--pageless"] == true,
-    options["--hyphenate"] == true,
-    options["--language"].as(String),
-    options["--no-remote-images"] == true,
-    options["--kdp"] == true,
+    Cli.option_flag(options["--pageless"]),
+    Cli.option_flag(options["--hyphenate"]),
+    Cli.option_string(options["--language"], "en"),
+    Cli.option_flag(options["--no-remote-images"]),
+    Cli.option_flag(options["--kdp"]),
   )
 rescue error
   abort_with(error.message.to_s)

@@ -105,19 +105,19 @@ This is the help:
 Markterm - A tool to render markdown to the terminal
 
 Usage:
-  markterm <file> [-t <theme>][--code-theme <code-theme>][-l][-c][-w <width>][--hyphenate][--language <language>][--images|--no-images][--no-links][--no-pager]
+  markterm <file> [--theme <theme>][--code-theme <code-theme>][--links][--color][--width <width>][--hyphenate][--language <language>][--images|--no-images][--no-links][--no-pager]
   markterm -h | --help
   markterm --version
 
 Options:
   -h --help                  Show this screen.
-  -t <theme>                 Theme to use for coloring output
+  -t <theme>, --theme <theme>  Theme to use for coloring output
   --code-theme <code-theme>  Theme to use for coloring code blocks
   --version                  Show version.
-  -l                         Force html-like links
+  -l, --links                Force html-like links
   --no-links                 Never emit html-like links
-  -c --color                 Force color output even when piping
-  -w <width>                 Maximum line width for text wrapping (0 to disable, auto-detects if not specified)
+  -c, --color                Force color output even when piping
+  -w <width>, --width <width>  Maximum line width for text wrapping (0 to disable, auto-detects if not specified)
   --hyphenate                Break long words at syllable boundaries when wrapping
   --language <language>      Hyphenation language: en or es [default: en]
   --images                   Force images where the terminal can show them
@@ -125,9 +125,49 @@ Options:
   --no-pager                 Never pipe output to $PAGER
 
 If you use "-" as the file argument, markterm will read from stdin.
+
+Options can also be set in ~/.config/markterm/config.yml (keys are the
+long option names, e.g. "theme: monokai") or through MARKTERM_*
+environment variables (e.g. MARKTERM_WIDTH). Command line options win
+over environment variables, which win over the config file.
 ```
 
 There is a similar `markmark` binary that will render markdown to markdown.
+
+### Configuration
+
+The `markterm`, `markmark` and `markpdf` CLIs share a configuration
+mechanism (via [docopt-config](https://github.com/ralsina/docopt-config)).
+Every option can be set in four places, in decreasing precedence:
+
+1. the command line (e.g. `--width 60`)
+2. environment variables prefixed with the tool's name (e.g. `MARKTERM_WIDTH=60`, `MARKPDF_STYLE=book`)
+3. a YAML config file: `~/.config/markterm/config.yml`, `~/.config/markmark/config.yml` or `~/.config/markpdf/config.yml` (honoring `$XDG_CONFIG_HOME`)
+4. the built-in defaults shown in the help
+
+Config file keys are the long option names, with underscores or dashes,
+and values are typed:
+
+```yaml
+# ~/.config/markterm/config.yml
+theme: monokai
+width: 80        # numbers work for numeric options
+hyphenate: true
+```
+
+```yaml
+# ~/.config/markpdf/config.yml
+page-size: letter
+margin: "15,25"  # CSS-style: top/bottom, left/right
+css:
+  - tweaks.css   # repeatable options accept lists
+font:
+  - LiberationSerif.ttf
+  - LiberationSans.ttf
+```
+
+A missing config file is not an error; without one the tools behave
+exactly as they always have.
 
 ### markpdf
 
@@ -141,21 +181,25 @@ rules on top with `--css`.
 ```docopt
 Markpdf - A tool to render markdown to PDF
 
-  Usage:
-    markpdf [<file>] [options]
-    markpdf --list-styles
-    markpdf -h | --help
-    markpdf --version
+Usage:
+  markpdf [<file>] [--font <font>...][--css <css>...][options]
+  markpdf --list-styles
+  markpdf -h | --help
+  markpdf --version
 
 Options:
   -h --help                  Show this screen.
-  -t <theme>                 Theme to use for coloring output
+  -t <theme>, --theme <theme>  Theme to use for coloring output
   --code-theme <code-theme>  Theme to use for coloring code blocks
   --version                  Show version.
-  -o <output>                Write the PDF to a file (defaults to standard output)
+  -o <output>, --output <output>  Write the PDF to a file (defaults to standard output)
   --page-size <size>         Page size: a0..a6, b0..b6, letter, legal, or
                              custom WxH in mm (e.g. 100x200) [default: a4]
-  --margin <margin>          Page margin in millimeters [default: 20]
+  --margin <margins>         Page margins in mm, CSS-style: 1 value (all sides),
+                             2 (top/bottom, left/right), 4 (top, right, bottom,
+                             left) or 5 (... plus gutter) [default: 20]
+  --kdp                      KDP print mode: embed every font, drop the
+                             outline and scrub metadata
   --style <style>            Built-in stylesheet setting layout and typography
                              (themes set colors instead): see --list-styles
                              [default: default]
@@ -164,25 +208,39 @@ Options:
                              standard output and exit
   --css <css>                Extra CSS file layered on top of the style; last
                              declaration wins (may be repeated)
-  --pageless                 Single-page output: one page as tall as the document,
-                             no headers/footers — good for on-screen reading,
-                             wrong for printing. Very long documents scale down
-                             to fit the PDF page-size limit.
   --font <font>              TTF font file to embed (can be repeated). Fonts are
                              matched by their internal family name; system fonts
                              are used automatically when available.
   --emoji-font <font>        TTF font used for emoji and symbols the main fonts
                              lack (auto-detected from system fonts by default)
-    --header <header>          Page header text; "%p" is the page number, "%t" the
-                               total page count. Split it with "|" into
-                               left|center|right sections
-    --footer <footer>          Page footer text; supports the same placeholders
-                               and sections
+  --header <header>          Page header text; "%p" is the page number, "%t"
+                             the total page count. Split it with "|" into
+                             left|center|right sections
+  --footer <footer>          Page footer text; supports the same placeholders
+                             and sections
+  --pageless                 Single-page output: one page as tall as the document,
+                             no headers/footers — good for on-screen reading,
+                             wrong for printing. Very long documents scale
+                             down to fit the PDF page-size limit.
+  --hyphenate                Insert soft hyphens at hyphenation points, so
+                             fully justified paragraphs can break long words
+                             with a hyphen at the line end
+  --language <language>      Hyphenation language for --hyphenate: en or es
+                             [default: en]
+  --no-remote-images         Skip http(s) image sources instead of fetching
+                             them; remote fetching can also be turned off
+                             programmatically with Markd::Pdf
 
 If you use "-" as the file argument, markpdf will read from stdin.
 Complete HTML documents (and .html files) are rendered directly,
 skipping the markdown conversion.
 Images are resolved relative to the input file's directory.
+
+Options can also be set in ~/.config/markpdf/config.yml (keys are the
+long option names, e.g. "page-size: letter"; list-valued keys work for
+repeatable options, e.g. "font: [font1.ttf, font2.ttf]") or through
+MARKPDF_* environment variables (e.g. MARKPDF_STYLE). Command line
+options win over environment variables, which win over the config file.
 ```
 
 #### Manual page breaks

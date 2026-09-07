@@ -1,6 +1,6 @@
 require "./markterm"
 require "./cli"
-require "docopt"
+require "docopt-config"
 require "markd"
 require "colorize"
 require "term-color"
@@ -9,19 +9,19 @@ doc = <<-DOC
   Markterm - A tool to render markdown to the terminal
 
   Usage:
-    markterm <file> [-t <theme>][--code-theme <code-theme>][-l][-c][-w <width>][--hyphenate][--language <language>][--images|--no-images][--no-links][--no-pager]
+    markterm <file> [--theme <theme>][--code-theme <code-theme>][--links][--color][--width <width>][--hyphenate][--language <language>][--images|--no-images][--no-links][--no-pager]
     markterm -h | --help
     markterm --version
 
   Options:
     -h --help                  Show this screen.
-    -t <theme>                 Theme to use for coloring output
+    -t <theme>, --theme <theme>  Theme to use for coloring output
     --code-theme <code-theme>  Theme to use for coloring code blocks
     --version                  Show version.
-    -l                         Force html-like links
+    -l, --links                Force html-like links
     --no-links                 Never emit html-like links
-    -c --color                 Force color output even when piping
-    -w <width>                 Maximum line width for text wrapping (0 to disable, auto-detects if not specified)
+    -c, --color                Force color output even when piping
+    -w <width>, --width <width>  Maximum line width for text wrapping (0 to disable, auto-detects if not specified)
     --hyphenate                Break long words at syllable boundaries when wrapping
     --language <language>      Hyphenation language: en or es [default: en]
     --images                   Force images where the terminal can show them
@@ -29,6 +29,11 @@ doc = <<-DOC
     --no-pager                 Never pipe output to $PAGER
 
   If you use "-" as the file argument, markterm will read from stdin.
+
+  Options can also be set in ~/.config/markterm/config.yml (keys are the
+  long option names, e.g. "theme: monokai") or through MARKTERM_*
+  environment variables (e.g. MARKTERM_WIDTH). Command line options win
+  over environment variables, which win over the config file.
   DOC
 
 # Color: --color wins over everything; otherwise respect the
@@ -116,7 +121,8 @@ private def pipe_to_pager(text : String, pager : String)
   end
 end
 
-options = Docopt.docopt(doc, ARGV)
+options = Docopt.docopt_config(doc, argv: ARGV,
+  config_file_path: Cli.config_path("markterm"), env_prefix: "MARKTERM")
 
 if options["--version"]
   puts "Markterm #{Cli::VERSION}"
@@ -126,23 +132,23 @@ end
 begin
   # --images and --no-images are mutually exclusive alternatives, so
   # exactly one can be set: nil means auto-detect.
-  images = if options["--images"] == true
+  images = if Cli.option_flag(options["--images"])
              true
-           elsif options["--no-images"] == true
+           elsif Cli.option_flag(options["--no-images"])
              false
            end
   main(
     options["<file>"].as(String),
-    theme: options["-t"].try &.as(String),
-    code_theme: options["--code-theme"].try &.as(String),
-    force_links: options["-l"] != nil,
-    force_color: options["--color"] != nil,
-    width: options["-w"].try &.as(String),
-    hyphenate: options["--hyphenate"] != nil,
-    language: options["--language"].try &.as(String) || "en",
+    theme: Cli.option_string(options["--theme"]),
+    code_theme: Cli.option_string(options["--code-theme"]),
+    force_links: Cli.option_flag(options["--links"]),
+    force_color: Cli.option_flag(options["--color"]),
+    width: Cli.option_string(options["--width"]),
+    hyphenate: Cli.option_flag(options["--hyphenate"]),
+    language: Cli.option_string(options["--language"]) || "en",
     images: images,
-    no_links: options["--no-links"] != nil,
-    no_pager: options["--no-pager"] != nil,
+    no_links: Cli.option_flag(options["--no-links"]),
+    no_pager: Cli.option_flag(options["--no-pager"]),
   )
 rescue error
   STDERR.puts "markterm: #{error.message}"

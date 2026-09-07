@@ -32,6 +32,11 @@ dependencies:
     path: ./hyphen
   docopt:
     github: ralsina/docopt.cr
+  # docopt with config file and environment variable support, so the
+  # CLI tools honor ~/.config/<tool>/config.yml and $TOOL_* env vars
+  docopt-config:
+    github: ralsina/docopt-config
+    version: ~> 0.2.0
   tartrazine:
     github: ralsina/tartrazine
   sixteen:

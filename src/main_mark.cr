@@ -1,6 +1,6 @@
 require "./markmark"
 require "./cli"
-require "docopt"
+require "docopt-config"
 require "markd"
 
 doc = <<-DOC
@@ -25,7 +25,8 @@ def main(source)
   puts Markd.to_md(input, options)
 end
 
-options = Docopt.docopt(doc, ARGV)
+options = Docopt.docopt_config(doc, argv: ARGV,
+  config_file_path: Cli.config_path("markmark"), env_prefix: "MARKMARK")
 if options["--version"]
   puts "Markmark #{Cli::VERSION}"
   exit 0
