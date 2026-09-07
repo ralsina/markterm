@@ -22,13 +22,14 @@ module Cli
   end
 
   # docopt-config returns config file values with their YAML types, so an
-  # option documented as taking a string can come back as an Int32 (e.g.
-  # "margin: 20" or a numeric docopt default). Normalize those to the
-  # String docopt would have produced, ignoring values of other types.
+  # option documented as taking a string can come back as a number (e.g.
+  # "margin: 20" as Int32, "margin: 20.5" as Float64, or a numeric docopt
+  # default). Normalize those to the String docopt would have produced,
+  # ignoring values of other types.
   def self.option_string(value : Docopt::OptionValue?) : String?
     case value
-    when String then value
-    when Int32  then value.to_s
+    when String                then value
+    when Int32, Int64, Float64 then value.to_s
     end
   end
 
@@ -38,16 +39,11 @@ module Cli
     option_string(value) || fallback
   end
 
-  # Interpret an option as a boolean flag. docopt gives true for a flag
-  # given on the command line, false or nil otherwise; the config file
-  # can set true or false; environment variables are always strings, so
-  # "1", "true" or "yes" mean on, anything else off.
+  # Interpret an option as a boolean flag: true when the flag was given on
+  # the command line or set to true in the config file or environment
+  # (docopt-config coerces env var values), false or nil otherwise.
   def self.option_flag(value : Docopt::OptionValue?) : Bool
-    case value
-    when Bool   then value
-    when String then value == "1" || value.downcase == "true" || value.downcase == "yes"
-    else             false
-    end
+    value == true
   end
 
   # docopt returns a String when a repeatable option occurs once, and an

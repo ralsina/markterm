@@ -16,6 +16,11 @@ doc = <<-DOC
     --version                  Show version.
 
   If you use "-" as the file argument, markmark will read from stdin.
+
+  Options can also be set in ~/.config/markmark/config.yml or through
+  MARKMARK_* environment variables. Command line options win over
+  environment variables, which win over the config file. Run with
+  --print-config to dump the effective configuration as YAML.
   DOC
 
 def main(source)
@@ -26,7 +31,8 @@ def main(source)
 end
 
 options = Docopt.docopt_config(doc, argv: ARGV,
-  config_file_path: Cli.config_path("markmark"), env_prefix: "MARKMARK")
+  config_file_path: Cli.config_path("markmark"), env_prefix: "MARKMARK",
+  print_config_option: "--print-config")
 if options["--version"]
   puts "Markmark #{Cli::VERSION}"
   exit 0

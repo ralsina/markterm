@@ -26,7 +26,7 @@ shards:
 
   docopt-config:
     git: https://github.com/ralsina/docopt-config.git
-    version: 0.2.0
+    version: 0.3.0
 
   exception_page:
     git: https://github.com/crystal-loot/exception_page.git

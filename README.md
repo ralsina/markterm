@@ -129,7 +129,8 @@ If you use "-" as the file argument, markterm will read from stdin.
 Options can also be set in ~/.config/markterm/config.yml (keys are the
 long option names, e.g. "theme: monokai") or through MARKTERM_*
 environment variables (e.g. MARKTERM_WIDTH). Command line options win
-over environment variables, which win over the config file.
+over environment variables, which win over the config file. Run with
+--print-config to dump the effective configuration as YAML.
 ```
 
 There is a similar `markmark` binary that will render markdown to markdown.
@@ -166,8 +167,31 @@ font:
   - LiberationSans.ttf
 ```
 
+Environment variables follow the same rules: booleans accept
+`true`/`yes`/`1` (and `false`/`no`/`0` to turn an option off), and
+repeatable options accept comma-separated lists
+(`MARKPDF_FONT=a.ttf,b.ttf`).
+
+Every tool also accepts a `--print-config` flag, which prints the
+effective configuration — command line, environment and config file
+merged — as YAML that can be saved and used as a config file as is:
+
+```console
+$ markpdf --print-config --style book
+---
+page_size: a4
+margin: "20"
+style: book
+language: en
+```
+
+`markterm` and `markmark` still require their file argument, so pass
+one (or `-` for stdin) when printing their configuration, e.g.
+`markterm --print-config - < document.md`.
+
 A missing config file is not an error; without one the tools behave
-exactly as they always have.
+exactly as they always have. A config file that exists but cannot be
+parsed produces a warning on stderr and is otherwise ignored.
 
 ### markpdf
 
@@ -194,13 +218,16 @@ Options:
   --version                  Show version.
   -o <output>, --output <output>  Write the PDF to a file (defaults to standard output)
   --page-size <size>         Page size: a0..a6, b0..b6, letter, legal, or
-                             custom WxH — values under 12 are
-                               inches (6x9 = 152.4x228.6mm) [default: a4]
+                             custom WxH — values under 12 are inches
+                             (6x9 = 152.4x228.6mm) [default: a4]
   --margin <margins>         Page margins in mm, CSS-style: 1 value (all sides),
                              2 (top/bottom, left/right), 4 (top, right, bottom,
                              left) or 5 (... plus gutter) [default: 20]
+  --mirror-headers           Mirror running headers and footers on verso
+                             (even) pages — pairs with a gutter margin
   --kdp                      KDP print mode: embed every font, drop the
-                             outline and scrub metadata
+                             outline, scrub metadata and pad odd page
+                             counts to even
   --style <style>            Built-in stylesheet setting layout and typography
                              (themes set colors instead): see --list-styles
                              [default: default]
@@ -242,6 +269,7 @@ long option names, e.g. "page-size: letter"; list-valued keys work for
 repeatable options, e.g. "font: [font1.ttf, font2.ttf]") or through
 MARKPDF_* environment variables (e.g. MARKPDF_STYLE). Command line
 options win over environment variables, which win over the config file.
+Run with --print-config to dump the effective configuration as YAML.
 ```
 
 #### Manual page breaks

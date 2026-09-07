@@ -70,6 +70,7 @@ doc = <<-DOC
   repeatable options, e.g. "font: [font1.ttf, font2.ttf]") or through
   MARKPDF_* environment variables (e.g. MARKPDF_STYLE). Command line
   options win over environment variables, which win over the config file.
+  Run with --print-config to dump the effective configuration as YAML.
   DOC
 
 def abort_with(message : String)
@@ -162,7 +163,8 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
 end
 
 options = Docopt.docopt_config(doc, argv: ARGV,
-  config_file_path: Cli.config_path("markpdf"), env_prefix: "MARKPDF")
+  config_file_path: Cli.config_path("markpdf"), env_prefix: "MARKPDF",
+  print_config_option: "--print-config")
 
 if options["--version"]
   puts "Markpdf #{Cli::VERSION}"

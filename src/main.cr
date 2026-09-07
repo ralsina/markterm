@@ -33,7 +33,8 @@ doc = <<-DOC
   Options can also be set in ~/.config/markterm/config.yml (keys are the
   long option names, e.g. "theme: monokai") or through MARKTERM_*
   environment variables (e.g. MARKTERM_WIDTH). Command line options win
-  over environment variables, which win over the config file.
+  over environment variables, which win over the config file. Run with
+  --print-config to dump the effective configuration as YAML.
   DOC
 
 # Color: --color wins over everything; otherwise respect the
@@ -122,7 +123,8 @@ private def pipe_to_pager(text : String, pager : String)
 end
 
 options = Docopt.docopt_config(doc, argv: ARGV,
-  config_file_path: Cli.config_path("markterm"), env_prefix: "MARKTERM")
+  config_file_path: Cli.config_path("markterm"), env_prefix: "MARKTERM",
+  print_config_option: "--print-config")
 
 if options["--version"]
   puts "Markterm #{Cli::VERSION}"
