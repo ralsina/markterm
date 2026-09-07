@@ -48,10 +48,15 @@ RUN make -C ext clean \
 
 FROM alpine:edge
 # Fonts the PDF engine scans for fallback glyphs (DejaVu for the styles'
-# font stacks, Noto Emoji + Noto Sans Symbols for emoji and symbols) and
-# CA certificates for remote images.
+# font stacks, Noto Sans Symbols for dingbats) and CA certificates for
+# remote images. Alpine's font-noto-emoji is a color bitmap font the PDF
+# writer cannot embed, so we also fetch the monochrome Noto Emoji, which
+# is the engine's auto-detected emoji fallback.
 RUN apk add --no-cache font-dejavu font-noto-emoji font-noto-symbols \
-    ca-certificates wget \
+    ca-certificates wget curl \
+ && mkdir -p /usr/share/fonts/notoemoji \
+ && wget -q -O /usr/share/fonts/notoemoji/NotoEmoji.ttf \
+      "https://github.com/google/fonts/raw/main/ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf" \
  && addgroup -S markpdf && adduser -S markpdf -G markpdf
 WORKDIR /app
 COPY --from=build /app/bin/markpdf-web ./
