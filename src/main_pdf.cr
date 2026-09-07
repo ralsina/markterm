@@ -20,7 +20,11 @@ doc = <<-DOC
     -o <output>                Write the PDF to a file (defaults to standard output)
     --page-size <size>         Page size: a0..a6, b0..b6, letter, legal, or
                                custom WxH in mm (e.g. 100x200) [default: a4]
-    --margin <margin>          Page margin in millimeters [default: 20]
+    --margin <margins>         Page margins in mm, CSS-style: 1 value (all sides),
+                               2 (top/bottom, left/right), 4 (top, right, bottom,
+                               left) or 5 (... plus gutter) [default: 20]
+    --kdp                      KDP print mode: embed every font, drop the
+                               outline and scrub metadata
     --style <style>            Built-in stylesheet setting layout and typography
                                (themes set colors instead): see --list-styles
                                [default: default]
@@ -89,12 +93,9 @@ def register_fonts(font_paths : Array(String))
   end
 end
 
-def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language, no_remote_images)
+def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language, no_remote_images, kdp)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
-
-  margin_mm = margin.to_f?
-  abort_with("invalid margin '#{margin}'") unless margin_mm && margin_mm >= 0
 
   Markd::Pdf.fetch_remote_images = !no_remote_images
 
@@ -108,7 +109,8 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
       theme: theme,
       code_theme: Markd::Pdf.pick_code_theme(code_theme, theme, style),
       page_size: page_size,
-      margin_mm: margin_mm,
+      margins: margin,
+      kdp: kdp,
       base_dir: base_dir,
       header: header || "",
       footer: footer || "",
@@ -200,6 +202,7 @@ begin
     options["--hyphenate"] == true,
     options["--language"].as(String),
     options["--no-remote-images"] == true,
+    options["--kdp"] == true,
   )
 rescue error
   abort_with(error.message.to_s)

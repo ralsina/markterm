@@ -103,7 +103,7 @@ module MarkpdfWeb
     getter theme : String?
     getter code_theme : String?
     getter page_size : String
-    getter margin_mm : Float64
+    getter margins : String
     getter header : String
     getter footer : String
     getter? pageless : Bool
@@ -112,7 +112,7 @@ module MarkpdfWeb
     getter custom_css : String?
 
     def initialize(@markdown, @style, @theme, @code_theme, @page_size,
-                   @margin_mm, @header, @footer, @pageless, @hyphenate,
+                   @margins, @header, @footer, @pageless, @hyphenate,
                    @language, @custom_css)
     end
 
@@ -140,7 +140,7 @@ module MarkpdfWeb
         raise ParamError.new(error.message)
       end
 
-      margin_mm = parse_margin(form["margin"]?)
+      margins = parse_margins_spec(form["margin"]?)
       language = form.fetch("language", "en")
       unless LANGUAGES.includes?(language)
         raise ParamError.new("unknown hyphenation language '#{language}'")
@@ -152,7 +152,7 @@ module MarkpdfWeb
         theme: blank_to_nil(clean_text(form["theme"]?)),
         code_theme: blank_to_nil(clean_text(form["code_theme"]?)),
         page_size: page_size,
-        margin_mm: margin_mm,
+        margins:      margins,
         header: clean_text(form["header"]?),
         footer: clean_text(form["footer"]?),
         pageless: truthy?(form["pageless"]?),
@@ -162,13 +162,15 @@ module MarkpdfWeb
       )
     end
 
-    private def self.parse_margin(value : String?) : Float64
-      return 20.0 unless value
-      margin = value.to_f?
-      unless margin && margin >= 0 && margin <= 100
-        raise ParamError.new("margin must be a number between 0 and 100 (millimeters)")
-      end
-      margin
+    # The margin knob accepts one number or the CSS-style comma
+    # shorthand (1, 2, 4 or 5 values in mm); validated by the renderer's
+    # parser so the CLI and the web agree on the syntax.
+    private def self.parse_margins_spec(value : String?) : String
+      spec = value ? value.strip : "20"
+      Markd::Pdf.parse_margins(spec) # validation only
+      spec
+    rescue error : Markd::Pdf::Error
+      raise ParamError.new(error.message)
     end
 
     private def self.truthy?(value : String?) : Bool
@@ -210,7 +212,7 @@ module MarkpdfWeb
           render_params.markdown,
           options: options,
           page_size: render_params.page_size,
-          margin_mm: render_params.margin_mm,
+          margins:   render_params.margins,
           base_dir: EMPTY_BASE_DIR,
           header: render_params.header,
           footer: render_params.footer,

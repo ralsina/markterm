@@ -968,6 +968,7 @@ class PdfContainer : public litehtml::document_container
     HPDF_Doc pdf = nullptr;
     std::string base_dir;
     litehtml::pixel_t content_width = 0;
+    bool kdp_embed = false; // kdp mode: base-14 fonts become embedded TrueTypes
 
     // Per-render page furniture, set by litepdf_render: header/footer
     // templates ("%p" page number, "%t" total) and the page background
@@ -1168,6 +1169,33 @@ class PdfContainer : public litehtml::document_container
                 fm->draw_spaces = true;
             }
             return handle;
+        }
+
+        // Base-14 fonts are never embedded; print pipelines (KDP)
+        // require every font embedded. When forced, promote a system
+        // TrueType covering ASCII to the primary font instead.
+        if (kdp_embed)
+        {
+            if (const PdfFont* replacement = fallback_font_at(size, descr.decoration_line, 'A'))
+            {
+                PdfFont replacement_font = *replacement; // copy: fonts may reallocate
+                fonts.push_back(replacement_font);
+                litehtml::uint_ptr handle = fonts.size();
+                font_cache[key] = handle;
+                if (fm)
+                {
+                    fm->font_size = size;
+                    fm->height = replacement_font.ascent + replacement_font.descent;
+                    fm->ascent = replacement_font.ascent;
+                    fm->descent = replacement_font.descent;
+                    fm->x_height = replacement_font.x_height;
+                    fm->ch_width = replacement_font.ch_width;
+                    fm->super_shift = size * 0.33f;
+                    fm->sub_shift = size * 0.33f;
+                    fm->draw_spaces = true;
+                }
+                return handle;
+            }
         }
 
         // Base-14 fallback (CP1252 text).
@@ -2644,12 +2672,15 @@ int litepdf_set_emoji_font(const char* ttf_path, char* errbuf, int errbuf_len)
 // Render HTML to a PDF file. css is the author stylesheet (the caller
 // concatenates the default stylesheet and any user CSS). base_dir resolves
 // relative image paths. page_width_mm/page_height_mm size the page in
-// millimeters. margin_pt is the
-// uniform page margin. Returns the number of pages, or -1 and fills
+// millimeters. Margins are per-side in millimeters: top, right, bottom,
+// left, gutter (the gutter is the binding-edge margin: left on odd
+// pages, right on even ones; negative disables it). kdp mode embeds
+// every font, drops the outline and scrubs metadata. Returns the number of pages, or -1 and fills
 // errbuf on failure.
 static int render_pdf(const char* html, const char* css, float page_width_mm, float page_height_mm,
-               float margin_pt, const char* base_dir, const char* header, const char* footer,
-               const char* page_background, char* errbuf, int errbuf_len, int single_page,
+               float margin_top, float margin_right, float margin_bottom, float margin_left,
+               float margin_gutter, const char* base_dir, const char* header, const char* footer,
+               const char* page_background, char* errbuf, int errbuf_len, int single_page, int kdp,
                char** out_data, size_t* out_len)
 {
     if (errbuf && errbuf_len > 0)
@@ -2670,6 +2701,17 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     g_last_op = "creating document";
     HPDF_SetCompressionMode(pdf, HPDF_COMP_ALL);
     HPDF_UseUTFEncodings(pdf);
+
+    // KDP interiors must be free of metadata: scrub the info dictionary
+    // (the creation date stays; every PDF carries one).
+    if (kdp)
+    {
+        for (HPDF_InfoType info : {HPDF_INFO_PRODUCER, HPDF_INFO_CREATOR, HPDF_INFO_TITLE,
+                                   HPDF_INFO_AUTHOR, HPDF_INFO_SUBJECT, HPDF_INFO_KEYWORDS})
+        {
+            HPDF_SetInfoAttr(pdf, info, "");
+        }
+    }
 
     // Codepoints beyond the BMP cannot be encoded in the 16-bit CID
     // space: each one found in the document gets an alternate CID from
@@ -2744,6 +2786,7 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     }
 
     PdfContainer container(pdf);
+    container.kdp_embed = kdp != 0;
     // Per-render page furniture: these used to be process globals set
     // by separate litepdf_set_* calls, which made the renderer unsafe
     // to use as a library.
@@ -2788,12 +2831,27 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
 
     float page_width = page_width_mm * 72.0f / 25.4f;
     float page_height = page_height_mm * 72.0f / 25.4f;
-    float margin = margin_pt;
-    if (margin * 2 >= page_width || (!single_page && margin * 2 >= page_height))
+    // Per-side margins with book parity on the sides: odd pages (recto)
+    // put the gutter on the left, even pages (verso) on the right. A
+    // negative gutter means no gutter and margin_left applies to every
+    // page. Sides too wide to leave room for content fall back to 5% of
+    // the page width.
+    float margin_top_v = margin_top, margin_bottom_v = margin_bottom;
+    float margin_left_v = margin_left, margin_right_v = margin_right;
+    float margin_gutter_v = margin_gutter;
+    if (margin_left_v + margin_right_v >= page_width ||
+        margin_top_v + margin_bottom_v >= page_height)
     {
-        margin = page_width * 0.05f;
+        margin_top_v = margin_bottom_v = margin_left_v = margin_right_v = page_width * 0.05f;
+        margin_gutter_v = -1.0f;
     }
-    float content_width = page_width - margin * 2;
+    // Text wraps at the narrower of the two parities so both pages hold
+    // the same measure.
+    float content_width = page_width - margin_left_v - margin_right_v;
+    if (margin_gutter_v >= 0)
+    {
+        content_width = page_width - margin_gutter_v - std::max(margin_left_v, margin_right_v);
+    }
     container.content_width = content_width;
 
     // Note: render() returns the root's natural width; the laid-out
@@ -2824,7 +2882,7 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     }
 
     // Page windows: greedy over safe break candidates.
-    float content_height = page_height - margin * 2;
+    float content_height = page_height - margin_top_v - margin_bottom_v;
     std::set<int> raw_candidates;
     std::set<int> raw_headings;
     std::set<int> raw_forced;
@@ -2888,7 +2946,7 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
         // Pageless mode: one page as tall as the whole flow. The width
         // still comes from the page size; margins stay as configured.
         total_flow_height = std::max(total_flow_height, 1.0f);
-        page_height = total_flow_height + margin * 2;
+        page_height = total_flow_height + margin_top_v + margin_bottom_v;
         if (page_height > (float)HPDF_MAX_PAGE_HEIGHT)
         {
             page_scale = (float)HPDF_MAX_PAGE_HEIGHT / page_height;
@@ -2991,7 +3049,7 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     int page_count = 0;
     int total_pages = (int)windows.size();
     // Headers/footers use the body font (the first one created).
-    auto draw_page_text = [&](const std::string& templ, bool top)
+    auto draw_page_text = [&](const std::string& templ, bool top, float left_margin, float right_margin)
     {
         if (templ.empty() || !context.page)
         {
@@ -3052,7 +3110,7 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
         }
         HPDF_Page_SetFontAndSize(context.page, handle, text_size);
         HPDF_Page_SetRGBFill(context.page, 0.45f, 0.45f, 0.45f);
-        float y = top ? page_height - margin * 0.35f : margin * 0.35f;
+        float y = top ? page_height - margin_top_v * 0.35f : margin_bottom_v * 0.35f;
         for (const auto& [templ_text, align] : sections)
         {
             std::string text = templ_text;
@@ -3078,8 +3136,8 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
                 drawn = encoded.c_str();
             }
             float width = HPDF_Page_TextWidth(context.page, drawn);
-            float x = align == 'l' ? margin
-                    : align == 'r' ? page_width - margin - width
+            float x = align == 'l' ? left_margin
+                    : align == 'r' ? page_width - right_margin - width
                                    : (page_width - width) / 2.0f;
             HPDF_Page_BeginText(context.page);
             HPDF_Page_TextOut(context.page, x, y, drawn);
@@ -3146,15 +3204,29 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
         context.window_first = window.first;
         context.window_second = window.second;
         context.paginated = windows.size() > 1;
-        context.x_offset = margin;
-        context.top_margin = margin;
+        bool recto = (page_count % 2) == 0;
+        float left_margin = margin_left_v;
+        float right_margin = margin_right_v;
+        if (margin_gutter_v >= 0)
+        {
+            if (recto)
+            {
+                left_margin = margin_gutter_v;
+            }
+            else
+            {
+                right_margin = margin_gutter_v;
+            }
+        }
+        context.x_offset = left_margin;
+        context.top_margin = margin_top_v;
         // Physically clip drawing to this page's window (content area
         // slice): litehtml only culls elements whose boxes intersect the
         // clip, and draws list markers unculled, relying on the container.
         float window_height = window.second - window.first;
         HPDF_Page_GSave(page);
-        HPDF_Page_Rectangle(page, margin, page_height - margin - window_height,
-                            page_width - margin * 2, window_height);
+        HPDF_Page_Rectangle(page, left_margin, page_height - margin_top_v - window_height,
+                            page_width - left_margin - right_margin, window_height);
         HPDF_Page_Clip(page);
         HPDF_Page_EndPath(page);
         // The clip x-range must also cover overflowing tables: their
@@ -3206,8 +3278,8 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
         // pageless document has no pages to decorate.
         if (!single_page)
         {
-            draw_page_text(container.header_template, true);
-            draw_page_text(container.footer_template, false);
+            draw_page_text(container.header_template, true, left_margin, right_margin);
+            draw_page_text(container.footer_template, false, left_margin, right_margin);
         }
 
         // Link annotations for every anchor rectangle on this page's window.
@@ -3222,8 +3294,8 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
             {
                 continue;
             }
-            float top = page_height - margin - (std::max(top_doc, window.first) - window.first);
-            float bottom = page_height - margin - (std::min(bottom_doc, window.second) - window.first);
+            float top = page_height - margin_top_v - (std::max(top_doc, window.first) - window.first);
+            float bottom = page_height - margin_top_v - (std::min(bottom_doc, window.second) - window.first);
             if (bottom >= top)
             {
                 continue;
@@ -3231,8 +3303,8 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
             HPDF_Rect rect;
             // Annotation rectangles live in device space: apply the
             // pageless scale-down explicitly.
-            rect.left = (margin + link.x) * page_scale;
-            rect.right = (margin + link.x + link.width) * page_scale;
+            rect.left = (left_margin + link.x) * page_scale;
+            rect.right = (left_margin + link.x + link.width) * page_scale;
             rect.top = top * page_scale;
             rect.bottom = bottom * page_scale;
             if (getenv("LITEPDF_DEBUG")) std::fprintf(stderr, "  annot uri=%s top=%.1f bottom=%.1f\n", link.uri.c_str(), rect.top, rect.bottom);
@@ -3269,7 +3341,7 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
                 if (dst)
                 {
                     // Keep the reader's zoom, jump to the target's height.
-                    HPDF_Destination_SetFitH(dst, (page_height - margin - (target_flow - windows[i].first)) * page_scale);
+                    HPDF_Destination_SetFitH(dst, (page_height - margin_top_v - (target_flow - windows[i].first)) * page_scale);
                     destinations[target.name] = dst;
                 }
                 break;
@@ -3293,7 +3365,7 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     }
 
     // PDF outline (bookmarks) from headings, nested by heading level.
-    if (!container.headings.empty())
+    if (!kdp && !container.headings.empty())
     {
         HPDF_Encoder utf8 = HPDF_GetEncoder(pdf, "UTF-8");
         HPDF_Outline level_stack[7] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
@@ -3350,7 +3422,7 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     HPDF_Destination dst = HPDF_Page_CreateDestination(page_handles[page_idx]);
     if (dst)
     {
-        HPDF_Destination_SetFitH(dst, (page_height - margin - heading_flow) * page_scale);
+        HPDF_Destination_SetFitH(dst, (page_height - margin_top_v - heading_flow) * page_scale);
     }
 
             HPDF_Outline parent = nullptr;
@@ -3415,13 +3487,15 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
 
 // Render to a malloc'd buffer the caller frees with litepdf_free_buffer.
 int litepdf_render_to_memory(const char* html, const char* css, float page_width_mm,
-                             float page_height_mm, float margin_pt,
+                             float page_height_mm, float margin_top, float margin_right,
+                             float margin_bottom, float margin_left, float margin_gutter,
                              const char* base_dir, const char* header, const char* footer,
                              const char* page_background, char* errbuf, int errbuf_len,
-                             int single_page, char** out_data, size_t* out_len)
+                             int single_page, int kdp, char** out_data, size_t* out_len)
 {
-    return render_pdf(html, css, page_width_mm, page_height_mm, margin_pt, base_dir, header,
-                      footer, page_background, errbuf, errbuf_len, single_page, out_data,
+    return render_pdf(html, css, page_width_mm, page_height_mm, margin_top, margin_right,
+                      margin_bottom, margin_left, margin_gutter, base_dir, header, footer,
+                      page_background, errbuf, errbuf_len, single_page, kdp, out_data,
                       out_len);
 }
 
@@ -3433,15 +3507,17 @@ void litepdf_free_buffer(char* buffer)
 // Convenience for file-based callers: render to memory, then spill to
 // out_path.
 int litepdf_render(const char* html, const char* css, float page_width_mm, float page_height_mm,
-                   float margin_pt, const char* out_path,
+                   float margin_top, float margin_right, float margin_bottom, float margin_left,
+                   float margin_gutter, const char* out_path,
                    const char* base_dir, const char* header, const char* footer,
-                   const char* page_background, char* errbuf, int errbuf_len, int single_page)
+                   const char* page_background, char* errbuf, int errbuf_len, int single_page, int kdp)
 {
     char* data = nullptr;
     size_t len = 0;
-    int pages = litepdf_render_to_memory(html, css, page_width_mm, page_height_mm, margin_pt,
+    int pages = litepdf_render_to_memory(html, css, page_width_mm, page_height_mm, margin_top,
+                                         margin_right, margin_bottom, margin_left, margin_gutter,
                                          base_dir, header, footer, page_background, errbuf,
-                                         errbuf_len, single_page, &data, &len);
+                                         errbuf_len, single_page, kdp, &data, &len);
     if (pages < 0)
     {
         return pages;

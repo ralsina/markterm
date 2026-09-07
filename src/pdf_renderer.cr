@@ -15,6 +15,7 @@ module Markd
       def initialize(@options : Options = Options.new, @style : String = "default",
                      @theme : String? = nil, @code_theme : String? = nil,
                      @page_size : String = "a4", @margin_mm : Float64 = 20.0,
+                     @margins : String? = nil, @kdp : Bool = false,
                      @base_dir : String = ".", @header : String = "",
                      @footer : String = "", @html_input : Bool = false,
                      @pageless : Bool = false, @hyphenate : Bool = false,
@@ -49,11 +50,14 @@ module Markd
         Dir.mkdir(temp_dir, 0o700)
         converted = [] of String
         begin
-          html, page_width_mm, page_height_mm, margin_pt, background = prepare(source, temp_dir, converted)
+          geometry = prepare(source, temp_dir, converted)
           errbuf = Bytes.new(512)
-          pages = Litepdf.render(html, nil, page_width_mm.to_f32, page_height_mm.to_f32,
-            margin_pt.to_f32, output_path, @base_dir, @header, @footer, background,
-            errbuf, errbuf.size, @pageless ? 1 : 0)
+          pages = Litepdf.render(geometry[:html], nil, geometry[:width_mm].to_f32,
+            geometry[:height_mm].to_f32, geometry[:margin_top].to_f32,
+            geometry[:margin_right].to_f32, geometry[:margin_bottom].to_f32,
+            geometry[:margin_left].to_f32, geometry[:margin_gutter].to_f32, output_path,
+            @base_dir, @header, @footer, geometry[:background], errbuf, errbuf.size,
+            @pageless ? 1 : 0, @kdp ? 1 : 0)
           if pages < 0
             message = String.new(errbuf).strip
             raise Error.new(message.empty? ? "PDF rendering failed" : message)
@@ -77,13 +81,16 @@ module Markd
         Dir.mkdir(temp_dir, 0o700)
         converted = [] of String
         begin
-          html, page_width_mm, page_height_mm, margin_pt, background = prepare(source, temp_dir, converted)
-          errbuf = Bytes.new(512)
           out_data = Pointer(LibC::Char).null
           out_len = LibC::SizeT.new(0)
-          pages = Litepdf.render_to_memory(html, nil, page_width_mm.to_f32, page_height_mm.to_f32,
-            margin_pt.to_f32, @base_dir, @header, @footer, background,
-            errbuf, errbuf.size, @pageless ? 1 : 0, pointerof(out_data), pointerof(out_len))
+          geometry = prepare(source, temp_dir, converted)
+          errbuf = Bytes.new(512)
+          pages = Litepdf.render_to_memory(geometry[:html], nil, geometry[:width_mm].to_f32,
+            geometry[:height_mm].to_f32, geometry[:margin_top].to_f32,
+            geometry[:margin_right].to_f32, geometry[:margin_bottom].to_f32,
+            geometry[:margin_left].to_f32, geometry[:margin_gutter].to_f32, @base_dir,
+            @header, @footer, geometry[:background], errbuf, errbuf.size,
+            @pageless ? 1 : 0, @kdp ? 1 : 0, pointerof(out_data), pointerof(out_len))
           if pages < 0
             message = String.new(errbuf).strip
             raise Error.new(message.empty? ? "PDF rendering failed" : message)
@@ -103,8 +110,14 @@ module Markd
       # Everything both render methods share: markdown or HTML in, final
       # document HTML out, with images materialized into temp_dir and the
       # page geometry resolved.
+      # Everything both render methods share: markdown or HTML in, final
+      # document HTML out, with images materialized into temp_dir and the
+      # page geometry resolved.
       private def prepare(source : String, temp_dir : String,
-                          converted : Array(String)) : {String, Float64, Float64, Float64, String}
+                          converted : Array(String)) : NamedTuple(
+                            html: String, width_mm: Float64, height_mm: Float64,
+                            margin_top: Float64, margin_right: Float64, margin_bottom: Float64,
+                            margin_left: Float64, margin_gutter: Float64, background: String)
         highlighted_theme = @code_theme || Pdf.tartrazine_known_theme?(@theme) || Pdf::DEFAULT_CODE_THEME
         formatter = Tartrazine::Html.new(
           theme: Tartrazine.theme(highlighted_theme),
@@ -126,8 +139,18 @@ module Markd
           html = Pdf.document_html(body_html, css, extra_css: formatter.style_defs)
         end
         page_width_mm, page_height_mm = Pdf.parse_page_size(@page_size)
-        margin_pt = @margin_mm * 72.0 / 25.4
-        {html, page_width_mm, page_height_mm, margin_pt, background}
+        margins = Pdf.parse_margins(@margins || @margin_mm.to_s)
+        {
+          html:          html,
+          width_mm:      page_width_mm,
+          height_mm:     page_height_mm,
+          margin_top:    margins.top,
+          margin_right:  margins.right,
+          margin_bottom: margins.bottom,
+          margin_left:   margins.left,
+          margin_gutter: margins.gutter,
+          background:    background,
+        }
       end
     end
   end

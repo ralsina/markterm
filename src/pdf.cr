@@ -33,16 +33,19 @@ require "./hyphenation"
 @[Link("litepdf")]
 lib Litepdf
   fun render = litepdf_render(html : LibC::Char*, css : LibC::Char*, page_width_mm : LibC::Float,
-                              page_height_mm : LibC::Float, margin_pt : LibC::Float, out_path : LibC::Char*,
-                              base_dir : LibC::Char*, header : LibC::Char*, footer : LibC::Char*,
-                              page_background : LibC::Char*, errbuf : LibC::Char*, errbuf_len : LibC::Int,
-                              single_page : LibC::Int) : LibC::Int
+                              page_height_mm : LibC::Float, margin_top : LibC::Float, margin_right : LibC::Float,
+                              margin_bottom : LibC::Float, margin_left : LibC::Float, margin_gutter : LibC::Float,
+                              out_path : LibC::Char*, base_dir : LibC::Char*, header : LibC::Char*,
+                              footer : LibC::Char*, page_background : LibC::Char*, errbuf : LibC::Char*,
+                              errbuf_len : LibC::Int, single_page : LibC::Int, kdp : LibC::Int) : LibC::Int
   fun render_to_memory = litepdf_render_to_memory(html : LibC::Char*, css : LibC::Char*,
                                                   page_width_mm : LibC::Float, page_height_mm : LibC::Float,
-                                                  margin_pt : LibC::Float, base_dir : LibC::Char*,
+                                                  margin_top : LibC::Float, margin_right : LibC::Float,
+                                                  margin_bottom : LibC::Float, margin_left : LibC::Float,
+                                                  margin_gutter : LibC::Float, base_dir : LibC::Char*,
                                                   header : LibC::Char*, footer : LibC::Char*,
                                                   page_background : LibC::Char*, errbuf : LibC::Char*,
-                                                  errbuf_len : LibC::Int, single_page : LibC::Int,
+                                                  errbuf_len : LibC::Int, single_page : LibC::Int, kdp : LibC::Int,
                                                   out_data : LibC::Char**, out_len : LibC::SizeT*) : LibC::Int
   fun free_buffer = litepdf_free_buffer(buffer : LibC::Char*)
   fun register_font = litepdf_register_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,
@@ -86,6 +89,40 @@ module Markd
     # Named sizes for pickers and docs.
     def self.page_size_names : Array(String)
       PAGE_SIZES.keys
+    end
+
+    # Page margins in millimeters. The gutter is the binding-edge
+    # margin: applied on the left for odd (recto) pages and on the right
+    # for even (verso) pages. A negative gutter disables it.
+    struct PageMargins
+      getter top : Float64, right : Float64, bottom : Float64, left : Float64, gutter : Float64
+
+      def initialize(@top : Float64, @right : Float64, @bottom : Float64, @left : Float64,
+                     @gutter : Float64 = -1.0)
+      end
+    end
+
+    # CSS-style margin shorthand in millimeters: one value (all sides),
+    # two (top/bottom, left/right), four (top, right, bottom, left), or
+    # five (... plus the gutter for mirrored book margins).
+    def self.parse_margins(value : String) : PageMargins
+      numbers = value.split(',').map do |part|
+        number = part.strip.to_f?
+        raise Error.new("invalid margin '" + part.strip + "' in '" + value + "' (expected numbers in mm)") unless number
+        number
+      end
+      case numbers.size
+      when 1
+        PageMargins.new(numbers[0], numbers[0], numbers[0], numbers[0])
+      when 2
+        PageMargins.new(numbers[0], numbers[1], numbers[0], numbers[1])
+      when 4
+        PageMargins.new(numbers[0], numbers[1], numbers[2], numbers[3])
+      when 5
+        PageMargins.new(numbers[0], numbers[1], numbers[2], numbers[3], numbers[4])
+      else
+        raise Error.new("margins need 1, 2, 4 or 5 comma-separated values in mm (got " + numbers.size.to_s + ") in '" + value + "'")
+      end
     end
 
     # Resolve a page size: a name from PAGE_SIZES (case-insensitive), or
@@ -200,11 +237,11 @@ module Markd
                     header : String = "", footer : String = "", code_theme : String? = nil,
                     theme : String? = nil, html_input : Bool = false, style : String? = nil,
                     pageless : Bool = false, hyphenate : Bool = false, language : String = "en",
-                    css : String? = nil) : Int32
+                    css : String? = nil, margins : String? = nil, kdp : Bool = false) : Int32
       renderer = Renderer.new(options: options, style: style || "default", theme: theme,
-        code_theme: code_theme, page_size: page_size, margin_mm: margin_mm, base_dir: base_dir,
-        header: header, footer: footer, html_input: html_input, pageless: pageless,
-        hyphenate: hyphenate, language: language)
+        code_theme: code_theme, page_size: page_size, margin_mm: margin_mm, margins: margins,
+        kdp: kdp, base_dir: base_dir, header: header, footer: footer, html_input: html_input,
+        pageless: pageless, hyphenate: hyphenate, language: language)
       renderer.add_css(css) if css
       renderer.render(source, output_path)
     end
@@ -217,11 +254,11 @@ module Markd
                               header : String = "", footer : String = "", code_theme : String? = nil,
                               theme : String? = nil, style : String? = nil, html_input : Bool = false,
                               pageless : Bool = false, hyphenate : Bool = false, language : String = "en",
-                              css : String? = nil) : Bytes
+                              css : String? = nil, margins : String? = nil, kdp : Bool = false) : Bytes
       renderer = Renderer.new(options: options, style: style || "default", theme: theme, code_theme: code_theme,
-        page_size: page_size, margin_mm: margin_mm, base_dir: base_dir, header: header,
-        footer: footer, html_input: html_input, pageless: pageless, hyphenate: hyphenate,
-        language: language)
+        page_size: page_size, margin_mm: margin_mm, margins: margins, kdp: kdp, base_dir: base_dir,
+        header: header, footer: footer, html_input: html_input, pageless: pageless,
+        hyphenate: hyphenate, language: language)
       renderer.add_css(css) if css
       renderer.render_to_memory(source)
     end
