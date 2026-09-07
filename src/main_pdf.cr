@@ -142,6 +142,8 @@ def render_kdp_guttered(input, output, pages, margin, css_bodies, options, style
     end
     pages = renderer.render(input, output)
   end
+  margin_warning = Markd::Pdf.kdp_margin_warning(parsed)
+  STDERR.puts "markpdf: warning: #{margin_warning}" if margin_warning
   page_warning = Markd::Pdf.kdp_range_warning(pages)
   STDERR.puts "markpdf: warning: #{page_warning}" if page_warning
   pages

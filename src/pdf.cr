@@ -154,6 +154,20 @@ module Markd
       "KDP paperbacks need 24 to 828 pages (got #{pages}); the PDF still renders"
     end
 
+    # KDP's minimum margin on every side for no-bleed interiors, in mm
+    # (0.25 inch). All four sides are outside edges on one page parity:
+    # recto keeps the gutter on the left and the outside edge right,
+    # verso mirrors that.
+    KDP_MIN_OUTSIDE_MARGIN_MM = 6.35
+
+    # The warning for margins below KDP's no-bleed minimum, or nil when
+    # the margins are printable.
+    def self.kdp_margin_warning(parsed : PageMargins) : String?
+      narrowest = [parsed.top, parsed.right, parsed.bottom, parsed.left].min
+      return if narrowest >= KDP_MIN_OUTSIDE_MARGIN_MM
+      "KDP no-bleed interiors need at least 6.35mm margins on every side (narrowest is #{narrowest}mm)"
+    end
+
     # Resolve a page size: a name from PAGE_SIZES (case-insensitive), or
     # "WxH" for custom sizes. Dimension values under 12 read as inches —
     # "6x9" is the classic trim and nobody prints a 6mm-wide page — and
@@ -294,6 +308,8 @@ module Markd
         end
         range_warning = kdp_range_warning(pages)
         STDERR.puts "markpdf: warning: #{range_warning}" if range_warning
+        margin_warning = kdp_margin_warning(parsed)
+        STDERR.puts "markpdf: warning: #{margin_warning}" if margin_warning
         return pages
       end
 
