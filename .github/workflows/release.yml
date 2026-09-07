@@ -48,11 +48,14 @@ jobs:
       # become a runtime dependency of the released binary, and plain
       # macOS has none. Build a static libpng into a private prefix and
       # point the C and CMake builds at it; zlib comes from the macOS
-      # SDK (every Mac ships libz).
-      - name: Build a static libpng
+      # SDK (every Mac ships libz). Crystal's HTTP client drags in
+      # OpenSSL the same way: give pkg-config a static-only openssl.pc
+      # so the linker picks up archives instead of Homebrew dylibs.
+      - name: Vendor static libpng and OpenSSL archives
         run: |
           set -e
           deps="$HOME/ci-deps"
+          mkdir -p "$deps/lib/pkgconfig"
           curl -fsSL -o /tmp/libpng.tar.xz \
             https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.44.tar.gz
           tar -C /tmp -xf /tmp/libpng.tar.xz
@@ -63,6 +66,13 @@ jobs:
             -DPNG_TESTS=OFF -DPNG_TOOLS=OFF
           cmake --build /tmp/libpng-build
           cmake --install /tmp/libpng-build
+          openssl="$(brew --prefix openssl@1.1)"
+          ln -sf "$openssl/lib/libssl.a" "$deps/lib/libssl.a"
+          ln -sf "$openssl/lib/libcrypto.a" "$deps/lib/libcrypto.a"
+          sed -e "s|^libdir=.*|libdir=$deps/lib|" \
+              -e "s|^includedir=.*|includedir=$openssl/include|" \
+            "$openssl/lib/pkgconfig/openssl.pc" > "$deps/lib/pkgconfig/openssl.pc"
+          echo "PKG_CONFIG_PATH=$deps/lib/pkgconfig" >> "$GITHUB_ENV"
       - name: Build binaries
         run: |
           set -e
@@ -74,7 +84,8 @@ jobs:
           shards install --without-development
           shards build --without-development --release markterm markmark markpdf
       # The binaries must not depend on Homebrew dylibs end users don't
-      # have (the static libpng above exists exactly for this).
+      # have (the static libpng and OpenSSL archives above exist
+      # exactly for this).
       - name: Check for Homebrew dependencies
         run: |
           if otool -L bin/markpdf bin/markterm bin/markmark | grep -E 'homebrew|/usr/local/'; then
@@ -124,6 +135,11 @@ jobs:
         shell: msys2 {0}
         run: |
           set -e
+          # ext/build-libharu.sh clones libharu and patches it; CRLF
+          # line endings from a Windows git checkout make `git apply`
+          # fail on every hunk.
+          git config --global core.autocrlf false
+          git config --global core.eol lf
           make -C ext
           shards install --without-development
           shards build --without-development --release markterm markmark markpdf

@@ -37,7 +37,9 @@ fi
 # (An earlier version of this script ran `git apply --check` with a
 # relative path that never resolved, silently skipped the patch, and
 # reported it as already applied.)
-git -C libharu apply "$PATCH"
+# The patch is piped instead of passed as a file: checkouts on Windows
+# may give it CRLF endings, which makes `git apply` fail on every hunk.
+tr -d '\r' < "$PATCH" | git -C libharu apply -
 cmake -S libharu -B libharu/build \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DBUILD_SHARED_LIBS=OFF \
