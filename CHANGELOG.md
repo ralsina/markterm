@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0] - 2026-09-07
+
+### 🚀 Features
+
+- More page sizes and custom WxH page dimensions
+- Manual page breaks via page-break properties
+- Manual page breaks via page-break properties
+- KDP print mode and flexible margins
+- KDP print mode and flexible margins
+- Config files and env vars via docopt-config in all CLIs
+- Warn when kdp mode runs without explicit fonts
+- Custom WxH page sizes under 12 read as inches
+- Kdp mode pads odd page counts to even
+- Mirrored running heads and image DPI audit
+- Kdp mode sizes the gutter from the page count
+- Cross-compile the arm64 static build, qemu only links
+- Warn when kdp margins fall below the no-bleed minimum
+- Named-page breaks open chapters on recto pages
+
+### 🐛 Bug Fixes
+
+- Use CFLAGS when compiling C sources
+- Abort the static build when the shim build fails
+- Fetch the cross toolchain from a github mirror
+
+### 📚 Documentation
+
+- KDP.md print-production guide
+
+### ⚙️ Miscellaneous Tasks
+
+- Quit tracking the aur-markterm clone
+- Build and attach release binaries for macOS and Windows
+- Fix Windows patch apply and macOS OpenSSL dependency
+- Ship macOS OpenSSL dylibs instead of fighting pkg-config
+- Avoid masking the exit status in a command substitution
+
+### Spec
+
+- Silence the unused status in the kdp warning test
+
+### Web
+
+- Ship monochrome Noto Emoji in the runtime image
+- Default the page size to a4
+
 ## [0.11.0] - 2026-09-06
 
 ### 🚀 Features
@@ -16,6 +62,10 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - Resolve emoji advance through the alternate-CID map
+
+### 🔖 Releases
+
+- Release v0.11.0
 
 ### ⚙️ Miscellaneous Tasks
 
