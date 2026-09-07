@@ -76,7 +76,7 @@ build/litehtml/%.o: litehtml/src/%.cpp | build
 
 build/litehtml/%.o: litehtml/src/%.c | build
 	@mkdir -p $(dir $@)
-	$(CC) $(CXXFLAGS) $(INCLUDES) -I litehtml/src -c $< -o $@
+	$(CC) $(CFLAGS) $(INCLUDES) -I litehtml/src -c $< -o $@
 
 # The libtexprintf build generates two headers (errorflags.h,
 # errormessages.h) from error-marker comments in its sources; generate
@@ -92,7 +92,7 @@ build/libtexprintf/gen: $(wildcard $(TEXPRINTF_DIR)/src/gen_errorflags.sh) \
 
 build/libtexprintf/%.o: $(TEXPRINTF_DIR)/src/%.c | build build/libtexprintf/gen
 	@mkdir -p $(dir $@)
-	$(CC) $(CXXFLAGS) -I build/libtexprintf -I $(TEXPRINTF_DIR)/src -c $< -o $@
+	$(CC) $(CFLAGS) -I build/libtexprintf -I $(TEXPRINTF_DIR)/src -c $< -o $@
 
 build:
 	mkdir -p build
