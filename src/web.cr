@@ -324,7 +324,8 @@ module MarkpdfWeb
         **theme**, toggle **hyphenation**, set a **header** or **footer**,
         or check **pageless** for one long page.
 
-        [^1]: Yes, real footnotes with backlinks.
+        [^1]: Rendered as endnotes: the notes collect at the end of the
+        document, with backlinks.
         MD
     },
     {
