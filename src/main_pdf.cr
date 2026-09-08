@@ -65,8 +65,10 @@ doc = <<-DOC
                                every entry links to its section. The layout
                                runs repeatedly until the numbers stop moving
                                (a TOC's own length shifts the pages it points to)
-    --toc-depth <depth>        Deepest heading level the TOC lists, from
-                               1 (chapters only) to 6 [default: 1]
+    --toc-depth <depth>        Deepest heading level the TOC lists, or a
+                               range N-M listing only levels N through M
+                               (2-6 skips a level-1 document title);
+                               levels run 1 to 6 [default: 1]
     --toc-title <title>        Title above the table of contents [default: Contents]
     --config <path>            Read options from this YAML file instead of
                                ~/.config/markpdf/config.yml
@@ -142,29 +144,39 @@ end
 # The kdp gutter sizing, the TOC page numbers and the kdp warnings all
 # come from the library's settle loop; the CLI only picks where the
 # PDF lands and which code theme applies.
-def render_kdp(input, output, margin, options, style, theme, code_theme, page_size, mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language, toc, toc_depth, toc_title)
+def render_kdp(input, output, margin, options, style, theme, code_theme, page_size, mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language, toc, toc_depth, toc_min_level, toc_title)
   Markd::Pdf.render(input, output, options, page_size: page_size, base_dir: base_dir,
     header: header || "", footer: footer || "", theme: theme, html_input: html_input, style: style,
     pageless: pageless, hyphenate: hyphenate, language: language,
     code_theme: Markd::Pdf.pick_code_theme(code_theme, theme, style),
     margins: margin, kdp: true, mirror_headers: mirror_headers,
-    toc: toc, toc_depth: toc_depth, toc_title: toc_title)
+    toc: toc, toc_depth: toc_depth, toc_title: toc_title, toc_min_level: toc_min_level)
 end
 
 # Non-kdp TOC renders go through the same settle loop, against the
 # renderer the CLI already built (margins are fixed without the gutter
 # table, so one instance serves every pass).
-def render_toc(input, output, renderer, toc_depth, toc_title, pageless)
-  Markd::Pdf.settled_pages(true, toc_depth, toc_title, pageless, size_gutter: false) do |_, desired_toc|
+def render_toc(input, output, renderer, toc_depth, toc_min_level, toc_title, pageless)
+  Markd::Pdf.settled_pages(true, toc_depth, toc_title, pageless, size_gutter: false,
+    toc_min_level: toc_min_level) do |_, desired_toc|
     renderer.render_with_headings(input, output, desired_toc)
   end
 end
 
-# --toc-depth: an integer between 1 and 6, or the run stops here.
-def toc_depth_from(depth_string : String) : Int32
-  depth = depth_string.to_i?
-  return depth if depth && depth.in?(1..6)
-  abort_with("--toc-depth needs an integer between 1 and 6 (got '#{depth_string}')")
+record TocLevels, min : Int32, max : Int32
+
+# --toc-depth: a level N lists 1..N, a range N-M only levels N
+# through M, inclusive (so 2-2 is level 2 alone); both bounded by
+# 1..6, or the run stops here.
+def toc_levels_from(spec : String) : TocLevels
+  if match = spec.match(/\A(\d+)(?:-(\d+))?\z/)
+    low = match[1].to_i
+    high = match[2]?.try &.to_i
+    min = high ? low : 1
+    max = high || low
+    return TocLevels.new(min, max) if min.in?(1..6) && max.in?(1..6) && min <= max
+  end
+  abort_with("--toc-depth needs a level or level range between 1 and 6, like 2 or 2-6 (got '#{spec}')")
 end
 
 def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language, no_remote_images, kdp, mirror_headers, toc, toc_depth_string, toc_title)
@@ -173,7 +185,7 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
 
   Markd::Pdf.fetch_remote_images = !no_remote_images
 
-  toc_depth = toc_depth_from(toc_depth_string)
+  toc_levels = toc_levels_from(toc_depth_string)
 
   if kdp && font_paths.empty?
     STDERR.puts "markpdf: warning: no --font given; kdp mode embeds whatever system fonts cover the text. Pass --font to control the embedded typefaces."
@@ -202,9 +214,9 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
     if kdp
       render_kdp(input, target, margin, options, style, theme, code_theme, page_size,
         mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate,
-        language, toc, toc_depth, toc_title)
+        language, toc, toc_levels.max, toc_levels.min, toc_title)
     elsif toc
-      render_toc(input, target, renderer, toc_depth, toc_title, pageless)
+      render_toc(input, target, renderer, toc_levels.max, toc_levels.min, toc_title, pageless)
     else
       renderer.render(input, target)
     end

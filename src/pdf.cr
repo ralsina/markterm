@@ -287,16 +287,23 @@ module Markd
 
     # The one-time warning for a --toc that has nothing to list: either
     # the document has no headings, or none survive the depth filter.
-    private def self.warn_missing_toc(headings : Array(HeadingEntry), toc_depth : Int32) : Nil
+    private def self.warn_missing_toc(headings : Array(HeadingEntry), toc_min_level : Int32, toc_depth : Int32) : Nil
       if headings.empty?
         STDERR.puts "markpdf: warning: --toc found no headings; rendering without a table of contents"
       else
-        STDERR.puts "markpdf: warning: --toc found no headings at depth #{toc_depth}; rendering without a table of contents"
+        STDERR.puts "markpdf: warning: --toc found no headings at depth #{toc_depth_label(toc_min_level, toc_depth)}; rendering without a table of contents"
       end
     end
 
+    # How the TOC's level window reads in messages: a lone number when
+    # the window opens at 1 (plain --toc-depth N), N-M otherwise.
+    private def self.toc_depth_label(toc_min_level : Int32, toc_depth : Int32) : String
+      toc_min_level == 1 ? toc_depth.to_s : "#{toc_min_level}-#{toc_depth}"
+    end
+
     def self.settled_pages(toc : Bool, toc_depth : Int32, toc_title : String, pageless : Bool,
-                           size_gutter : Bool, &pass : Float64, String? -> {Int32, Array(HeadingEntry)}) : Int32
+                           size_gutter : Bool, toc_min_level : Int32 = 1,
+                           &pass : Float64, String? -> {Int32, Array(HeadingEntry)}) : Int32
       gutter = KDP_GUTTER_TABLE.first[2]
       desired_toc = nil.as(String?)
       warned_no_headings = false
@@ -304,9 +311,9 @@ module Markd
       settled = false
       MAX_TOC_PASSES.times do
         pages, headings = pass.call(size_gutter ? gutter : -1.0, desired_toc)
-        rebuilt = toc ? toc_html(headings, toc_depth, toc_title, pageless) : nil
+        rebuilt = toc ? toc_html(headings, toc_depth, toc_title, pageless, toc_min_level) : nil
         if toc && rebuilt.nil? && !warned_no_headings
-          warn_missing_toc(headings, toc_depth)
+          warn_missing_toc(headings, toc_min_level, toc_depth)
           warned_no_headings = true
         end
         needed_gutter = size_gutter ? kdp_gutter_mm(pages) : gutter
@@ -333,7 +340,8 @@ module Markd
     # pageless produces a single page as tall as the document (good
     # for on-screen viewing, wrong for printing); headers and footers
     # are ignored in that mode. toc prepends a two-pass table of
-    # contents listing headings down to toc_depth, each entry linking
+    # contents listing headings down to toc_depth — or only those
+    # between toc_min_level and toc_depth — each entry linking
     # to its section; see settled_pages for how the numbers settle.
     def self.render(source : String, output_path : String, options : Markd::Options = Markd::Options.new,
                     page_size : String = "a4", margin_mm : Float64 = 20.0, base_dir : String = ".",
@@ -342,14 +350,14 @@ module Markd
                     pageless : Bool = false, hyphenate : Bool = false, language : String = "en",
                     css : String? = nil, margins : String? = nil, kdp : Bool = false,
                     mirror_headers : Bool = false, toc : Bool = false, toc_depth : Int32 = 1,
-                    toc_title : String = "Contents") : Int32
+                    toc_title : String = "Contents", toc_min_level : Int32 = 1) : Int32
       if kdp && (margins.nil? || Pdf.parse_margins(margins).gutter < 0)
         # KDP mode with no explicit gutter: size the gutter from the
         # page count (Amazon's table). Page count depends on the
         # margins and — with a TOC — on the TOC block itself, so the
         # settle loop re-renders until both stop moving.
         parsed = parse_margins(margins || margin_mm.to_s)
-        pages = settled_pages(toc, toc_depth, toc_title, pageless, size_gutter: true) do |gutter, desired_toc|
+        pages = settled_pages(toc, toc_depth, toc_title, pageless, size_gutter: true, toc_min_level: toc_min_level) do |gutter, desired_toc|
           renderer = Renderer.new(options: options, style: style || "default", theme: theme,
             code_theme: code_theme, page_size: page_size, margins: margins_with_gutter(parsed, gutter),
             kdp: true, mirror_headers: mirror_headers, base_dir: base_dir, header: header,
@@ -371,7 +379,7 @@ module Markd
         html_input: html_input, pageless: pageless, hyphenate: hyphenate, language: language)
       renderer.add_css(css) if css
       if toc
-        settled_pages(toc, toc_depth, toc_title, pageless, size_gutter: false) do |_, desired_toc|
+        settled_pages(toc, toc_depth, toc_title, pageless, size_gutter: false, toc_min_level: toc_min_level) do |_, desired_toc|
           renderer.render_with_headings(source, output_path, desired_toc)
         end
       else
@@ -389,7 +397,7 @@ module Markd
                               pageless : Bool = false, hyphenate : Bool = false, language : String = "en",
                               css : String? = nil, margins : String? = nil, kdp : Bool = false,
                               mirror_headers : Bool = false, toc : Bool = false, toc_depth : Int32 = 1,
-                              toc_title : String = "Contents") : Bytes
+                              toc_title : String = "Contents", toc_min_level : Int32 = 1) : Bytes
       renderer = Renderer.new(options: options, style: style || "default", theme: theme, code_theme: code_theme,
         page_size: page_size, margin_mm: margin_mm, margins: margins, kdp: kdp,
         mirror_headers: mirror_headers, base_dir: base_dir, header: header, footer: footer,
@@ -399,7 +407,7 @@ module Markd
       # The settle loop only reports pages and headings, so the closure
       # keeps the last render's bytes aside for the final return.
       final_bytes = Bytes.new(0)
-      settled_pages(toc, toc_depth, toc_title, pageless, size_gutter: false) do |_, desired_toc|
+      settled_pages(toc, toc_depth, toc_title, pageless, size_gutter: false, toc_min_level: toc_min_level) do |_, desired_toc|
         bytes, pages, headings = renderer.render_to_memory_with_headings(source, desired_toc)
         final_bytes = bytes
         {pages, headings}
@@ -492,12 +500,14 @@ module Markd
     # The TOC block injected ahead of the body: a title div —
     # deliberately not an <h1>, or it would self-list in the heading
     # map, trigger the kdp recto rule and land in the bookmarks — and
-    # one linked entry per heading at or above the depth filter.
-    # Entries whose heading fell on no page (page 0) are dropped, and
-    # pageless documents have no page numbers to show. Nil when no
-    # heading survives the filters: the caller renders without a TOC.
-    def self.toc_html(headings : Array(HeadingEntry), depth : Int32, title : String, pageless : Bool) : String?
-      entries = headings.reject { |heading| heading.level > depth || heading.page == 0 }
+    # one linked entry per heading inside the level window min_level
+    # to depth. Entries whose heading fell on no page (page 0) are
+    # dropped, and pageless documents have no page numbers to show.
+    # Nil when no heading survives the filters: the caller renders
+    # without a TOC.
+    def self.toc_html(headings : Array(HeadingEntry), depth : Int32, title : String, pageless : Bool,
+                      min_level : Int32 = 1) : String?
+      entries = headings.reject { |heading| heading.level < min_level || heading.level > depth || heading.page == 0 }
       return if entries.empty?
       lines = entries.map do |heading|
         page = pageless ? "" : %(<span class="toc-page">#{heading.page}</span>)

@@ -113,6 +113,18 @@ describe "Markd::Pdf.toc_html" do
     block.should_not contain("Nowhere")
   end
 
+  it "filters by the bottom of a level range" do
+    block = Markd::Pdf.toc_html(toc_entries, 2, "Contents", false, min_level: 2).should_not be_nil
+    block.should_not contain(">Alpha<") # level 1: below the window
+    block.should_not contain(">Beta<")  # level 1: below the window
+    block.should contain(">Alpha.1<")   # level 2: inside it
+    block.should_not contain("Nowhere") # page 0: still dropped
+  end
+
+  it "is nil when every heading falls outside the level range" do
+    Markd::Pdf.toc_html(toc_entries, 2, "Contents", false, min_level: 3).should be_nil
+  end
+
   it "omits page numbers in pageless mode" do
     block = Markd::Pdf.toc_html(toc_entries, 2, "Contents", true).should_not be_nil
     block.should contain("Alpha")
@@ -203,6 +215,43 @@ describe "markpdf two-pass TOC" do
     File.delete?(path)
   end
 
+  it "lists only the levels in a range, skipping a level-1 document title" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+
+    chapters = 6
+    source = String.build do |io|
+      io << "# Titletoken\n\n"
+      1.upto(chapters) do |chapter|
+        io << "## Chaptertoken" << chapter << "\n\n"
+        io << "### Sectiontoken" << chapter << "\n\n"
+        3.times { |run| io << "Filler " << (chapter * 10 + run) << " " << ("prose " * 40).strip << "\n\n" }
+      end
+    end
+
+    path = temp_pdf_path
+    pages = Markd::Pdf.render(source, path, toc: true, toc_depth: 3, toc_min_level: 2)
+    texts = all_page_texts(pdftotext, path, pages)
+
+    toc_page = texts.index(&.includes?("Contents")).should_not be_nil
+    toc_text = texts[toc_page]
+    # The level-1 title stays out of the TOC...
+    toc_text.should_not contain("Titletoken")
+    # ...while every level-2 and level-3 heading makes it in with a
+    # true number.
+    1.upto(chapters) do |chapter|
+      ["Chaptertoken", "Sectiontoken"].each do |kind|
+        token = "#{kind}#{chapter}"
+        number = toc_text.scan(/#{token}\s+(\d+)/).first?.try(&.[1])
+        number.should_not be_nil, "no TOC entry for #{token}"
+        landing = pages_with_line(texts, token)
+        landing.size.should eq(1), "#{token} heading appears on pages #{landing}"
+        landing[0].to_s.should eq(number), "TOC says #{token} is on page #{number}, it renders on #{landing[0]}"
+      end
+    end
+    File.delete?(path)
+  end
+
   it "keeps numbers correct in kdp mode, where chapters open on recto pages" do
     pdftotext = pdftotext_path
     pending!("pdftotext not available") unless pdftotext
@@ -268,6 +317,35 @@ describe "markpdf CLI --toc" do
       output: IO::Memory.new, error: IO::Memory.new)
     result.success?.should be_false
     File.exists?(bad).should be_false
+    File.delete?(source)
+  end
+
+  it "takes a level range and rejects malformed ones" do
+    pending!("bin/markpdf not built") unless File.exists?(BIN_MARKPDF)
+
+    source = File.tempname("markpdf_spec_toc", ".md")
+    File.write(source, "# Titletoken\n\nprose\n\n## Alpha\n\nprose\n\n## Beta\n\nprose\n")
+    output = temp_pdf_path
+    status = Process.run(BIN_MARKPDF, [source, "--toc", "--toc-depth", "2-6", "-o", output],
+      error: Process::Redirect::Inherit).success?
+    status.should be_true
+
+    pdftotext = pdftotext_path
+    if pdftotext
+      first = page_text(pdftotext, output, 1)
+      first.should contain("Contents")
+      first.should contain("Alpha")
+      first.should_not contain("Titletoken")
+    end
+    File.delete?(output)
+
+    ["3-2", "0-2", "2-7", "2-", "soon"].each do |bad_depth|
+      bad = temp_pdf_path
+      result = Process.run(BIN_MARKPDF, [source, "--toc", "--toc-depth", bad_depth, "-o", bad],
+        output: IO::Memory.new, error: IO::Memory.new)
+      result.success?.should be_false, "--toc-depth #{bad_depth} should be rejected"
+      File.exists?(bad).should be_false
+    end
     File.delete?(source)
   end
 end

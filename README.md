@@ -276,8 +276,10 @@ Options:
                              every entry links to its section. The layout
                              runs repeatedly until the numbers stop moving
                              (a TOC's own length shifts the pages it points to)
-  --toc-depth <depth>        Deepest heading level the TOC lists, from
-                             1 (chapters only) to 6 [default: 1]
+  --toc-depth <depth>        Deepest heading level the TOC lists, or a
+                             range N-M listing only levels N through M
+                             (2-6 skips a level-1 document title);
+                             levels run 1 to 6 [default: 1]
   --toc-title <title>        Title above the table of contents [default: Contents]
   --config <path>            Read options from this YAML file instead of
                              ~/.config/markpdf/config.yml
@@ -335,7 +337,11 @@ markpdf book.md --toc --toc-depth 2 --toc-title "Inhalt" --kdp -o book.pdf
 ```
 
 `--toc-depth` caps how deep the listing goes (1 = chapters only, up to
-6); `--toc-title` sets the heading above it. TOC pages are ordinary
+6), and also takes a range: `--toc-depth 2-6` lists everything *except*
+a level-1 document title — the usual shape of a markdown book whose H1
+is the title and whose H2s are the chapters (a narrower `N-M` lists
+only those levels, so `2-2` is chapter titles alone);
+`--toc-title` sets the heading above it. TOC pages are ordinary
 pages: they count toward the page count, the kdp recto rule and the
 even-page pad, and the TOC's numbers account for all of it. With
 `--pageless` the entries lose their page numbers (there are no pages),
