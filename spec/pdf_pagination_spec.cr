@@ -93,6 +93,31 @@ private def pages_containing(page_texts : Array(String), token : String) : Array
   pages
 end
 
+# Boundaries where a word gram of the earlier page's trailing line
+# reappears as a run on the next page: the signature of a line box
+# straddling a page cut, drawn on both sides of it — glyph bodies on
+# the earlier page, its below-cut sliver (descender tails) above the
+# next page's first line.
+private def ghost_boundaries(page_texts : Array(String), gram_size : Int32 = 4) : Array(Int32)
+  boundaries = Array(Int32).new
+  page_texts.each_with_index do |text, page_index|
+    next_page = page_texts[page_index + 1]?
+    break if next_page.nil?
+    tail_words = text.split.last(6)
+    next if tail_words.size < gram_size
+    next_words = next_page.split
+    next if next_words.size < gram_size
+    ghosted = (0..tail_words.size - gram_size).any? do |offset|
+      gram = tail_words[offset, gram_size]
+      (0..next_words.size - gram_size).any? do |start|
+        next_words[start, gram_size] == gram
+      end
+    end
+    boundaries << page_index + 1 if ghosted
+  end
+  boundaries
+end
+
 # Extract the per-page sequences of "item N" numbers and check the
 # integrity contract described above.
 private def should_draw_items_in_order(page_texts : Array(String), count : Int32, label : String)
@@ -303,6 +328,51 @@ it "never strands a section heading at the bottom of a page" do
   end
 end
 
+# Text runs and inline boxes sit inside line boxes, offset by the
+# half-leading, so a page cut landing on one of their boxes shears the
+# line at an arbitrary height: glyph bodies clipped at the earlier
+# page's bottom edge and the descender tails rendered above the next
+# page's first line. Inline boxes no longer seed break candidates
+# (line box tops and block edges do), cuts that still slice a run snap
+# above it, and draw_text skips runs starting above the window — any
+# way around, the boundary line's words must show up on exactly one
+# page.
+it "never bleeds a page-bottom line's descenders onto the next page" do
+  pdftotext = pdftotext_path
+  pending!("pdftotext not available") unless pdftotext
+
+  # Descender-heavy word salad, seeded per paragraph: page breaks
+  # landing inside a paragraph put a descender-laden line at the page
+  # bottom, the geometry where cuts coincide with line tops.
+  words = %w[
+    gypy gyppy quipping pygmy jaunty jauntily yapping djinny hypnotizing
+    puzzled gripping jockey quickening hiking jumping paddling querying
+    yoyoing squeeging japing quaking hopscotch typing paddocks quibbling
+    eyepopping hijacking jogging keypunching quagmire mythology geography
+    psychology typography epidemiology cryptography
+  ]
+  source = String.build do |io|
+    io << "# descendersentinel\n\n"
+    1.upto(120) do |paragraph_number|
+      random = Random.new(paragraph_number * 1000)
+      io << words.sample(60, random).join(" ") << ".\n\n"
+    end
+  end
+
+  path = temp_pdf_path
+  begin
+    pages = Markd::Pdf.render(source, path, style: "book")
+    pages.should be >= 8
+
+    page_texts = (1..pages).map { |page| page_text(pdftotext, path, page) }
+    ghosted = ghost_boundaries(page_texts)
+    ghosted.should be_empty,
+      "page-bottom lines duplicated on the next page at boundaries: #{ghosted}"
+  ensure
+    File.delete?(path)
+  end
+end
+
 # KDP mode pads odd page counts to even with a trailing blank page.
 describe "markpdf kdp parity padding" do
   it "appends a blank page when the count is odd, leaves even counts alone" do
@@ -318,11 +388,13 @@ describe "markpdf kdp parity padding" do
       File.delete?(odd_path)
     end
 
-    even_source = "# One\n\ntext.\n\n<div style=\"page-break-before: always\"></div>\n\n# Two\n\ntext."
+    # No h1 here: kdp mode's recto chapter default would add a filler
+    # page of its own, and this spec isolates the parity pad.
+    even_source = "text.\n\n<div style=\"page-break-before: always\"></div>\n\nmore text."
     even_path = temp_pdf_path
     begin
       Markd::Pdf.render(even_source, even_path, kdp: true).should eq(2)
-      page_text(pdftotext, even_path, 2).should contain("Two")
+      page_text(pdftotext, even_path, 2).should contain("more")
     ensure
       File.delete?(even_path)
     end
@@ -479,6 +551,76 @@ describe "markpdf mirrored running heads" do
       # mirrored) starts well past it — the sections swapped sides.
       spans[0][0].should be < 60
       spans[1][0].should be > 120
+    ensure
+      File.delete?(path)
+    end
+  end
+
+  it "swaps all three footer sections on verso pages" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+
+    source = "text.\n\n<div style=\"page-break-before: always\"></div>\n\nmore text."
+
+    path = temp_pdf_path
+    begin
+      renderer = Markd::Pdf::Renderer.new(
+        options: Markd::Options.new,
+        style: "default",
+        footer: "INNERSECTION|CENTERSECTION|OUTERSECTION",
+        mirror_headers: true,
+      )
+      pages = renderer.render(source, path)
+      pages.should eq(2)
+
+      # The template names its sections for the recto view: page 1
+      # reads them inner to outer; the mirrored page 2 swaps the sides.
+      page_text(pdftotext, path, 1).should match(/INNERSECTION\s+CENTERSECTION\s+OUTERSECTION/)
+      page_text(pdftotext, path, 2).should match(/OUTERSECTION\s+CENTERSECTION\s+INNERSECTION/)
+    ensure
+      File.delete?(path)
+    end
+  end
+end
+
+# Named-page breaks (page-break-before: right): chapters open on a
+# recto (right-hand, odd) page, with a blank verso filler when the
+# previous chapter ended on a recto one. Blank pages carry no content
+# and no header or footer.
+describe "markpdf named-page chapter breaks" do
+  it "opens a right-break chapter on a recto page, filling with a blank verso" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+    source = "# One\n\nonly text.\n\n# Two\n\nsentinel text."
+
+    path = temp_pdf_path
+    begin
+      # KDP mode forces h1 to break right by default: chapter Two's cut
+      # lands on a verso index, the blank filler pushes it to recto page
+      # 3, and the odd count gets a parity pad page 4.
+      pages = Markd::Pdf.render(source, path, kdp: true, header: "head %p", footer: "foot %p")
+      pages.should eq(4)
+      page_text(pdftotext, path, 1).should contain("only text")
+      page_text(pdftotext, path, 2).strip.should be_empty
+      page_text(pdftotext, path, 3).should contain("sentinel")
+      page_text(pdftotext, path, 3).should contain("head 3")
+      page_text(pdftotext, path, 4).strip.should be_empty
+    ensure
+      File.delete?(path)
+    end
+  end
+
+  it "honors break-before: right from a stylesheet without kdp mode" do
+    pdftotext = pdftotext_path
+    pending!("pdftotext not available") unless pdftotext
+    source = "# One\n\nonly text.\n\n# Two\n\nsentinel text."
+
+    path = temp_pdf_path
+    begin
+      pages = Markd::Pdf.render(source, path, css: "h1 { page-break-before: right }")
+      pages.should eq(3)
+      page_text(pdftotext, path, 2).strip.should be_empty
+      page_text(pdftotext, path, 3).should contain("sentinel")
     ensure
       File.delete?(path)
     end

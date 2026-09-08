@@ -34,6 +34,26 @@ module Markd
       "sepia"   => "warm paper tones, serif — e-reader default look",
     }
 
+    # Table of contents layout, interpolated into every style so they
+    # keep covering the same property set: entries are blocks with a
+    # right-floating page number (litehtml has no ::after or leader(),
+    # so no dot leaders), and colors inherit so one block fits all
+    # four looks. No page-break rule here on purpose: the shim's
+    # page-break properties inherit down the tree, and a break on the
+    # nav would give every entry its own page — the break to the body
+    # rides an empty div inject_toc adds instead.
+    TOC_CSS = <<-CSS
+      .toc-title { font-size: 1.7em; font-weight: bold; margin: 0 0 1em 0; }
+      .toc-entry { margin: 0 0 2px 0; }
+      .toc-entry a { color: inherit; text-decoration: none; }
+      .toc-page { float: right; }
+      .toc-level-2 { margin-left: 1.5em; }
+      .toc-level-3 { margin-left: 3em; }
+      .toc-level-4 { margin-left: 4.5em; }
+      .toc-level-5 { margin-left: 6em; }
+      .toc-level-6 { margin-left: 7.5em; }
+      CSS
+
     STYLES = {
       "default" => <<-CSS,
         body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; font-size: 11px; line-height: 1.5; color: #1a1a1a; margin: 0; padding: 0; }
@@ -82,6 +102,7 @@ module Markd
         .math { font-family: "DejaVu Serif", Georgia, serif; font-style: italic; }
         .math.block { display: block; text-align: center; margin: 6px 0 6px 0; }
         pre.math { text-align: left; background-color: transparent; border: none; line-height: 1.1; margin: 6px auto 6px auto; }
+        #{TOC_CSS}
         CSS
       "book" => <<-CSS,
         body { font-family: "DejaVu Serif", Georgia, serif; font-size: 12px; line-height: 1.6; color: #1a1a1a; margin: 0; padding: 0; }
@@ -132,6 +153,7 @@ module Markd
         .math { font-family: "DejaVu Serif", Georgia, serif; font-style: italic; }
         .math.block { display: block; text-align: center; margin: 6px 0 6px 0; }
         pre.math { text-align: left; background-color: transparent; border: none; line-height: 1.1; margin: 6px auto 6px auto; }
+        #{TOC_CSS}
         CSS
       "dark" => <<-CSS,
         body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; font-size: 11px; line-height: 1.5; color: #e8e8e8; background-color: #121212; margin: 0; padding: 0; }
@@ -180,6 +202,7 @@ module Markd
         .math { font-family: "DejaVu Serif", Georgia, serif; font-style: italic; }
         .math.block { display: block; text-align: center; margin: 6px 0 6px 0; }
         pre.math { text-align: left; background-color: transparent; border: none; line-height: 1.1; margin: 6px auto 6px auto; }
+        #{TOC_CSS}
         CSS
       "sepia" => <<-CSS
         body { font-family: "DejaVu Serif", Georgia, serif; font-size: 12px; line-height: 1.6; color: #5b4636; background-color: #f4ecd8; margin: 0; padding: 0; }
@@ -228,11 +251,19 @@ module Markd
         .math { font-family: "DejaVu Serif", Georgia, serif; font-style: italic; }
         .math.block { display: block; text-align: center; margin: 6px 0 6px 0; }
         pre.math { text-align: left; background-color: transparent; border: none; line-height: 1.1; margin: 6px auto 6px auto; }
+        #{TOC_CSS}
         CSS
     }
 
     # The original name of the base stylesheet, kept for compatibility.
     DEFAULT_CSS = STYLES["default"]
+
+    # The production layer kdp mode adds on top of the style: chapters
+    # (top-level headings) open on a right-hand page, with blank filler
+    # pages when the previous chapter ended on a verso one. User layers
+    # (--css) win over it, so retargeting or turning it off is a
+    # one-line override.
+    KDP_CSS = "h1 { page-break-before: right }"
 
     # Names of the built-in styles, in roster order.
     def self.style_names : Array(String)

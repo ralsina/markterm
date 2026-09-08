@@ -40,10 +40,14 @@ fi
 # The patch is piped instead of passed as a file: checkouts on Windows
 # may give it CRLF endings, which makes `git apply` fail on every hunk.
 tr -d '\r' < "$PATCH" | git -C libharu apply -
+# CMAKE_TOOLCHAIN_FILE is passed explicitly rather than read from the
+# environment because cmake only honors it as a -D option; it stays
+# unset for native builds.
 cmake -S libharu -B libharu/build \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DBUILD_SHARED_LIBS=OFF \
-  -DLIBHPDF_EXAMPLES=NO -DLIBHPDF_UTILS=NO
+  -DLIBHPDF_EXAMPLES=NO -DLIBHPDF_UTILS=NO \
+  ${CMAKE_TOOLCHAIN_FILE:+"-DCMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE"}
 cmake --build libharu/build
 
 find libharu/build -name 'libhpdf.a' -exec cp {} . \;

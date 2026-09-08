@@ -33,13 +33,14 @@ module Markd
       end
 
       # The complete stylesheet this renderer uses: the built-in style,
-      # then the theme (when set), then user layers — each later block
-      # winning on equal specificity.
+      # then the theme (when set), then the kdp production layer, then
+      # user layers — each later block winning on equal specificity.
       def css : String
         layers = [Pdf.style_css(@style)]
         if theme = @theme
           layers << Pdf.theme_css(theme)
         end
+        layers << Pdf::KDP_CSS if @kdp
         layers.concat(@css_layers)
         layers.join("\n")
       end
@@ -47,23 +48,41 @@ module Markd
       # Render markdown — or a complete HTML document — to output_path.
       # Returns the page count; raises Markd::Pdf::Error on failure.
       def render(source : String, output_path : String) : Int32
+        render_with_headings(source, output_path)[0]
+      end
+
+      # Render with an optional TOC block, as Pdf.toc_html builds it:
+      # the block is injected ahead of the body and every heading gets
+      # a #mtoc-N anchor the entries can link to. Returns the page
+      # count and the heading map the layout produced (index, level,
+      # 1-based page, title per heading) — the raw material the
+      # two-pass TOC in Markd::Pdf.settled_pages rebuilds the block
+      # from. Raises Markd::Pdf::Error on failure.
+      def render_with_headings(source : String, output_path : String,
+                               toc_html : String? = nil) : {Int32, Array(HeadingEntry)}
         temp_dir = File.join(Dir.tempdir, "markpdf-imgs-#{Process.pid}-#{Time.utc.to_unix_ms}")
         Dir.mkdir(temp_dir, 0o700)
         converted = [] of String
         begin
-          geometry = prepare(source, temp_dir, converted)
+          geometry = prepare(source, temp_dir, converted, toc_html)
           errbuf = Bytes.new(512)
+          heading_data = Pointer(LibC::Char).null
+          heading_len = LibC::SizeT.new(0)
           pages = Litepdf.render(geometry[:html], nil, geometry[:width_mm].to_f32,
             geometry[:height_mm].to_f32, geometry[:margin_top].to_f32,
             geometry[:margin_right].to_f32, geometry[:margin_bottom].to_f32,
             geometry[:margin_left].to_f32, geometry[:margin_gutter].to_f32, output_path,
             @base_dir, @header, @footer, geometry[:background], errbuf, errbuf.size,
-            @pageless ? 1 : 0, @kdp ? 1 : 0, @mirror_headers ? 1 : 0)
+            @pageless ? 1 : 0, @kdp ? 1 : 0, @mirror_headers ? 1 : 0,
+            pointerof(heading_data), pointerof(heading_len))
           if pages < 0
             message = String.new(errbuf).strip
             raise Error.new(message.empty? ? "PDF rendering failed" : message)
           end
-          pages
+          headings = heading_data.null? ? [] of HeadingEntry : Pdf.parse_heading_map(
+            String.new(Slice.new(heading_data, heading_len.to_i)))
+          Litepdf.free_buffer(heading_data) unless heading_data.null?
+          {pages, headings}
         ensure
           converted.each { |path| File.delete?(path) }
           begin
@@ -78,13 +97,22 @@ module Markd
       # converting pass through a private temp directory, deleted right
       # after the render. Raises Markd::Pdf::Error on failure.
       def render_to_memory(source : String) : Bytes
+        render_to_memory_with_headings(source)[0]
+      end
+
+      # The in-memory twin of render_with_headings: same TOC block and
+      # heading map, but the PDF comes back as bytes instead of a file.
+      def render_to_memory_with_headings(source : String,
+                                         toc_html : String? = nil) : {Bytes, Int32, Array(HeadingEntry)}
         temp_dir = File.join(Dir.tempdir, "markpdf-imgs-#{Process.pid}-#{Time.utc.to_unix_ms}")
         Dir.mkdir(temp_dir, 0o700)
         converted = [] of String
         begin
           out_data = Pointer(LibC::Char).null
           out_len = LibC::SizeT.new(0)
-          geometry = prepare(source, temp_dir, converted)
+          heading_data = Pointer(LibC::Char).null
+          heading_len = LibC::SizeT.new(0)
+          geometry = prepare(source, temp_dir, converted, toc_html)
           errbuf = Bytes.new(512)
           pages = Litepdf.render_to_memory(geometry[:html], nil, geometry[:width_mm].to_f32,
             geometry[:height_mm].to_f32, geometry[:margin_top].to_f32,
@@ -92,14 +120,18 @@ module Markd
             geometry[:margin_left].to_f32, geometry[:margin_gutter].to_f32, @base_dir,
             @header, @footer, geometry[:background], errbuf, errbuf.size,
             @pageless ? 1 : 0, @kdp ? 1 : 0, @mirror_headers ? 1 : 0,
-            pointerof(out_data), pointerof(out_len))
+            pointerof(out_data), pointerof(out_len),
+            pointerof(heading_data), pointerof(heading_len))
           if pages < 0
             message = String.new(errbuf).strip
             raise Error.new(message.empty? ? "PDF rendering failed" : message)
           end
           bytes = Slice.new(out_data, out_len.to_i).dup
+          headings = heading_data.null? ? [] of HeadingEntry : Pdf.parse_heading_map(
+            String.new(Slice.new(heading_data, heading_len.to_i)))
           Litepdf.free_buffer(out_data)
-          bytes
+          Litepdf.free_buffer(heading_data) unless heading_data.null?
+          {bytes, pages, headings}
         ensure
           converted.each { |path| File.delete?(path) }
           begin
@@ -109,11 +141,12 @@ module Markd
         end
       end
 
-      # Everything both render methods share: markdown or HTML in, final
-      # document HTML out, with images materialized into temp_dir and the
-      # page geometry resolved.
+      # Everything the render methods share: markdown or HTML in, final
+      # document HTML out, with images materialized into temp_dir and
+      # the page geometry resolved. toc_html, when given, goes ahead of
+      # the body; every heading gets the anchor its entries link to.
       private def prepare(source : String, temp_dir : String,
-                          converted : Array(String)) : NamedTuple(
+                          converted : Array(String), toc_html : String? = nil) : NamedTuple(
         html: String, width_mm: Float64, height_mm: Float64,
         margin_top: Float64, margin_right: Float64, margin_bottom: Float64,
         margin_left: Float64, margin_gutter: Float64, background: String)
@@ -132,9 +165,13 @@ module Markd
           # No markdown processing, no skeleton: the document keeps
           # its own styles and title.
           html = Pdf.process_images(source, @base_dir, temp_dir, converted)
+          html = Pdf.inject_toc(Pdf.rewrite_heading_anchors(html), toc_html) if toc_html
         else
           body_html = Pdf.process_images(MathRender.rewrite_html(Pdf.rewrite_task_lists(Markd.to_html(source, @options, formatter: formatter))), @base_dir, temp_dir, converted)
           body_html = Pdf.hyphenate_body(body_html, @hyphenate, @language)
+          if toc_html
+            body_html = Pdf.inject_toc(Pdf.rewrite_heading_anchors(body_html), toc_html)
+          end
           html = Pdf.document_html(body_html, css, extra_css: formatter.style_defs)
         end
         page_width_mm, page_height_mm = Pdf.parse_page_size(@page_size)

@@ -27,8 +27,10 @@ doc = <<-DOC
     --mirror-headers           Mirror running headers and footers on verso
                                (even) pages — pairs with a gutter margin
     --kdp                      KDP print mode: embed every font, drop the
-                               outline, scrub metadata and pad odd page
-                               counts to even
+                               outline, scrub metadata, size the gutter
+                               from the page count (unless --margin sets
+                               one), start chapters on recto pages and
+                               pad odd page counts to even
     --style <style>            Built-in stylesheet setting layout and typography
                                (themes set colors instead): see --list-styles
                                [default: default]
@@ -59,6 +61,13 @@ doc = <<-DOC
     --no-remote-images         Skip http(s) image sources instead of fetching
                                them; remote fetching can also be turned off
                                programmatically with Markd::Pdf
+    --toc                      Prepend a table of contents with page numbers;
+                               every entry links to its section. The layout
+                               runs repeatedly until the numbers stop moving
+                               (a TOC's own length shifts the pages it points to)
+    --toc-depth <depth>        Deepest heading level the TOC lists, from
+                               1 (chapters only) to 6 [default: 1]
+    --toc-title <title>        Title above the table of contents [default: Contents]
     --config <path>            Read options from this YAML file instead of
                                ~/.config/markpdf/config.yml
 
@@ -108,11 +117,63 @@ def register_fonts(font_paths : Array(String))
   end
 end
 
-def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language, no_remote_images, kdp, mirror_headers)
+def build_renderer(options, style, theme, code_theme, page_size, margins, kdp, mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language)
+  Markd::Pdf::Renderer.new(
+    options: options,
+    style: style,
+    theme: theme,
+    code_theme: Markd::Pdf.pick_code_theme(code_theme, theme, style),
+    page_size: page_size,
+    margins: margins,
+    kdp: kdp,
+    mirror_headers: mirror_headers,
+    base_dir: base_dir,
+    header: header || "",
+    footer: footer || "",
+    html_input: html_input,
+    pageless: pageless,
+    hyphenate: hyphenate,
+    language: language,
+  )
+rescue error : Markd::Pdf::Error
+  abort_with(error.message.to_s)
+end
+
+# The kdp gutter sizing, the TOC page numbers and the kdp warnings all
+# come from the library's settle loop; the CLI only picks where the
+# PDF lands and which code theme applies.
+def render_kdp(input, output, margin, options, style, theme, code_theme, page_size, mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language, toc, toc_depth, toc_title)
+  Markd::Pdf.render(input, output, options, page_size: page_size, base_dir: base_dir,
+    header: header || "", footer: footer || "", theme: theme, html_input: html_input, style: style,
+    pageless: pageless, hyphenate: hyphenate, language: language,
+    code_theme: Markd::Pdf.pick_code_theme(code_theme, theme, style),
+    margins: margin, kdp: true, mirror_headers: mirror_headers,
+    toc: toc, toc_depth: toc_depth, toc_title: toc_title)
+end
+
+# Non-kdp TOC renders go through the same settle loop, against the
+# renderer the CLI already built (margins are fixed without the gutter
+# table, so one instance serves every pass).
+def render_toc(input, output, renderer, toc_depth, toc_title, pageless)
+  Markd::Pdf.settled_pages(true, toc_depth, toc_title, pageless, size_gutter: false) do |_, desired_toc|
+    renderer.render_with_headings(input, output, desired_toc)
+  end
+end
+
+# --toc-depth: an integer between 1 and 6, or the run stops here.
+def toc_depth_from(depth_string : String) : Int32
+  depth = depth_string.to_i?
+  return depth if depth && depth.in?(1..6)
+  abort_with("--toc-depth needs an integer between 1 and 6 (got '#{depth_string}')")
+end
+
+def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language, no_remote_images, kdp, mirror_headers, toc, toc_depth_string, toc_title)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
 
   Markd::Pdf.fetch_remote_images = !no_remote_images
+
+  toc_depth = toc_depth_from(toc_depth_string)
 
   if kdp && font_paths.empty?
     STDERR.puts "markpdf: warning: no --font given; kdp mode embeds whatever system fonts cover the text. Pass --font to control the embedded typefaces."
@@ -121,46 +182,37 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
   options = Markd::Options.new
   options.gfm = true
 
-  begin
-    renderer = Markd::Pdf::Renderer.new(
-      options: options,
-      style: style,
-      theme: theme,
-      code_theme: Markd::Pdf.pick_code_theme(code_theme, theme, style),
-      page_size: page_size,
-      margins: margin,
-      kdp: kdp,
-      mirror_headers: mirror_headers,
-      base_dir: base_dir,
-      header: header || "",
-      footer: footer || "",
-      html_input: html_input,
-      pageless: pageless,
-      hyphenate: hyphenate,
-      language: language,
-    )
-  rescue error : Markd::Pdf::Error
-    abort_with(error.message.to_s)
-  end
+  renderer = build_renderer(options, style, theme, code_theme, page_size, margin, kdp,
+    mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language)
 
+  css_bodies = [] of String
   css_paths.each do |css_path|
     abort_with("CSS file not found: #{css_path}") unless File.file?(css_path)
-    renderer.add_css(File.read(css_path))
+    css_bodies << File.read(css_path)
+  end
+  css_bodies.each do |css_body|
+    renderer.add_css(css_body)
   end
   setup_emoji_font(emoji_font) if emoji_font
   register_fonts(font_paths)
 
-  if output
-    renderer.render(input, output)
-  else
-    # No output file: render to a temporary file and stream to stdout
-    temp_path = File.tempname("markpdf", ".pdf")
-    begin
-      renderer.render(input, temp_path)
-      STDOUT.write(File.read(temp_path).to_slice)
-    ensure
-      File.delete?(temp_path)
+  # No output file: render to a temporary file and stream to stdout.
+  target = output || File.tempname("markpdf", ".pdf")
+  begin
+    if kdp
+      render_kdp(input, target, margin, options, style, theme, code_theme, page_size,
+        mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate,
+        language, toc, toc_depth, toc_title)
+    elsif toc
+      render_toc(input, target, renderer, toc_depth, toc_title, pageless)
+    else
+      renderer.render(input, target)
     end
+    unless output
+      STDOUT.write(File.read(target).to_slice)
+    end
+  ensure
+    File.delete?(target) unless output
   end
 end
 
@@ -213,6 +265,9 @@ begin
     Cli.option_flag(options["--no-remote-images"]),
     Cli.option_flag(options["--kdp"]),
     Cli.option_flag(options["--mirror-headers"]),
+    Cli.option_flag(options["--toc"]),
+    Cli.option_string(options["--toc-depth"], "1"),
+    Cli.option_string(options["--toc-title"], "Contents"),
   )
 rescue error
   abort_with(error.message.to_s)

@@ -37,6 +37,7 @@ Done recently (markpdf):
   `--print-style` and repeatable `--css`
 * ✅ Pageless single-page output (`--pageless`)
 * ✅ PDF outline bookmarks from headings
+* ✅ Two-pass table of contents (`--toc`) with linked, numbered entries
 * ✅ Task-list checkboxes (☑/☐)
 * ✅ Wide tables scale to fit and split across pages at row boundaries
 * ✅ Collapse-style table borders and keep-with-next pagination
@@ -208,6 +209,10 @@ via the C++ shim in `ext/`. Styling is CSS: `markpdf` ships a roster of
 built-in stylesheets (pick one with `--style`), and you can add your own
 rules on top with `--css`.
 
+For print-on-demand, `--kdp` mode makes the output Amazon-KDP-compliant
+(embedded fonts, gutter by page count, recto chapter starts, even page
+count) — see [KDP.md](KDP.md) for the full print-production guide.
+
 ```docopt
 Markpdf - A tool to render markdown to PDF
 
@@ -232,8 +237,10 @@ Options:
   --mirror-headers           Mirror running headers and footers on verso
                              (even) pages — pairs with a gutter margin
   --kdp                      KDP print mode: embed every font, drop the
-                             outline, scrub metadata and pad odd page
-                             counts to even
+                             outline, scrub metadata, size the gutter
+                             from the page count (unless --margin sets
+                             one), start chapters on recto pages and
+                             pad odd page counts to even
   --style <style>            Built-in stylesheet setting layout and typography
                              (themes set colors instead): see --list-styles
                              [default: default]
@@ -264,6 +271,13 @@ Options:
   --no-remote-images         Skip http(s) image sources instead of fetching
                              them; remote fetching can also be turned off
                              programmatically with Markd::Pdf
+  --toc                      Prepend a table of contents with page numbers;
+                             every entry links to its section. The layout
+                             runs repeatedly until the numbers stop moving
+                             (a TOC's own length shifts the pages it points to)
+  --toc-depth <depth>        Deepest heading level the TOC lists, from
+                             1 (chapters only) to 6 [default: 1]
+  --toc-title <title>        Title above the table of contents [default: Contents]
   --config <path>            Read options from this YAML file instead of
                              ~/.config/markpdf/config.yml
 
@@ -300,7 +314,32 @@ h2 { page-break-before: always; }
 ```
 
 `break-before: page`, `page-break-after: always` and `break-after: page`
-work the same way.
+work the same way. Named pages work too: `page-break-before: right`
+(`recto`, and `left`/`verso`) opens the element on a right-hand page,
+inserting a blank page when it would otherwise land on a wrong-parity
+one — the classic convention that chapters start on odd pages. Blank
+filler pages carry no content and no header or footer.
+
+#### Table of contents
+
+`--toc` prepends a linked table of contents with page numbers. Because
+the TOC's own length shifts every page after it, the numbers are found
+by fixed point: markpdf renders, reads back where each heading landed,
+rebuilds the TOC, and re-renders until what the TOC says matches where
+things are — two or three passes for a typical book. Entries link to
+their sections in the PDF.
+
+```bash
+markpdf book.md --toc --toc-depth 2 --toc-title "Inhalt" --kdp -o book.pdf
+```
+
+`--toc-depth` caps how deep the listing goes (1 = chapters only, up to
+6); `--toc-title` sets the heading above it. TOC pages are ordinary
+pages: they count toward the page count, the kdp recto rule and the
+even-page pad, and the TOC's numbers account for all of it. With
+`--pageless` the entries lose their page numbers (there are no pages),
+and `--toc` on a document without headings warns and renders without
+the TOC.
 
 #### Styles
 

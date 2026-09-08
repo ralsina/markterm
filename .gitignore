@@ -19,3 +19,9 @@
 hyphen/lib/
 hyphen/shard.lock
 aur-markterm/
+
+# static cross-build artifacts
+/aarch64-linux-musl-cross/
+/.cross-deps/
+/.cross-src/
+/cross-arm64/

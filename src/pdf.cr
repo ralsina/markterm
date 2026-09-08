@@ -6,6 +6,7 @@ require "tartrazine/formatters/html"
 require "markd"
 require "sixteen"
 require "crimage"
+require "html"
 require "http/client"
 require "uri"
 require "base64"
@@ -38,7 +39,8 @@ lib Litepdf
                               out_path : LibC::Char*, base_dir : LibC::Char*, header : LibC::Char*,
                               footer : LibC::Char*, page_background : LibC::Char*, errbuf : LibC::Char*,
                               errbuf_len : LibC::Int, single_page : LibC::Int, kdp : LibC::Int,
-                              mirror_headers : LibC::Int) : LibC::Int
+                              mirror_headers : LibC::Int, heading_map : LibC::Char**,
+                              heading_map_len : LibC::SizeT*) : LibC::Int
   fun render_to_memory = litepdf_render_to_memory(html : LibC::Char*, css : LibC::Char*,
                                                   page_width_mm : LibC::Float, page_height_mm : LibC::Float,
                                                   margin_top : LibC::Float, margin_right : LibC::Float,
@@ -48,7 +50,9 @@ lib Litepdf
                                                   page_background : LibC::Char*, errbuf : LibC::Char*,
                                                   errbuf_len : LibC::Int, single_page : LibC::Int, kdp : LibC::Int,
                                                   mirror_headers : LibC::Int,
-                                                  out_data : LibC::Char**, out_len : LibC::SizeT*) : LibC::Int
+                                                  out_data : LibC::Char**, out_len : LibC::SizeT*,
+                                                  heading_map : LibC::Char**,
+                                                  heading_map_len : LibC::SizeT*) : LibC::Int
   fun free_buffer = litepdf_free_buffer(buffer : LibC::Char*)
   fun register_font = litepdf_register_font(ttf_path : LibC::Char*, errbuf : LibC::Char*,
                                             errbuf_len : LibC::Int) : LibC::Int
@@ -125,6 +129,47 @@ module Markd
       else
         raise Error.new("margins need 1, 2, 4 or 5 comma-separated values in mm (got " + numbers.size.to_s + ") in '" + value + "'")
       end
+    end
+
+    # KDP paperback gutter by page count (Amazon's table, in mm).
+    KDP_GUTTER_TABLE = [{24, 150, 9.525}, {151, 300, 12.7}, {301, 500, 15.875},
+                        {501, 700, 19.05}, {701, 828, 22.225}]
+
+    # The KDP minimum gutter for a given page count (table entries are
+    # {lowest page count, highest page count, gutter in mm}). Counts
+    # outside KDP's printable range clamp to the nearest tier so drafts
+    # still render; the caller warns about out-of-range counts.
+    def self.kdp_gutter_mm(pages : Int32) : Float64
+      KDP_GUTTER_TABLE.each do |tier|
+        return tier[2] if pages <= tier[1]
+      end
+      KDP_GUTTER_TABLE.last[2]
+    end
+
+    # A margin spec with the gutter appended (the other sides unchanged).
+    def self.margins_with_gutter(parsed : PageMargins, gutter : Float64) : String
+      "#{parsed.top},#{parsed.right},#{parsed.bottom},#{parsed.left},#{gutter}"
+    end
+
+    # The warning for a final page count outside KDP's printable range,
+    # or nil when the count is printable.
+    def self.kdp_range_warning(pages : Int32) : String?
+      return if pages.in?(24..828)
+      "KDP paperbacks need 24 to 828 pages (got #{pages}); the PDF still renders"
+    end
+
+    # KDP's minimum margin on every side for no-bleed interiors, in mm
+    # (0.25 inch). All four sides are outside edges on one page parity:
+    # recto keeps the gutter on the left and the outside edge right,
+    # verso mirrors that.
+    KDP_MIN_OUTSIDE_MARGIN_MM = 6.35
+
+    # The warning for margins below KDP's no-bleed minimum, or nil when
+    # the margins are printable.
+    def self.kdp_margin_warning(parsed : PageMargins) : String?
+      narrowest = [parsed.top, parsed.right, parsed.bottom, parsed.left].min
+      return if narrowest >= KDP_MIN_OUTSIDE_MARGIN_MM
+      "KDP no-bleed interiors need at least 6.35mm margins on every side (narrowest is #{narrowest}mm)"
     end
 
     # Resolve a page size: a name from PAGE_SIZES (case-insensitive), or
@@ -228,6 +273,56 @@ module Markd
       raise Error.new("could not load theme '#{name}': #{error.message}")
     end
 
+    # Renders until the TOC page numbers (and, when sizing the kdp
+    # gutter, the gutter) stop moving: each pass lays out the document
+    # with the current TOC block, then rebuilds that block from where
+    # the headings actually landed — the TOC's own length shifts every
+    # page after it, so one pass can never know its numbers. Two or
+    # three passes converge; the cap is a safety net for pathological
+    # documents. Yields the gutter to use this pass (-1 when the caller
+    # sizes margins itself) and the TOC block to render with (nil =
+    # none), and returns the final page count. Internal, but shared
+    # with the CLI, which owns its Renderer construction.
+    MAX_TOC_PASSES = 6
+
+    # The one-time warning for a --toc that has nothing to list: either
+    # the document has no headings, or none survive the depth filter.
+    private def self.warn_missing_toc(headings : Array(HeadingEntry), toc_depth : Int32) : Nil
+      if headings.empty?
+        STDERR.puts "markpdf: warning: --toc found no headings; rendering without a table of contents"
+      else
+        STDERR.puts "markpdf: warning: --toc found no headings at depth #{toc_depth}; rendering without a table of contents"
+      end
+    end
+
+    def self.settled_pages(toc : Bool, toc_depth : Int32, toc_title : String, pageless : Bool,
+                           size_gutter : Bool, &pass : Float64, String? -> {Int32, Array(HeadingEntry)}) : Int32
+      gutter = KDP_GUTTER_TABLE.first[2]
+      desired_toc = nil.as(String?)
+      warned_no_headings = false
+      pages = 0
+      settled = false
+      MAX_TOC_PASSES.times do
+        pages, headings = pass.call(size_gutter ? gutter : -1.0, desired_toc)
+        rebuilt = toc ? toc_html(headings, toc_depth, toc_title, pageless) : nil
+        if toc && rebuilt.nil? && !warned_no_headings
+          warn_missing_toc(headings, toc_depth)
+          warned_no_headings = true
+        end
+        needed_gutter = size_gutter ? kdp_gutter_mm(pages) : gutter
+        if needed_gutter == gutter && rebuilt == desired_toc
+          settled = true
+        else
+          gutter = needed_gutter
+          desired_toc = rebuilt
+        end
+      end
+      if toc && !settled && desired_toc
+        STDERR.puts "markpdf: warning: TOC page numbers did not settle after #{MAX_TOC_PASSES} passes; they may be off"
+      end
+      pages
+    end
+
     # Render markdown source to a PDF file in one shot: a convenience
     # that builds a throwaway Renderer. See Pdf::Renderer for the
     # reusable, library-friendly form. header/footer templates support
@@ -237,19 +332,51 @@ module Markd
     # code_theme picks the syntax-highlighting theme explicitly.
     # pageless produces a single page as tall as the document (good
     # for on-screen viewing, wrong for printing); headers and footers
-    # are ignored in that mode.
+    # are ignored in that mode. toc prepends a two-pass table of
+    # contents listing headings down to toc_depth, each entry linking
+    # to its section; see settled_pages for how the numbers settle.
     def self.render(source : String, output_path : String, options : Markd::Options = Markd::Options.new,
                     page_size : String = "a4", margin_mm : Float64 = 20.0, base_dir : String = ".",
                     header : String = "", footer : String = "", code_theme : String? = nil,
                     theme : String? = nil, html_input : Bool = false, style : String? = nil,
                     pageless : Bool = false, hyphenate : Bool = false, language : String = "en",
-                    css : String? = nil, margins : String? = nil, kdp : Bool = false) : Int32
+                    css : String? = nil, margins : String? = nil, kdp : Bool = false,
+                    mirror_headers : Bool = false, toc : Bool = false, toc_depth : Int32 = 1,
+                    toc_title : String = "Contents") : Int32
+      if kdp && (margins.nil? || Pdf.parse_margins(margins).gutter < 0)
+        # KDP mode with no explicit gutter: size the gutter from the
+        # page count (Amazon's table). Page count depends on the
+        # margins and — with a TOC — on the TOC block itself, so the
+        # settle loop re-renders until both stop moving.
+        parsed = parse_margins(margins || margin_mm.to_s)
+        pages = settled_pages(toc, toc_depth, toc_title, pageless, size_gutter: true) do |gutter, desired_toc|
+          renderer = Renderer.new(options: options, style: style || "default", theme: theme,
+            code_theme: code_theme, page_size: page_size, margins: margins_with_gutter(parsed, gutter),
+            kdp: true, mirror_headers: mirror_headers, base_dir: base_dir, header: header,
+            footer: footer, html_input: html_input, pageless: pageless, hyphenate: hyphenate,
+            language: language)
+          renderer.add_css(css) if css
+          renderer.render_with_headings(source, output_path, desired_toc)
+        end
+        range_warning = kdp_range_warning(pages)
+        STDERR.puts "markpdf: warning: #{range_warning}" if range_warning
+        margin_warning = kdp_margin_warning(parsed)
+        STDERR.puts "markpdf: warning: #{margin_warning}" if margin_warning
+        return pages
+      end
+
       renderer = Renderer.new(options: options, style: style || "default", theme: theme,
         code_theme: code_theme, page_size: page_size, margin_mm: margin_mm, margins: margins,
-        kdp: kdp, base_dir: base_dir, header: header, footer: footer, html_input: html_input,
-        pageless: pageless, hyphenate: hyphenate, language: language)
+        kdp: kdp, mirror_headers: mirror_headers, base_dir: base_dir, header: header, footer: footer,
+        html_input: html_input, pageless: pageless, hyphenate: hyphenate, language: language)
       renderer.add_css(css) if css
-      renderer.render(source, output_path)
+      if toc
+        settled_pages(toc, toc_depth, toc_title, pageless, size_gutter: false) do |_, desired_toc|
+          renderer.render_with_headings(source, output_path, desired_toc)
+        end
+      else
+        renderer.render(source, output_path)
+      end
     end
 
     # Render markdown to PDF bytes in memory: a convenience that builds
@@ -260,13 +387,24 @@ module Markd
                               header : String = "", footer : String = "", code_theme : String? = nil,
                               theme : String? = nil, style : String? = nil, html_input : Bool = false,
                               pageless : Bool = false, hyphenate : Bool = false, language : String = "en",
-                              css : String? = nil, margins : String? = nil, kdp : Bool = false) : Bytes
+                              css : String? = nil, margins : String? = nil, kdp : Bool = false,
+                              mirror_headers : Bool = false, toc : Bool = false, toc_depth : Int32 = 1,
+                              toc_title : String = "Contents") : Bytes
       renderer = Renderer.new(options: options, style: style || "default", theme: theme, code_theme: code_theme,
-        page_size: page_size, margin_mm: margin_mm, margins: margins, kdp: kdp, base_dir: base_dir,
-        header: header, footer: footer, html_input: html_input, pageless: pageless,
-        hyphenate: hyphenate, language: language)
+        page_size: page_size, margin_mm: margin_mm, margins: margins, kdp: kdp,
+        mirror_headers: mirror_headers, base_dir: base_dir, header: header, footer: footer,
+        html_input: html_input, pageless: pageless, hyphenate: hyphenate, language: language)
       renderer.add_css(css) if css
-      renderer.render_to_memory(source)
+      return renderer.render_to_memory(source) unless toc
+      # The settle loop only reports pages and headings, so the closure
+      # keeps the last render's bytes aside for the final return.
+      final_bytes = Bytes.new(0)
+      settled_pages(toc, toc_depth, toc_title, pageless, size_gutter: false) do |_, desired_toc|
+        bytes, pages, headings = renderer.render_to_memory_with_headings(source, desired_toc)
+        final_bytes = bytes
+        {pages, headings}
+      end
+      final_bytes
     end
 
     # Internal: called by Pdf::Renderer. Soft hyphens go in last: they
@@ -294,6 +432,84 @@ module Markd
           %(<li class="task-list-item"><span class="task-box">☑</span>))
         .gsub(%r{<li><input disabled="" type="checkbox">},
           %(<li class="task-list-item"><span class="task-box">☐</span>))
+    end
+
+    # One collected heading, as the shim's heading map reports it:
+    # index counts headings with visible text in document order (the
+    # same numbering as the #mtoc-N anchor ids rewrite_heading_anchors
+    # injects), level is 1-6, page is the 1-based page the heading
+    # lands on (0 when it fell on no page window), title is the
+    # whitespace-collapsed heading text.
+    record HeadingEntry, index : Int32, level : Int32, page : Int32, title : String
+
+    # Parse the shim's heading map ("index\tlevel\tpage\ttitle" per
+    # line) into HeadingEntry records. Soft hyphens are stripped: they
+    # only make sense in the flowed body text, not in TOC entry titles.
+    def self.parse_heading_map(map : String) : Array(HeadingEntry)
+      headings = [] of HeadingEntry
+      map.each_line do |line|
+        fields = line.split('\t', 4)
+        next unless fields.size == 4
+        headings << HeadingEntry.new(fields[0].to_i, fields[1].to_i, fields[2].to_i,
+          fields[3].gsub('\u{00AD}', ""))
+      end
+      headings
+    end
+
+    # Number every heading with visible text: an empty <a id="mtoc-N">
+    # anchor goes in as the heading's first child, N counting headings
+    # in document order. The shim numbers its heading map the same way
+    # (visible text, document order), so TOC entries built from the map
+    # link to the right heading. The empty anchor contributes no text,
+    # so heading titles and the PDF outline stay unchanged.
+    def self.rewrite_heading_anchors(html : String) : String
+      anchor_index = 0
+      html.gsub(%r{<h([1-6])([^>]*)>(.*?)</h\1>}m) do |match|
+        if $3.gsub(/<[^>]*>/, "").strip.empty?
+          match
+        else
+          anchor_index += 1
+          "<h#{$1}#{$2}><a id=\"mtoc-#{anchor_index}\"></a>#{$3}</h#{$1}>"
+        end
+      end
+    end
+
+    # Place the TOC ahead of the content: markdown bodies are fragments
+    # and just get it prepended, complete HTML documents get it inside
+    # the <body> element so doctype and head stay intact. The forced
+    # break to the body rides an empty div, not the nav: the shim's
+    # page-break properties inherit down the tree, and a break on the
+    # nav would give every TOC entry its own page.
+    def self.inject_toc(html : String, toc : String) : String
+      toc = toc + "<div style=\"page-break-after: always\"></div>"
+      if html.matches?(/<body[^>]*>/)
+        html.sub(/<body[^>]*>/) { |body_tag| "#{body_tag}\n#{toc}" }
+      else
+        "#{toc}\n#{html}"
+      end
+    end
+
+    # The TOC block injected ahead of the body: a title div —
+    # deliberately not an <h1>, or it would self-list in the heading
+    # map, trigger the kdp recto rule and land in the bookmarks — and
+    # one linked entry per heading at or above the depth filter.
+    # Entries whose heading fell on no page (page 0) are dropped, and
+    # pageless documents have no page numbers to show. Nil when no
+    # heading survives the filters: the caller renders without a TOC.
+    def self.toc_html(headings : Array(HeadingEntry), depth : Int32, title : String, pageless : Bool) : String?
+      entries = headings.reject { |heading| heading.level > depth || heading.page == 0 }
+      return if entries.empty?
+      lines = entries.map do |heading|
+        page = pageless ? "" : %(<span class="toc-page">#{heading.page}</span>)
+        %(<div class="toc-entry toc-level-#{heading.level}"><a href="#mtoc-#{heading.index}">) +
+          %(<span class="toc-text">#{HTML.escape(heading.title)}</span>#{page}</a></div>)
+      end
+      <<-HTML
+        <nav class="toc">
+        <div class="toc-title">#{HTML.escape(title)}</div>
+        #{lines.join("\n")}
+        </nav>
+        HTML
     end
 
     # Internal: called by Pdf::Renderer. Rewrite <img> sources the shim

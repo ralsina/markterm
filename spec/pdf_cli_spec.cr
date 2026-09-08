@@ -151,6 +151,20 @@ describe "markpdf CLI" do
     end
   end
 
+  it "warns when kdp margins fall below the no-bleed minimum" do
+    path = File.tempname("markpdf_cli", ".md")
+    File.write(path, "content")
+    pdf = File.tempname("markpdf_cli", ".pdf")
+    begin
+      status, _output, error = run_cli(BIN_MARKPDF, [path, "--kdp", "--margin", "5", "-o", pdf])
+      status.exit_code.should eq(0)
+      error.should contain("6.35mm")
+    ensure
+      File.delete?(path)
+      File.delete?(pdf)
+    end
+  end
+
   it "stays quiet for high-resolution images" do
     big = File.tempname("markpdf_spec", ".png")
     make_png(big, 1200, 1200)
