@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.0] - 2026-09-08
+
+### 🚀 Features
+
+- Adopt docopt-config 0.3.0
+- --config <path> to choose the config file
+- Two-pass table of contents with linked, numbered entries
+- --toc-depth takes a level range like 2-6
+
+### 🐛 Bug Fixes
+
+- Keep page cuts from slicing line descenders onto the next page
+- Only break pages at block and line-box boundaries
+
+### 📚 Documentation
+
+- Call the notes what they are — endnotes
+
+### Merge
+
+- Resolve conflicts with main (TOC + kdp features)
+
 ## [0.12.0] - 2026-09-07
 
 ### 🚀 Features
@@ -27,6 +49,10 @@ All notable changes to this project will be documented in this file.
 - Abort the static build when the shim build fails
 - Fetch the cross toolchain from a github mirror
 
+### 🔖 Releases
+
+- Release v0.12.0
+
 ### 📚 Documentation
 
 - KDP.md print-production guide
@@ -38,6 +64,7 @@ All notable changes to this project will be documented in this file.
 - Fix Windows patch apply and macOS OpenSSL dependency
 - Ship macOS OpenSSL dylibs instead of fighting pkg-config
 - Avoid masking the exit status in a command substitution
+- Give the release job the repo context gh needs
 
 ### Spec
 
