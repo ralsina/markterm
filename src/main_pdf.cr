@@ -68,6 +68,8 @@ doc = <<-DOC
     --toc-depth <depth>        Deepest heading level the TOC lists, from
                                1 (chapters only) to 6 [default: 1]
     --toc-title <title>        Title above the table of contents [default: Contents]
+    --config <path>            Read options from this YAML file instead of
+                               ~/.config/markpdf/config.yml
 
   If you use "-" as the file argument, markpdf will read from stdin.
   Complete HTML documents (and .html files) are rendered directly,
@@ -79,6 +81,7 @@ doc = <<-DOC
   repeatable options, e.g. "font: [font1.ttf, font2.ttf]") or through
   MARKPDF_* environment variables (e.g. MARKPDF_STYLE). Command line
   options win over environment variables, which win over the config file.
+  Run with --print-config to dump the effective configuration as YAML.
   DOC
 
 def abort_with(message : String)
@@ -213,8 +216,10 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
   end
 end
 
-options = Docopt.docopt_config(doc, argv: ARGV,
-  config_file_path: Cli.config_path("markpdf"), env_prefix: "MARKPDF")
+argv, config_path = Cli.config_argv("markpdf", ARGV)
+options = Docopt.docopt_config(doc, argv: argv,
+  config_file_path: config_path, env_prefix: "MARKPDF",
+  print_config_option: "--print-config")
 
 if options["--version"]
   puts "Markpdf #{Cli::VERSION}"

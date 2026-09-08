@@ -14,8 +14,15 @@ doc = <<-DOC
   Options:
     -h --help                  Show this screen.
     --version                  Show version.
+    --config <path>            Read options from this YAML file instead of
+                               ~/.config/markmark/config.yml
 
   If you use "-" as the file argument, markmark will read from stdin.
+
+  Options can also be set in ~/.config/markmark/config.yml or through
+  MARKMARK_* environment variables. Command line options win over
+  environment variables, which win over the config file. Run with
+  --print-config to dump the effective configuration as YAML.
   DOC
 
 def main(source)
@@ -25,8 +32,10 @@ def main(source)
   puts Markd.to_md(input, options)
 end
 
-options = Docopt.docopt_config(doc, argv: ARGV,
-  config_file_path: Cli.config_path("markmark"), env_prefix: "MARKMARK")
+argv, config_path = Cli.config_argv("markmark", ARGV)
+options = Docopt.docopt_config(doc, argv: argv,
+  config_file_path: config_path, env_prefix: "MARKMARK",
+  print_config_option: "--print-config")
 if options["--version"]
   puts "Markmark #{Cli::VERSION}"
   exit 0

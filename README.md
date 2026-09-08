@@ -125,13 +125,16 @@ Options:
   --images                   Force images where the terminal can show them
   --no-images                Never draw images; show placeholders instead
   --no-pager                 Never pipe output to $PAGER
+  --config <path>            Read options from this YAML file instead of
+                             ~/.config/markterm/config.yml
 
 If you use "-" as the file argument, markterm will read from stdin.
 
 Options can also be set in ~/.config/markterm/config.yml (keys are the
 long option names, e.g. "theme: monokai") or through MARKTERM_*
 environment variables (e.g. MARKTERM_WIDTH). Command line options win
-over environment variables, which win over the config file.
+over environment variables, which win over the config file. Run with
+--print-config to dump the effective configuration as YAML.
 ```
 
 There is a similar `markmark` binary that will render markdown to markdown.
@@ -168,8 +171,35 @@ font:
   - LiberationSans.ttf
 ```
 
+Environment variables follow the same rules: booleans accept
+`true`/`yes`/`1` (and `false`/`no`/`0` to turn an option off), and
+repeatable options accept comma-separated lists
+(`MARKPDF_FONT=a.ttf,b.ttf`).
+
+Every tool also accepts a `--print-config` flag, which prints the
+effective configuration — command line, environment and config file
+merged — as YAML that can be saved and used as a config file as is:
+
+```console
+$ markpdf --print-config --style book
+---
+page_size: a4
+margin: "20"
+style: book
+language: en
+```
+
+`markterm` and `markmark` still require their file argument, so pass
+one (or `-` for stdin) when printing their configuration, e.g.
+`markterm --print-config - < document.md`.
+
+Pass `--config <path>` to read the configuration from a specific file
+instead of the default one; the file must exist. The flag itself can
+only come from the command line.
+
 A missing config file is not an error; without one the tools behave
-exactly as they always have.
+exactly as they always have. A config file that exists but cannot be
+parsed produces a warning on stderr and is otherwise ignored.
 
 ### markpdf
 
@@ -249,6 +279,8 @@ Options:
   --toc-depth <depth>        Deepest heading level the TOC lists, from
                              1 (chapters only) to 6 [default: 1]
   --toc-title <title>        Title above the table of contents [default: Contents]
+  --config <path>            Read options from this YAML file instead of
+                             ~/.config/markpdf/config.yml
 
 If you use "-" as the file argument, markpdf will read from stdin.
 Complete HTML documents (and .html files) are rendered directly,
@@ -260,6 +292,7 @@ long option names, e.g. "page-size: letter"; list-valued keys work for
 repeatable options, e.g. "font: [font1.ttf, font2.ttf]") or through
 MARKPDF_* environment variables (e.g. MARKPDF_STYLE). Command line
 options win over environment variables, which win over the config file.
+Run with --print-config to dump the effective configuration as YAML.
 ```
 
 #### Manual page breaks

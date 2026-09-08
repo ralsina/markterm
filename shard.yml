@@ -36,7 +36,7 @@ dependencies:
   # CLI tools honor ~/.config/<tool>/config.yml and $TOOL_* env vars
   docopt-config:
     github: ralsina/docopt-config
-    version: ~> 0.2.0
+    version: ~> 0.3.0
   tartrazine:
     github: ralsina/tartrazine
   sixteen:

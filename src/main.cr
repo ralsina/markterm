@@ -27,13 +27,16 @@ doc = <<-DOC
     --images                   Force images where the terminal can show them
     --no-images                Never draw images; show placeholders instead
     --no-pager                 Never pipe output to $PAGER
+    --config <path>            Read options from this YAML file instead of
+                               ~/.config/markterm/config.yml
 
   If you use "-" as the file argument, markterm will read from stdin.
 
   Options can also be set in ~/.config/markterm/config.yml (keys are the
   long option names, e.g. "theme: monokai") or through MARKTERM_*
   environment variables (e.g. MARKTERM_WIDTH). Command line options win
-  over environment variables, which win over the config file.
+  over environment variables, which win over the config file. Run with
+  --print-config to dump the effective configuration as YAML.
   DOC
 
 # Color: --color wins over everything; otherwise respect the
@@ -121,8 +124,10 @@ private def pipe_to_pager(text : String, pager : String)
   end
 end
 
-options = Docopt.docopt_config(doc, argv: ARGV,
-  config_file_path: Cli.config_path("markterm"), env_prefix: "MARKTERM")
+argv, config_path = Cli.config_argv("markterm", ARGV)
+options = Docopt.docopt_config(doc, argv: argv,
+  config_file_path: config_path, env_prefix: "MARKTERM",
+  print_config_option: "--print-config")
 
 if options["--version"]
   puts "Markterm #{Cli::VERSION}"
