@@ -1633,9 +1633,16 @@ class PdfContainer : public litehtml::document_container
         // flow space: wide tables draw with doc-space positions).
         if (context->paginated)
         {
-            float text_top = context->flow_y(px(pos.y));
+            float text_top    = context->flow_y(px(pos.y));
             float text_bottom = context->flow_y(px(pos.y + pos.height));
             if (text_top >= context->window_second || text_bottom <= context->window_first)
+            {
+                return;
+            }
+            // A run starting above this window belongs to the previous
+            // page: its below-cut part would otherwise render here,
+            // over the next page's top edge (ghost descender tails).
+            if (text_top < context->window_first)
             {
                 return;
             }
@@ -2315,6 +2322,50 @@ class PdfContainer : public litehtml::document_container
     // snaps those onto page window edges (see draw_borders).
     std::multiset<int> cell_edges;
 
+    // Glyph box (top, bottom) of every ink-bearing text run, in
+    // document coordinates. Pagination cuts are floored integers while
+    // layout positions are fractional, so a cut can still land a
+    // fraction inside a run box; render_pdf maps these into flow space
+    // and hands them to snap_cut_above_runs.
+    std::vector<std::pair<float, float>> run_extents;
+
+    // Lift a page cut above every text run box it would slice deeply:
+    // a run with top in (start, cut) whose bottom reaches past the cut
+    // straddles the page boundary, and its below-cut part (descenders)
+    // would render at the top of the next page. Moving the cut to the
+    // straddling run's top pushes the whole line to the next page.
+    // Shallow slices (a point or two of descender tip, from flooring
+    // drift at block boundaries) are not worth moving a line for and
+    // are left to the draw-time ownership skip in draw_text; a slice
+    // past the descent zone's midpoint means the baseline itself sits
+    // at the cut — the whole descent renders on the next page — so the
+    // line moves. The extents must be sorted by top so each pass can
+    // stop at the cut; runs can overlap (fallback fonts, vertical
+    // shifts), so repeat until nothing straddles deeply.
+    static float snap_cut_above_runs(const std::vector<std::pair<float, float>>& extents,
+                                     float start, float cut)
+    {
+        const float deep_slice = 2.0f;
+        bool moved = true;
+        while (moved)
+        {
+            moved = false;
+            for (const auto& extent : extents)
+            {
+                if (extent.first >= cut)
+                {
+                    break;
+                }
+                if (extent.first > start && extent.second > cut + deep_slice)
+                {
+                    cut   = extent.first;
+                    moved = true;
+                }
+            }
+        }
+        return cut;
+    }
+
     void finalize_wide_tables()
     {
         std::sort(wide_tables.begin(), wide_tables.end(),
@@ -2566,14 +2617,46 @@ class PdfContainer : public litehtml::document_container
         float abs_x = offset_x + px(pos.x);
         float abs_y = offset_y + px(pos.y);
         std::string tag = item->src_el() ? item->src_el()->get_tagName() : "";
-        if (getenv("LITEPDF_WALK")) std::fprintf(stderr, "walk tag=%s y=%.1f h=%.1f atomic=%d\n",
-            item->src_el() ? item->src_el()->get_tagName() : "?", abs_y, px(pos.height), (int)inside_atomic);
+        std::string text;
+        bool whitespace_only = false;
+        if (item->src_el() && item->src_el()->is_text())
+        {
+            item->src_el()->get_text(text);
+            whitespace_only = text.find_first_not_of(" \t\n\r\f\v") == std::string::npos;
+        }
+        if (getenv("LITEPDF_WALK"))
+        {
+            std::fprintf(stderr, "walk tag=%s y=%.1f x=%.1f w=%.1f h=%.1f atomic=%d text='%s'\n",
+                item->src_el() ? item->src_el()->get_tagName() : "?", abs_y, abs_x, px(pos.width),
+                px(pos.height), (int)inside_atomic, text.c_str());
+        }
+        // Text runs feed the cut-snapping safety net (see
+        // snap_cut_above_runs): the drawn box is what position::round
+        // makes of the layout box, so record the same rounding here.
+        // Whitespace-only elements carry no ink and are skipped.
+        if (item->src_el() && item->src_el()->is_text() && !whitespace_only && px(pos.height) > 0)
+        {
+            float run_top = std::round(offset_y + px(pos.y));
+            run_extents.push_back({run_top, run_top + std::round(px(pos.height))});
+        }
         // Candidates use the margin/border-box top: breaking there keeps
         // backgrounds and borders of the element together with its text.
         // A heading's own bottom edge is never a cut point: breaking
         // there strands the heading at the bottom of a page.
+        //
+        // Text parts and inline boxes never seed candidates: their
+        // boxes sit inside line boxes, offset by the half-leading, so a
+        // cut on one of them lands mid-line-box — either shearing the
+        // previous line's descenders onto the next page or pulling the
+        // first line's leading into the margin. Every real text
+        // boundary is already covered by the line box tops collected
+        // further down.
+        litehtml::style_display display =
+            item->src_el() ? item->src_el()->css().get_display() : litehtml::display_block;
+        bool is_inline_box =
+            display == litehtml::display_inline_text || display == litehtml::display_inline;
         bool is_heading = tag.size() == 3 && tag[0] == 'h' && tag[1] >= '1' && tag[1] <= '6';
-        if (px(pos.width) > 0 || px(pos.height) > 0)
+        if ((px(pos.width) > 0 || px(pos.height) > 0) && !is_inline_box)
         {
             candidates.insert((int)std::floor(offset_y + px(item->top())));
             // A block's bottom edge is a cut point too: breaking exactly
@@ -2736,12 +2819,70 @@ int litepdf_set_emoji_font(const char* ttf_path, char* errbuf, int errbuf_len)
 // pages, right on even ones; negative disables it). kdp mode embeds
 // every font, drops the outline and scrubs metadata. Returns the number of pages, or -1 and fills
 // errbuf on failure.
+// One page's flow-space Y range; blank filler pages draw no content.
+// File scope so the heading-page helper can share it with render_pdf.
+struct PageWindow
+{
+    float first;
+    float second;
+    bool blank;
+};
+
+// The page whose window covers a flow-space Y coordinate, or -1.
+static int page_index_for_flow(const std::vector<PageWindow>& windows, float flow_y)
+{
+    for (size_t i = 0; i < windows.size(); i++)
+    {
+        if (flow_y >= windows[i].first && flow_y < windows[i].second)
+        {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+// Runs of whitespace collapse to single spaces: heading titles feed
+// both the PDF outline and the two-pass TOC map, where they must be
+// single-line and free of the map's tab separator.
+static std::string collapse_spaces(const std::string& text)
+{
+    std::string collapsed;
+    bool previous_space = true;
+    for (char character : text)
+    {
+        if (std::isspace((unsigned char)character))
+        {
+            if (!previous_space)
+            {
+                collapsed += ' ';
+            }
+            previous_space = true;
+        }
+        else
+        {
+            collapsed += character;
+            previous_space = false;
+        }
+    }
+    while (!collapsed.empty() && collapsed.back() == ' ')
+    {
+        collapsed.pop_back();
+    }
+    return collapsed;
+}
+
 static int render_pdf(const char* html, const char* css, float page_width_mm, float page_height_mm,
                float margin_top, float margin_right, float margin_bottom, float margin_left,
                float margin_gutter, const char* base_dir, const char* header, const char* footer,
                const char* page_background, char* errbuf, int errbuf_len, int single_page, int kdp,
-               int mirror_headers, char** out_data, size_t* out_len)
+               int mirror_headers, char** out_data, size_t* out_len,
+               char** heading_map, size_t* heading_map_len)
 {
+    if (heading_map && heading_map_len)
+    {
+        *heading_map = nullptr;
+        *heading_map_len = 0;
+    }
     if (errbuf && errbuf_len > 0)
     {
         errbuf[0] = '\0';
@@ -2965,6 +3106,15 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     {
         candidates.insert(candidates.begin(), 0);
     }
+    // Text run boxes in flow space, sorted by top: the cut snapper
+    // (snap_cut_above_runs) scans them at every page boundary.
+    std::vector<std::pair<float, float>> run_boxes;
+    run_boxes.reserve(container.run_extents.size());
+    for (const auto& extent : container.run_extents)
+    {
+        run_boxes.push_back({container.flow_y(extent.first), container.flow_y(extent.second)});
+    }
+    std::sort(run_boxes.begin(), run_boxes.end());
     // Keep-with-next: breaking at the element right after a heading
     // strands the heading at the bottom of a page (a widow title), so
     // such candidates are avoided unless nothing better fits. The flag
@@ -3036,12 +3186,6 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     // One page per window: the flow-space Y range it shows, plus a
     // blank flag. Filler pages — named-page chapter starts and the kdp
     // parity pad — draw no content and carry no header or footer.
-    struct PageWindow
-    {
-        float first;
-        float second;
-        bool blank;
-    };
     std::vector<PageWindow> windows;
     if (single_page)
     {
@@ -3066,8 +3210,12 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
             if (next_forced < forced.size() && forced[next_forced].y <= start + content_height)
             {
                 ForcedCut cut = forced[next_forced];
-                windows.push_back({start, cut.y, false});
-                start = cut.y;
+                // A forced cut must not slice a line either: flooring
+                // the element boundary can leave the cut a fraction
+                // inside the previous line's descent zone.
+                float cut_y = PdfContainer::snap_cut_above_runs(run_boxes, start, cut.y);
+                windows.push_back({start, cut_y, false});
+                start = cut_y;
                 next_forced++;
                 // A chapter opening on a named page gets a blank filler
                 // when the cut would land on the wrong parity: right
@@ -3129,6 +3277,16 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
                     }
                 }
             }
+            // A cut landing inside a text run slices its descenders
+            // off at the page edge and re-renders them on the next
+            // page: lift the cut above the run, pushing the whole
+            // line over (see snap_cut_above_runs).
+            float snapped = PdfContainer::snap_cut_above_runs(run_boxes, start, next);
+            if (getenv("LITEPDF_DEBUG") && snapped != next)
+            {
+                std::fprintf(stderr, "page cut snapped %.1f -> %.1f\n", next, snapped);
+            }
+            next = snapped;
             windows.push_back({start, next, false});
             start = next;
         }
@@ -3482,48 +3640,19 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
         g_last_op = "creating outline";
         for (const auto& heading : container.headings)
         {
-    int page_idx = -1;
     // Headings are collected in document space; windows live in flow
     // space (wide tables compressed). Map before matching, exactly like
     // the link and anchor paths, and keep the page-relative offset for
     // the destination.
     float heading_flow = container.flow_y(heading.y);
-    for (size_t i = 0; i < windows.size(); i++)
-    {
-        if (heading_flow >= windows[i].first && heading_flow < windows[i].second)
-        {
-            page_idx = (int)i;
-            heading_flow -= windows[i].first;
-            break;
-        }
-    }
+    int page_idx = page_index_for_flow(windows, heading_flow);
     if (page_idx < 0)
     {
         continue;
     }
+    heading_flow -= windows[page_idx].first;
 
-    std::string title;
-    bool previous_space = true;
-    for (char character : heading.title)
-    {
-        if (std::isspace((unsigned char)character))
-        {
-            if (!previous_space)
-            {
-                title += ' ';
-            }
-            previous_space = true;
-        }
-        else
-        {
-            title += character;
-            previous_space = false;
-        }
-    }
-    while (!title.empty() && title.back() == ' ')
-    {
-        title.pop_back();
-    }
+    std::string title = collapse_spaces(heading.title);
     if (title.empty())
     {
         continue;
@@ -3557,6 +3686,46 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
                 {
                     level_stack[lvl] = nullptr;
                 }
+            }
+        }
+    }
+
+    // Heading -> page map for the two-pass table of contents: one
+    // "index\tlevel\tpage\ttitle" line per heading in document order,
+    // pages 1-based (0 = heading fell on no page window). The index
+    // counts headings with visible text, matching the anchor ids the
+    // Crystal side injects into the HTML. Collected in every mode —
+    // unlike the outline, which kdp drops — because the TOC needs it
+    // there too.
+    if (heading_map && heading_map_len)
+    {
+        std::string map;
+        int heading_index = 0;
+        for (const auto& heading : container.headings)
+        {
+            std::string title = collapse_spaces(heading.title);
+            if (title.empty())
+            {
+                continue;
+            }
+            heading_index++;
+            int page_idx = page_index_for_flow(windows, container.flow_y(heading.y));
+            map += std::to_string(heading_index);
+            map += '\t';
+            map += std::to_string(heading.level);
+            map += '\t';
+            map += std::to_string(page_idx + 1);
+            map += '\t';
+            map += title;
+            map += '\n';
+        }
+        if (!map.empty())
+        {
+            if (char* buffer = (char*)std::malloc(map.size() + 1))
+            {
+                std::memcpy(buffer, map.c_str(), map.size() + 1);
+                *heading_map = buffer;
+                *heading_map_len = map.size();
             }
         }
     }
@@ -3596,18 +3765,21 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
 }
 
 // Render to a malloc'd buffer the caller frees with litepdf_free_buffer.
+// heading_map receives the heading->page map for the two-pass TOC (also
+// malloc'd, also freed by litepdf_free_buffer); it may stay null when
+// the document has no headings.
 int litepdf_render_to_memory(const char* html, const char* css, float page_width_mm,
                              float page_height_mm, float margin_top, float margin_right,
                              float margin_bottom, float margin_left, float margin_gutter,
                              const char* base_dir, const char* header, const char* footer,
                              const char* page_background, char* errbuf, int errbuf_len,
                              int single_page, int kdp, int mirror_headers, char** out_data,
-                             size_t* out_len)
+                             size_t* out_len, char** heading_map, size_t* heading_map_len)
 {
     return render_pdf(html, css, page_width_mm, page_height_mm, margin_top, margin_right,
                       margin_bottom, margin_left, margin_gutter, base_dir, header, footer,
                       page_background, errbuf, errbuf_len, single_page, kdp, mirror_headers,
-                      out_data, out_len);
+                      out_data, out_len, heading_map, heading_map_len);
 }
 
 void litepdf_free_buffer(char* buffer)
@@ -3622,14 +3794,15 @@ int litepdf_render(const char* html, const char* css, float page_width_mm, float
                    float margin_gutter, const char* out_path,
                    const char* base_dir, const char* header, const char* footer,
                    const char* page_background, char* errbuf, int errbuf_len, int single_page, int kdp,
-                   int mirror_headers)
+                   int mirror_headers, char** heading_map, size_t* heading_map_len)
 {
     char* data = nullptr;
     size_t len = 0;
     int pages = litepdf_render_to_memory(html, css, page_width_mm, page_height_mm, margin_top,
                                          margin_right, margin_bottom, margin_left, margin_gutter,
                                          base_dir, header, footer, page_background, errbuf,
-                                         errbuf_len, single_page, kdp, mirror_headers, &data, &len);
+                                         errbuf_len, single_page, kdp, mirror_headers, &data, &len,
+                                         heading_map, heading_map_len);
     if (pages < 0)
     {
         return pages;

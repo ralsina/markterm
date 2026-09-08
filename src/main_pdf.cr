@@ -61,6 +61,13 @@ doc = <<-DOC
     --no-remote-images         Skip http(s) image sources instead of fetching
                                them; remote fetching can also be turned off
                                programmatically with Markd::Pdf
+    --toc                      Prepend a table of contents with page numbers;
+                               every entry links to its section. The layout
+                               runs repeatedly until the numbers stop moving
+                               (a TOC's own length shifts the pages it points to)
+    --toc-depth <depth>        Deepest heading level the TOC lists, from
+                               1 (chapters only) to 6 [default: 1]
+    --toc-title <title>        Title above the table of contents [default: Contents]
 
   If you use "-" as the file argument, markpdf will read from stdin.
   Complete HTML documents (and .html files) are rendered directly,
@@ -129,32 +136,41 @@ rescue error : Markd::Pdf::Error
   abort_with(error.message.to_s)
 end
 
-# The gutter feeds back into the page count: size it from the first
-# pass and re-render when the table asks for a different one.
-def render_kdp_guttered(input, output, pages, margin, css_bodies, options, style, theme, code_theme, page_size, mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language)
-  gutter = Markd::Pdf.kdp_gutter_mm(pages)
-  parsed = Markd::Pdf.parse_margins(margin)
-  if parsed.gutter < 0 && gutter != parsed.gutter
-    guttered = Markd::Pdf.margins_with_gutter(parsed, gutter)
-    renderer = build_renderer(options, style, theme, code_theme, page_size, guttered, true,
-      mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language)
-    css_bodies.each do |css_body|
-      renderer.add_css(css_body)
-    end
-    pages = renderer.render(input, output)
-  end
-  margin_warning = Markd::Pdf.kdp_margin_warning(parsed)
-  STDERR.puts "markpdf: warning: #{margin_warning}" if margin_warning
-  page_warning = Markd::Pdf.kdp_range_warning(pages)
-  STDERR.puts "markpdf: warning: #{page_warning}" if page_warning
-  pages
+# The kdp gutter sizing, the TOC page numbers and the kdp warnings all
+# come from the library's settle loop; the CLI only picks where the
+# PDF lands and which code theme applies.
+def render_kdp(input, output, margin, options, style, theme, code_theme, page_size, mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language, toc, toc_depth, toc_title)
+  Markd::Pdf.render(input, output, options, page_size: page_size, base_dir: base_dir,
+    header: header || "", footer: footer || "", theme: theme, html_input: html_input, style: style,
+    pageless: pageless, hyphenate: hyphenate, language: language,
+    code_theme: Markd::Pdf.pick_code_theme(code_theme, theme, style),
+    margins: margin, kdp: true, mirror_headers: mirror_headers,
+    toc: toc, toc_depth: toc_depth, toc_title: toc_title)
 end
 
-def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language, no_remote_images, kdp, mirror_headers)
+# Non-kdp TOC renders go through the same settle loop, against the
+# renderer the CLI already built (margins are fixed without the gutter
+# table, so one instance serves every pass).
+def render_toc(input, output, renderer, toc_depth, toc_title, pageless)
+  Markd::Pdf.settled_pages(true, toc_depth, toc_title, pageless, size_gutter: false) do |_, desired_toc|
+    renderer.render_with_headings(input, output, desired_toc)
+  end
+end
+
+# --toc-depth: an integer between 1 and 6, or the run stops here.
+def toc_depth_from(depth_string : String) : Int32
+  depth = depth_string.to_i?
+  return depth if depth && depth.in?(1..6)
+  abort_with("--toc-depth needs an integer between 1 and 6 (got '#{depth_string}')")
+end
+
+def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language, no_remote_images, kdp, mirror_headers, toc, toc_depth_string, toc_title)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
 
   Markd::Pdf.fetch_remote_images = !no_remote_images
+
+  toc_depth = toc_depth_from(toc_depth_string)
 
   if kdp && font_paths.empty?
     STDERR.puts "markpdf: warning: no --font given; kdp mode embeds whatever system fonts cover the text. Pass --font to control the embedded typefaces."
@@ -177,24 +193,23 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
   setup_emoji_font(emoji_font) if emoji_font
   register_fonts(font_paths)
 
-  if output
-    pages = renderer.render(input, output)
+  # No output file: render to a temporary file and stream to stdout.
+  target = output || File.tempname("markpdf", ".pdf")
+  begin
     if kdp
-      # The re-render and range warning happen inside; the final count
-      # is not needed here.
-      render_kdp_guttered(input, output, pages, margin, css_bodies, options,
-        style, theme, code_theme, page_size, mirror_headers, base_dir, header, footer,
-        html_input, pageless, hyphenate, language)
+      render_kdp(input, target, margin, options, style, theme, code_theme, page_size,
+        mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate,
+        language, toc, toc_depth, toc_title)
+    elsif toc
+      render_toc(input, target, renderer, toc_depth, toc_title, pageless)
+    else
+      renderer.render(input, target)
     end
-  else
-    # No output file: render to a temporary file and stream to stdout
-    temp_path = File.tempname("markpdf", ".pdf")
-    begin
-      renderer.render(input, temp_path)
-      STDOUT.write(File.read(temp_path).to_slice)
-    ensure
-      File.delete?(temp_path)
+    unless output
+      STDOUT.write(File.read(target).to_slice)
     end
+  ensure
+    File.delete?(target) unless output
   end
 end
 
@@ -245,6 +260,9 @@ begin
     Cli.option_flag(options["--no-remote-images"]),
     Cli.option_flag(options["--kdp"]),
     Cli.option_flag(options["--mirror-headers"]),
+    Cli.option_flag(options["--toc"]),
+    Cli.option_string(options["--toc-depth"], "1"),
+    Cli.option_string(options["--toc-title"], "Contents"),
   )
 rescue error
   abort_with(error.message.to_s)

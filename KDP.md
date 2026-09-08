@@ -45,6 +45,13 @@ footer and no content, the way a real book's blanks look. They do count
 toward the page number and the `%t` total, because in print they count,
 period.
 
+A `--toc` table of contents plays by those same rules: its pages are
+ordinary pages — they count toward the page number, the recto fillers
+and the even-page pad — and the entry numbers are settled by
+re-rendering until the TOC matches the real layout, blanks included.
+So `# Chapter 1` after a one-page TOC lands on page 3, and the TOC
+says 3.
+
 If you pass your own gutter in `--margin` (the five-value form below),
 markpdf respects it and skips the table lookup.
 
@@ -166,9 +173,6 @@ additions do not apply there — add the rules yourself.
 - **Front matter.** Title page, copyright page, dedication — that is
   content. (A `# Title` heading opens on page 1, which is recto by
   definition, so the recto rule does not push it anywhere.)
-- **A table of contents with page numbers.** The tool has no two-pass
-  TOC; write it by hand after the layout settles, or skip a TOC — KDP
-  does not require one in print.
 - **Bleed.** Text-and-figures interiors do not need it; if you want
   edge-to-edge images, markpdf is the wrong tool for that page. Keep
   images inside the margins and the no-bleed rules cover you.
