@@ -93,6 +93,31 @@ private def pages_containing(page_texts : Array(String), token : String) : Array
   pages
 end
 
+# Boundaries where a word gram of the earlier page's trailing line
+# reappears as a run on the next page: the signature of a line box
+# straddling a page cut, drawn on both sides of it — glyph bodies on
+# the earlier page, its below-cut sliver (descender tails) above the
+# next page's first line.
+private def ghost_boundaries(page_texts : Array(String), gram_size : Int32 = 4) : Array(Int32)
+  boundaries = Array(Int32).new
+  page_texts.each_with_index do |text, page_index|
+    next_page = page_texts[page_index + 1]?
+    break if next_page.nil?
+    tail_words = text.split.last(6)
+    next if tail_words.size < gram_size
+    next_words = next_page.split
+    next if next_words.size < gram_size
+    ghosted = (0..tail_words.size - gram_size).any? do |offset|
+      gram = tail_words[offset, gram_size]
+      (0..next_words.size - gram_size).any? do |start|
+        next_words[start, gram_size] == gram
+      end
+    end
+    boundaries << page_index + 1 if ghosted
+  end
+  boundaries
+end
+
 # Extract the per-page sequences of "item N" numbers and check the
 # integrity contract described above.
 private def should_draw_items_in_order(page_texts : Array(String), count : Int32, label : String)
@@ -298,6 +323,51 @@ it "never strands a section heading at the bottom of a page" do
       page_texts[heading_pages.first - 1].should contain("opens with its first line"),
         "section #{section}: heading stranded at the bottom of page #{heading_pages.first} without its body"
     end
+  ensure
+    File.delete?(path)
+  end
+end
+
+# Text runs and inline boxes sit inside line boxes, offset by the
+# half-leading, so a page cut landing on one of their boxes shears the
+# line at an arbitrary height: glyph bodies clipped at the earlier
+# page's bottom edge and the descender tails rendered above the next
+# page's first line. Inline boxes no longer seed break candidates
+# (line box tops and block edges do), cuts that still slice a run snap
+# above it, and draw_text skips runs starting above the window — any
+# way around, the boundary line's words must show up on exactly one
+# page.
+it "never bleeds a page-bottom line's descenders onto the next page" do
+  pdftotext = pdftotext_path
+  pending!("pdftotext not available") unless pdftotext
+
+  # Descender-heavy word salad, seeded per paragraph: page breaks
+  # landing inside a paragraph put a descender-laden line at the page
+  # bottom, the geometry where cuts coincide with line tops.
+  words = %w[
+    gypy gyppy quipping pygmy jaunty jauntily yapping djinny hypnotizing
+    puzzled gripping jockey quickening hiking jumping paddling querying
+    yoyoing squeeging japing quaking hopscotch typing paddocks quibbling
+    eyepopping hijacking jogging keypunching quagmire mythology geography
+    psychology typography epidemiology cryptography
+  ]
+  source = String.build do |io|
+    io << "# descendersentinel\n\n"
+    1.upto(120) do |paragraph_number|
+      random = Random.new(paragraph_number * 1000)
+      io << words.sample(60, random).join(" ") << ".\n\n"
+    end
+  end
+
+  path = temp_pdf_path
+  begin
+    pages = Markd::Pdf.render(source, path, style: "book")
+    pages.should be >= 8
+
+    page_texts = (1..pages).map { |page| page_text(pdftotext, path, page) }
+    ghosted = ghost_boundaries(page_texts)
+    ghosted.should be_empty,
+      "page-bottom lines duplicated on the next page at boundaries: #{ghosted}"
   ensure
     File.delete?(path)
   end
