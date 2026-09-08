@@ -328,15 +328,15 @@ it "never strands a section heading at the bottom of a page" do
   end
 end
 
-# litehtml hangs text runs a few points below their line box (the
-# baseline lands on the line-box bottom), so a page cut coinciding
-# with a line top used to slice the page-bottom line's descent zone:
-# the straddling run was drawn on both pages, glyph bodies clipped at
-# the earlier page's bottom edge and the descender tails rendered
-# above the next page's first line. Pagination now snaps such cuts
-# above the straddling run, and draw_text skips runs starting above
-# the window — either way the boundary line's words must show up on
-# exactly one page.
+# Text runs and inline boxes sit inside line boxes, offset by the
+# half-leading, so a page cut landing on one of their boxes shears the
+# line at an arbitrary height: glyph bodies clipped at the earlier
+# page's bottom edge and the descender tails rendered above the next
+# page's first line. Inline boxes no longer seed break candidates
+# (line box tops and block edges do), cuts that still slice a run snap
+# above it, and draw_text skips runs starting above the window — any
+# way around, the boundary line's words must show up on exactly one
+# page.
 it "never bleeds a page-bottom line's descenders onto the next page" do
   pdftotext = pdftotext_path
   pending!("pdftotext not available") unless pdftotext

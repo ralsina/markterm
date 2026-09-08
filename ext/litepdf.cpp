@@ -2322,12 +2322,11 @@ class PdfContainer : public litehtml::document_container
     // snaps those onto page window edges (see draw_borders).
     std::multiset<int> cell_edges;
 
-    // Glyph box (top, bottom) of every text run, in document
-    // coordinates. litehtml hangs runs below their line box (the
-    // baseline lands on the line-box bottom), so a page cut that
-    // coincides with a line top slices the previous line's descent
-    // zone; render_pdf maps these into flow space and hands them to
-    // snap_cut_above_runs.
+    // Glyph box (top, bottom) of every ink-bearing text run, in
+    // document coordinates. Pagination cuts are floored integers while
+    // layout positions are fractional, so a cut can still land a
+    // fraction inside a run box; render_pdf maps these into flow space
+    // and hands them to snap_cut_above_runs.
     std::vector<std::pair<float, float>> run_extents;
 
     // Lift a page cut above every text run box it would slice deeply:
@@ -2618,12 +2617,24 @@ class PdfContainer : public litehtml::document_container
         float abs_x = offset_x + px(pos.x);
         float abs_y = offset_y + px(pos.y);
         std::string tag = item->src_el() ? item->src_el()->get_tagName() : "";
-        if (getenv("LITEPDF_WALK")) std::fprintf(stderr, "walk tag=%s y=%.1f h=%.1f atomic=%d\n",
-            item->src_el() ? item->src_el()->get_tagName() : "?", abs_y, px(pos.height), (int)inside_atomic);
-        // Text runs feed the cut-snapping in render_pdf (see
+        std::string text;
+        bool whitespace_only = false;
+        if (item->src_el() && item->src_el()->is_text())
+        {
+            item->src_el()->get_text(text);
+            whitespace_only = text.find_first_not_of(" \t\n\r\f\v") == std::string::npos;
+        }
+        if (getenv("LITEPDF_WALK"))
+        {
+            std::fprintf(stderr, "walk tag=%s y=%.1f x=%.1f w=%.1f h=%.1f atomic=%d text='%s'\n",
+                item->src_el() ? item->src_el()->get_tagName() : "?", abs_y, abs_x, px(pos.width),
+                px(pos.height), (int)inside_atomic, text.c_str());
+        }
+        // Text runs feed the cut-snapping safety net (see
         // snap_cut_above_runs): the drawn box is what position::round
         // makes of the layout box, so record the same rounding here.
-        if (item->src_el() && item->src_el()->is_text() && px(pos.height) > 0)
+        // Whitespace-only elements carry no ink and are skipped.
+        if (item->src_el() && item->src_el()->is_text() && !whitespace_only && px(pos.height) > 0)
         {
             float run_top = std::round(offset_y + px(pos.y));
             run_extents.push_back({run_top, run_top + std::round(px(pos.height))});
@@ -2632,8 +2643,20 @@ class PdfContainer : public litehtml::document_container
         // backgrounds and borders of the element together with its text.
         // A heading's own bottom edge is never a cut point: breaking
         // there strands the heading at the bottom of a page.
+        //
+        // Text parts and inline boxes never seed candidates: their
+        // boxes sit inside line boxes, offset by the half-leading, so a
+        // cut on one of them lands mid-line-box — either shearing the
+        // previous line's descenders onto the next page or pulling the
+        // first line's leading into the margin. Every real text
+        // boundary is already covered by the line box tops collected
+        // further down.
+        litehtml::style_display display =
+            item->src_el() ? item->src_el()->css().get_display() : litehtml::display_block;
+        bool is_inline_box =
+            display == litehtml::display_inline_text || display == litehtml::display_inline;
         bool is_heading = tag.size() == 3 && tag[0] == 'h' && tag[1] >= '1' && tag[1] <= '6';
-        if (px(pos.width) > 0 || px(pos.height) > 0)
+        if ((px(pos.width) > 0 || px(pos.height) > 0) && !is_inline_box)
         {
             candidates.insert((int)std::floor(offset_y + px(item->top())));
             // A block's bottom edge is a cut point too: breaking exactly
@@ -3135,9 +3158,9 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
             if (next_forced < forced.size() && forced[next_forced].y <= start + content_height)
             {
                 ForcedCut cut = forced[next_forced];
-                // Even a user-requested break must not slice a line
-                // box: litehtml hangs runs below it, so the cut lands
-                // in the previous line's descent zone.
+                // A forced cut must not slice a line either: flooring
+                // the element boundary can leave the cut a fraction
+                // inside the previous line's descent zone.
                 float cut_y = PdfContainer::snap_cut_above_runs(run_boxes, start, cut.y);
                 windows.push_back({start, cut_y, false});
                 start = cut_y;
