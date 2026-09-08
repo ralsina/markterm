@@ -2819,12 +2819,70 @@ int litepdf_set_emoji_font(const char* ttf_path, char* errbuf, int errbuf_len)
 // pages, right on even ones; negative disables it). kdp mode embeds
 // every font, drops the outline and scrubs metadata. Returns the number of pages, or -1 and fills
 // errbuf on failure.
+// One page's flow-space Y range; blank filler pages draw no content.
+// File scope so the heading-page helper can share it with render_pdf.
+struct PageWindow
+{
+    float first;
+    float second;
+    bool blank;
+};
+
+// The page whose window covers a flow-space Y coordinate, or -1.
+static int page_index_for_flow(const std::vector<PageWindow>& windows, float flow_y)
+{
+    for (size_t i = 0; i < windows.size(); i++)
+    {
+        if (flow_y >= windows[i].first && flow_y < windows[i].second)
+        {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+// Runs of whitespace collapse to single spaces: heading titles feed
+// both the PDF outline and the two-pass TOC map, where they must be
+// single-line and free of the map's tab separator.
+static std::string collapse_spaces(const std::string& text)
+{
+    std::string collapsed;
+    bool previous_space = true;
+    for (char character : text)
+    {
+        if (std::isspace((unsigned char)character))
+        {
+            if (!previous_space)
+            {
+                collapsed += ' ';
+            }
+            previous_space = true;
+        }
+        else
+        {
+            collapsed += character;
+            previous_space = false;
+        }
+    }
+    while (!collapsed.empty() && collapsed.back() == ' ')
+    {
+        collapsed.pop_back();
+    }
+    return collapsed;
+}
+
 static int render_pdf(const char* html, const char* css, float page_width_mm, float page_height_mm,
                float margin_top, float margin_right, float margin_bottom, float margin_left,
                float margin_gutter, const char* base_dir, const char* header, const char* footer,
                const char* page_background, char* errbuf, int errbuf_len, int single_page, int kdp,
-               int mirror_headers, char** out_data, size_t* out_len)
+               int mirror_headers, char** out_data, size_t* out_len,
+               char** heading_map, size_t* heading_map_len)
 {
+    if (heading_map && heading_map_len)
+    {
+        *heading_map = nullptr;
+        *heading_map_len = 0;
+    }
     if (errbuf && errbuf_len > 0)
     {
         errbuf[0] = '\0';
@@ -3128,12 +3186,6 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     // One page per window: the flow-space Y range it shows, plus a
     // blank flag. Filler pages — named-page chapter starts and the kdp
     // parity pad — draw no content and carry no header or footer.
-    struct PageWindow
-    {
-        float first;
-        float second;
-        bool blank;
-    };
     std::vector<PageWindow> windows;
     if (single_page)
     {
@@ -3588,48 +3640,19 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
         g_last_op = "creating outline";
         for (const auto& heading : container.headings)
         {
-    int page_idx = -1;
     // Headings are collected in document space; windows live in flow
     // space (wide tables compressed). Map before matching, exactly like
     // the link and anchor paths, and keep the page-relative offset for
     // the destination.
     float heading_flow = container.flow_y(heading.y);
-    for (size_t i = 0; i < windows.size(); i++)
-    {
-        if (heading_flow >= windows[i].first && heading_flow < windows[i].second)
-        {
-            page_idx = (int)i;
-            heading_flow -= windows[i].first;
-            break;
-        }
-    }
+    int page_idx = page_index_for_flow(windows, heading_flow);
     if (page_idx < 0)
     {
         continue;
     }
+    heading_flow -= windows[page_idx].first;
 
-    std::string title;
-    bool previous_space = true;
-    for (char character : heading.title)
-    {
-        if (std::isspace((unsigned char)character))
-        {
-            if (!previous_space)
-            {
-                title += ' ';
-            }
-            previous_space = true;
-        }
-        else
-        {
-            title += character;
-            previous_space = false;
-        }
-    }
-    while (!title.empty() && title.back() == ' ')
-    {
-        title.pop_back();
-    }
+    std::string title = collapse_spaces(heading.title);
     if (title.empty())
     {
         continue;
@@ -3663,6 +3686,46 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
                 {
                     level_stack[lvl] = nullptr;
                 }
+            }
+        }
+    }
+
+    // Heading -> page map for the two-pass table of contents: one
+    // "index\tlevel\tpage\ttitle" line per heading in document order,
+    // pages 1-based (0 = heading fell on no page window). The index
+    // counts headings with visible text, matching the anchor ids the
+    // Crystal side injects into the HTML. Collected in every mode —
+    // unlike the outline, which kdp drops — because the TOC needs it
+    // there too.
+    if (heading_map && heading_map_len)
+    {
+        std::string map;
+        int heading_index = 0;
+        for (const auto& heading : container.headings)
+        {
+            std::string title = collapse_spaces(heading.title);
+            if (title.empty())
+            {
+                continue;
+            }
+            heading_index++;
+            int page_idx = page_index_for_flow(windows, container.flow_y(heading.y));
+            map += std::to_string(heading_index);
+            map += '\t';
+            map += std::to_string(heading.level);
+            map += '\t';
+            map += std::to_string(page_idx + 1);
+            map += '\t';
+            map += title;
+            map += '\n';
+        }
+        if (!map.empty())
+        {
+            if (char* buffer = (char*)std::malloc(map.size() + 1))
+            {
+                std::memcpy(buffer, map.c_str(), map.size() + 1);
+                *heading_map = buffer;
+                *heading_map_len = map.size();
             }
         }
     }
@@ -3702,18 +3765,21 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
 }
 
 // Render to a malloc'd buffer the caller frees with litepdf_free_buffer.
+// heading_map receives the heading->page map for the two-pass TOC (also
+// malloc'd, also freed by litepdf_free_buffer); it may stay null when
+// the document has no headings.
 int litepdf_render_to_memory(const char* html, const char* css, float page_width_mm,
                              float page_height_mm, float margin_top, float margin_right,
                              float margin_bottom, float margin_left, float margin_gutter,
                              const char* base_dir, const char* header, const char* footer,
                              const char* page_background, char* errbuf, int errbuf_len,
                              int single_page, int kdp, int mirror_headers, char** out_data,
-                             size_t* out_len)
+                             size_t* out_len, char** heading_map, size_t* heading_map_len)
 {
     return render_pdf(html, css, page_width_mm, page_height_mm, margin_top, margin_right,
                       margin_bottom, margin_left, margin_gutter, base_dir, header, footer,
                       page_background, errbuf, errbuf_len, single_page, kdp, mirror_headers,
-                      out_data, out_len);
+                      out_data, out_len, heading_map, heading_map_len);
 }
 
 void litepdf_free_buffer(char* buffer)
@@ -3728,14 +3794,15 @@ int litepdf_render(const char* html, const char* css, float page_width_mm, float
                    float margin_gutter, const char* out_path,
                    const char* base_dir, const char* header, const char* footer,
                    const char* page_background, char* errbuf, int errbuf_len, int single_page, int kdp,
-                   int mirror_headers)
+                   int mirror_headers, char** heading_map, size_t* heading_map_len)
 {
     char* data = nullptr;
     size_t len = 0;
     int pages = litepdf_render_to_memory(html, css, page_width_mm, page_height_mm, margin_top,
                                          margin_right, margin_bottom, margin_left, margin_gutter,
                                          base_dir, header, footer, page_background, errbuf,
-                                         errbuf_len, single_page, kdp, mirror_headers, &data, &len);
+                                         errbuf_len, single_page, kdp, mirror_headers, &data, &len,
+                                         heading_map, heading_map_len);
     if (pages < 0)
     {
         return pages;
