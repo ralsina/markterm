@@ -61,7 +61,8 @@ Done (markterm):
 * ✅ Maybe only support timg with options
 * ✅ Support being used in a pipeline
 * ✅ Task lists, GFM alerts, wrapped tables
-* ✅ Footnotes
+* ✅ Footnotes (rendered as endnotes: notes collect at the end of the
+  document)
 * ✅ Wrap styled table cells at word boundaries when tables are squeezed
 * ✅ Internal piping to $PAGER for tall documents (`--no-pager` opts out)
 * ✅ CLI switches for images and links (`--images`, `--no-images`,
@@ -348,8 +349,11 @@ HTML→PDF converter for the HTML subset litehtml supports.
 
 Links pointing at `http(s)://` or `mailto:` URIs become clickable PDF
 link annotations, and internal anchors (including footnote references
-and their back-links) jump to their targets. Fenced code blocks get
-tartrazine syntax highlighting (the `docopt` lexer included).
+and their back-links) jump to their targets. Note that the footnote
+syntax produces endnotes: definitions are collected in a section at
+the end of the document, not at the bottom of the referencing page.
+Fenced code blocks get tartrazine syntax highlighting (the `docopt`
+lexer included).
 
 Example with a dark base16 theme, page numbers and a header:
 
