@@ -4,11 +4,17 @@ require "docopt-config"
 module Cli
   VERSION = {{ `shards version #{__DIR__}`.chomp.stringify }}
 
+  # A user-facing error (bad path, bad config) the command line programs
+  # report as a one-line message instead of a backtrace.
+  class Error < Exception
+  end
+
   # Read the input file, or standard input when the file is "-"
   def self.read_source(source : String) : String
     if source == "-"
       STDIN.gets_to_end
     else
+      raise Error.new("file not found: #{source}") unless File.file?(source)
       File.read(source)
     end
   end

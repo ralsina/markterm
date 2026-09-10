@@ -230,8 +230,9 @@ Options:
   --version                  Show version.
   -o <output>, --output <output>  Write the PDF to a file (defaults to standard output)
   --page-size <size>         Page size: a0..a6, b0..b6, letter, legal, or
-                             custom WxH — values under 12 are inches
-                             (6x9 = 152.4x228.6mm) [default: a4]
+                             custom WxH with an optional unit per side
+                             (6x9 or 6x9in = 152.4x228.6mm, 100x200mm)
+                             [default: a4]
   --margin <margins>         Page margins in mm, CSS-style: 1 value (all sides),
                              2 (top/bottom, left/right), 4 (top, right, bottom,
                              left) or 5 (... plus gutter) [default: 20]
@@ -283,6 +284,9 @@ Options:
   --toc-title <title>        Title above the table of contents [default: Contents]
   --config <path>            Read options from this YAML file instead of
                              ~/.config/markpdf/config.yml
+  --print-config             Print the effective configuration as YAML
+                             (command line, environment and config file
+                             merged) and exit
 
 If you use "-" as the file argument, markpdf will read from stdin.
 Complete HTML documents (and .html files) are rendered directly,
@@ -294,7 +298,8 @@ long option names, e.g. "page-size: letter"; list-valued keys work for
 repeatable options, e.g. "font: [font1.ttf, font2.ttf]") or through
 MARKPDF_* environment variables (e.g. MARKPDF_STYLE). Command line
 options win over environment variables, which win over the config file.
-Run with --print-config to dump the effective configuration as YAML.
+The look layers like this: --style picks a whole layout/typography
+stylesheet, --theme recolors it, and --css overrides anything on top.
 ```
 
 #### Manual page breaks

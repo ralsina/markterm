@@ -445,6 +445,26 @@ module MarkpdfWeb
   end
 end
 
+# Baseline hardening for every response: never MIME-sniff, and keep
+# the page from loading anything it doesn't need (inline script and
+# style are the playground itself; Pico comes from the pinned CDN with
+# SRI; the preview iframe shows a blob: PDF).
+SECURITY_HEADERS = {
+  "X-Content-Type-Options"  => "nosniff",
+  "Content-Security-Policy" => "default-src 'self'; " \
+                               "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " \
+                               "script-src 'self' 'unsafe-inline'; " \
+                               "img-src 'self' data:; " \
+                               "frame-src blob:; " \
+                               "object-src 'none'; base-uri 'self'; form-action 'self'",
+}
+
+before_all do |env|
+  SECURITY_HEADERS.each do |name, value|
+    env.response.headers.add(name, value)
+  end
+end
+
 get "/" do |env|
   env.response.content_type = "text/html; charset=utf-8"
   MarkpdfWeb::LandingPage.new.to_s

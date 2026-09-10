@@ -19,8 +19,9 @@ doc = <<-DOC
     --version                  Show version.
     -o <output>, --output <output>  Write the PDF to a file (defaults to standard output)
     --page-size <size>         Page size: a0..a6, b0..b6, letter, legal, or
-                               custom WxH — values under 12 are inches
-                               (6x9 = 152.4x228.6mm) [default: a4]
+                               custom WxH with an optional unit per side
+                               (6x9 or 6x9in = 152.4x228.6mm, 100x200mm)
+                               [default: a4]
     --margin <margins>         Page margins in mm, CSS-style: 1 value (all sides),
                                2 (top/bottom, left/right), 4 (top, right, bottom,
                                left) or 5 (... plus gutter) [default: 20]
@@ -72,6 +73,9 @@ doc = <<-DOC
     --toc-title <title>        Title above the table of contents [default: Contents]
     --config <path>            Read options from this YAML file instead of
                                ~/.config/markpdf/config.yml
+    --print-config             Print the effective configuration as YAML
+                               (command line, environment and config file
+                               merged) and exit
 
   If you use "-" as the file argument, markpdf will read from stdin.
   Complete HTML documents (and .html files) are rendered directly,
@@ -83,7 +87,8 @@ doc = <<-DOC
   repeatable options, e.g. "font: [font1.ttf, font2.ttf]") or through
   MARKPDF_* environment variables (e.g. MARKPDF_STYLE). Command line
   options win over environment variables, which win over the config file.
-  Run with --print-config to dump the effective configuration as YAML.
+  The look layers like this: --style picks a whole layout/typography
+  stylesheet, --theme recolors it, and --css overrides anything on top.
   DOC
 
 def abort_with(message : String)
@@ -119,23 +124,31 @@ def register_fonts(font_paths : Array(String))
   end
 end
 
-def build_renderer(options, style, theme, code_theme, page_size, margins, kdp, mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language)
+# Everything the render paths share, so main, build_renderer and
+# render_kdp don't each repeat the full parameter list.
+private record RenderOptions, markd_options : Markd::Options, style : String,
+  theme : String?, code_theme : String?, page_size : String, margins : String,
+  kdp : Bool, mirror_headers : Bool, base_dir : String, header : String,
+  footer : String, html_input : Bool, pageless : Bool, hyphenate : Bool,
+  language : String
+
+def build_renderer(config : RenderOptions)
   Markd::Pdf::Renderer.new(
-    options: options,
-    style: style,
-    theme: theme,
-    code_theme: Markd::Pdf.pick_code_theme(code_theme, theme, style),
-    page_size: page_size,
-    margins: margins,
-    kdp: kdp,
-    mirror_headers: mirror_headers,
-    base_dir: base_dir,
-    header: header || "",
-    footer: footer || "",
-    html_input: html_input,
-    pageless: pageless,
-    hyphenate: hyphenate,
-    language: language,
+    options: config.markd_options,
+    style: config.style,
+    theme: config.theme,
+    code_theme: config.code_theme,
+    page_size: config.page_size,
+    margins: config.margins,
+    kdp: config.kdp,
+    mirror_headers: config.mirror_headers,
+    base_dir: config.base_dir,
+    header: config.header,
+    footer: config.footer,
+    html_input: config.html_input,
+    pageless: config.pageless,
+    hyphenate: config.hyphenate,
+    language: config.language,
   )
 rescue error : Markd::Pdf::Error
   abort_with(error.message.to_s)
@@ -143,24 +156,31 @@ end
 
 # The kdp gutter sizing, the TOC page numbers and the kdp warnings all
 # come from the library's settle loop; the CLI only picks where the
-# PDF lands and which code theme applies.
-def render_kdp(input, output, margin, options, style, theme, code_theme, page_size, mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language, toc, toc_depth, toc_min_level, toc_title)
-  Markd::Pdf.render(input, output, options, page_size: page_size, base_dir: base_dir,
-    header: header || "", footer: footer || "", theme: theme, html_input: html_input, style: style,
-    pageless: pageless, hyphenate: hyphenate, language: language,
-    code_theme: Markd::Pdf.pick_code_theme(code_theme, theme, style),
-    margins: margin, kdp: true, mirror_headers: mirror_headers,
-    toc: toc, toc_depth: toc_depth, toc_title: toc_title, toc_min_level: toc_min_level)
+# PDF lands. KDP output goes to a file: only the file-rendering
+# convenience reports the KDP range and margin warnings.
+def render_kdp(input, output, config : RenderOptions, toc, toc_depth, toc_min_level, toc_title)
+  Markd::Pdf.render(input, output, config.markd_options, page_size: config.page_size,
+    base_dir: config.base_dir, header: config.header, footer: config.footer,
+    theme: config.theme, html_input: config.html_input, style: config.style,
+    pageless: config.pageless, hyphenate: config.hyphenate, language: config.language,
+    code_theme: config.code_theme, margins: config.margins, kdp: true,
+    mirror_headers: config.mirror_headers, toc: toc, toc_depth: toc_depth,
+    toc_title: toc_title, toc_min_level: toc_min_level)
 end
 
 # Non-kdp TOC renders go through the same settle loop, against the
-# renderer the CLI already built (margins are fixed without the gutter
-# table, so one instance serves every pass).
-def render_toc(input, output, renderer, toc_depth, toc_min_level, toc_title, pageless)
+# renderer main already built (margins are fixed without the gutter
+# table, so one instance serves every pass). The PDF comes back as
+# bytes; the caller picks file or stdout.
+def render_toc_bytes(input, renderer, toc_depth, toc_min_level, toc_title, pageless) : Bytes
+  final_bytes = Bytes.new(0)
   Markd::Pdf.settled_pages(true, toc_depth, toc_title, pageless, size_gutter: false,
     toc_min_level: toc_min_level) do |_, desired_toc|
-    renderer.render_with_headings(input, output, desired_toc)
+    bytes, pages, headings = renderer.render_to_memory_with_headings(input, desired_toc)
+    final_bytes = bytes
+    {pages, headings}
   end
+  final_bytes
 end
 
 record TocLevels, min : Int32, max : Int32
@@ -179,6 +199,32 @@ def toc_levels_from(spec : String) : TocLevels
   abort_with("--toc-depth needs a level or level range between 1 and 6, like 2 or 2-6 (got '#{spec}')")
 end
 
+def load_css_layers(renderer, css_paths : Array(String)) : Nil
+  css_paths.each do |css_path|
+    abort_with("CSS file not found: #{css_path}") unless File.file?(css_path)
+    renderer.add_css(File.read(css_path))
+  end
+end
+
+def deliver_pdf(input, output : String?, renderer, config : RenderOptions,
+                toc : Bool, toc_levels : TocLevels, toc_title : String) : Nil
+  if config.kdp
+    # KDP keeps the file-rendering path: it is the only one that
+    # reports the range and margin warnings.
+    target = output || File.tempname("markpdf", ".pdf")
+    begin
+      render_kdp(input, target, config, toc, toc_levels.max, toc_levels.min, toc_title)
+      STDOUT.write(File.read(target).to_slice) unless output
+    ensure
+      File.delete?(target) unless output
+    end
+  else
+    bytes = toc ? render_toc_bytes(input, renderer, toc_levels.max, toc_levels.min,
+      toc_title, config.pageless) : renderer.render_to_memory(input)
+    output ? File.write(output, bytes) : STDOUT.write(bytes)
+  end
+end
+
 def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, header, footer, theme, code_theme, style, html_input, pageless, hyphenate, language, no_remote_images, kdp, mirror_headers, toc, toc_depth_string, toc_title)
   input = Cli.read_source(source)
   base_dir = source == "-" ? "." : File.dirname(File.expand_path(source))
@@ -194,38 +240,30 @@ def main(source, output, page_size, margin, css_paths, font_paths, emoji_font, h
   options = Markd::Options.new
   options.gfm = true
 
-  renderer = build_renderer(options, style, theme, code_theme, page_size, margin, kdp,
-    mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate, language)
+  config = RenderOptions.new(
+    markd_options: options,
+    style: style,
+    theme: theme,
+    code_theme: Markd::Pdf.pick_code_theme(code_theme, theme, style),
+    page_size: page_size,
+    margins: margin,
+    kdp: kdp,
+    mirror_headers: mirror_headers,
+    base_dir: base_dir,
+    header: header || "",
+    footer: footer || "",
+    html_input: html_input,
+    pageless: pageless,
+    hyphenate: hyphenate,
+    language: language,
+  )
+  renderer = build_renderer(config)
 
-  css_bodies = [] of String
-  css_paths.each do |css_path|
-    abort_with("CSS file not found: #{css_path}") unless File.file?(css_path)
-    css_bodies << File.read(css_path)
-  end
-  css_bodies.each do |css_body|
-    renderer.add_css(css_body)
-  end
+  load_css_layers(renderer, css_paths)
   setup_emoji_font(emoji_font) if emoji_font
   register_fonts(font_paths)
 
-  # No output file: render to a temporary file and stream to stdout.
-  target = output || File.tempname("markpdf", ".pdf")
-  begin
-    if kdp
-      render_kdp(input, target, margin, options, style, theme, code_theme, page_size,
-        mirror_headers, base_dir, header, footer, html_input, pageless, hyphenate,
-        language, toc, toc_levels.max, toc_levels.min, toc_title)
-    elsif toc
-      render_toc(input, target, renderer, toc_levels.max, toc_levels.min, toc_title, pageless)
-    else
-      renderer.render(input, target)
-    end
-    unless output
-      STDOUT.write(File.read(target).to_slice)
-    end
-  ensure
-    File.delete?(target) unless output
-  end
+  deliver_pdf(input, output, renderer, config, toc, toc_levels, toc_title)
 end
 
 argv, config_path = Cli.config_argv("markpdf", ARGV)
@@ -281,6 +319,6 @@ begin
     Cli.option_string(options["--toc-depth"], "1"),
     Cli.option_string(options["--toc-title"], "Contents"),
   )
-rescue error
+rescue error : Markd::Pdf::Error | Cli::Error | File::Error | IO::Error
   abort_with(error.message.to_s)
 end

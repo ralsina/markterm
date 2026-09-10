@@ -173,9 +173,11 @@ module Markd
     end
 
     # Resolve a page size: a name from PAGE_SIZES (case-insensitive), or
-    # "WxH" for custom sizes. Dimension values under 12 read as inches —
-    # "6x9" is the classic trim and nobody prints a 6mm-wide page — and
-    # anything from 12 up reads as millimeters ("210x297" is A4).
+    # "WxH" for custom sizes, with an optional unit per dimension
+    # ("6x9in", "100x200mm", "6inx9in"). Bare values keep the old
+    # heuristic: dimensions under 12 read as inches — "6x9" is the
+    # classic trim and nobody prints a 6mm-wide page — and anything
+    # from 12 up reads as millimeters ("210x297" is A4).
     # Returns {width_mm, height_mm}; raises Error with a
     # user-presentable message otherwise.
     def self.parse_page_size(value : String) : {Float64, Float64}
@@ -183,17 +185,26 @@ module Markd
       if dims = PAGE_SIZES[normalized]?
         return dims
       end
-      if match = normalized.match(/^([0-9]+(?:\.[0-9]+)?)x([0-9]+(?:\.[0-9]+)?)$/)
-        width, height = match[1].to_f, match[2].to_f
-        width = width * 25.4 if width < 12.0 # inches
-        height = height * 25.4 if height < 12.0
+      if match = normalized.match(/^([0-9]+(?:\.[0-9]+)?)(in|mm)?x([0-9]+(?:\.[0-9]+)?)(in|mm)?$/)
+        width = dimension_mm(match[1].to_f, match[2]?)
+        height = dimension_mm(match[3].to_f, match[4]?)
         if width.in?(MIN_PAGE_DIMENSION..MAX_PAGE_DIMENSION) &&
            height.in?(MIN_PAGE_DIMENSION..MAX_PAGE_DIMENSION)
           return {width, height}
         end
         raise Error.new("custom page size is out of range (#{MIN_PAGE_DIMENSION.to_i}-#{MAX_PAGE_DIMENSION.to_i}mm per side)")
       end
-      raise Error.new("unknown page size '#{value}' (expected a name like a4 or letter, or WxH like 6x9 (inches) or 100x200 (mm))")
+      raise Error.new("unknown page size '#{value}' (expected a name like a4 or letter, or WxH like 6x9 or 100x200mm)")
+    end
+
+    # One custom page-size dimension in millimeters: an explicit unit
+    # wins, bare values fall back to the under-12-is-inches heuristic.
+    private def self.dimension_mm(value : Float64, unit : String?) : Float64
+      case unit
+      when "in" then value * 25.4
+      when "mm" then value
+      else           value < 12.0 ? value * 25.4 : value
+      end
     end
 
     # Syntax highlighting theme used when nothing better is known: a
