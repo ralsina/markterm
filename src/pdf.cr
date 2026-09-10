@@ -567,9 +567,16 @@ module Markd
       end
       if source.starts_with?("http://") || source.starts_with?("https://")
         return unless fetch_remote_images?
-        return rasterize_image(source, source, temp_dir, converted) if source.downcase.includes?(".svg")
+        # Everything goes through fetch_image: letting the rasterizer
+        # download the URL itself would skip the SSRF check and the
+        # body-size cap.
         bytes = fetch_image(source)
         return unless bytes
+        if source.downcase.includes?(".svg")
+          path = write_temp(bytes, temp_dir, ".svg", converted)
+          return unless path
+          return rasterize_image(source, path, temp_dir, converted)
+        end
         return passthrough_or_convert(bytes, temp_dir, converted)
       end
       path = File.expand_path(source, base_dir)
