@@ -29,7 +29,8 @@ require "./hyphenation"
 {% else %}
   @[Link(ldflags: "-lstdc++")]
 {% end %}
-@[Link(ldflags: "-lpng -lz")]
+@[Link("z")]
+@[Link("png", pkg_config: "libpng")]
 @[Link("hpdf", ldflags: "-L #{__DIR__}/../ext/build")]
 @[Link("litepdf")]
 lib Litepdf
