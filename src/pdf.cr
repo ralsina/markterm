@@ -708,26 +708,130 @@ module Markd
       true
     end
 
+    # Proxy selection for remote image fetches, following the common
+    # environment-variable contract: HTTPS_PROXY applies to https
+    # targets, HTTP_PROXY to http ones (lowercase spellings win over
+    # uppercase), ALL_PROXY covers both, and NO_PROXY exempts hosts.
+    # Proxies speak HTTP: plain-http targets are requested in absolute
+    # form, https targets through a CONNECT tunnel, and credentials in
+    # the proxy URL become a Proxy-Authorization header. Bare
+    # "host:port" values are treated as http proxies; anything else
+    # (socks5://…) is ignored and the fetch stays direct.
+    #
+    # Proxied fetches skip image_fetch_allowed?: the proxy resolves the
+    # hostname and dials the origin, so the local DNS screen would
+    # judge a connection that is never made — and in proxy-only
+    # environments local resolution of external names often fails
+    # outright, which would fail the fetch closed (issue #14). The web
+    # playground keeps remote images off by default, so this stays a
+    # CLI concern.
+    def self.proxy_for(uri : URI) : URI?
+      scheme = uri.scheme.try(&.downcase)
+      return unless {"http", "https"}.includes?(scheme)
+      host = uri.host
+      return if host.nil? || host.empty?
+      names = scheme == "https" ? {"https_proxy", "HTTPS_PROXY"} : {"http_proxy", "HTTP_PROXY"}
+      raw = env_proxy(names) || env_proxy({"all_proxy", "ALL_PROXY"})
+      return unless raw
+      proxy = parse_proxy_url(raw)
+      return unless proxy
+      return if proxy_bypassed?(host, effective_port(uri))
+      proxy
+    end
+
+    private def self.env_proxy(names : Tuple(String, String)) : String?
+      names.each do |name|
+        value = ENV[name]?.try(&.strip)
+        return value unless value.nil? || value.empty?
+      end
+      nil
+    end
+
+    private def self.parse_proxy_url(raw : String) : URI?
+      proxy = URI.parse(raw.includes?("://") ? raw : "http://#{raw}")
+      host = proxy.host
+      return if host.nil? || host.empty?
+      {"http", "https"}.includes?(proxy.scheme.try(&.downcase)) ? proxy : nil
+    rescue URI::Error
+      nil
+    end
+
+    # NO_PROXY covers the common core of curl's semantics: `*`
+    # bypasses everything, an entry matches the target host exactly or
+    # as a domain suffix (with or without a leading dot), and an entry
+    # carrying a port only matches that port.
+    private def self.proxy_bypassed?(host : String, port : Int32) : Bool
+      list = ENV["no_proxy"]? || ENV["NO_PROXY"]?
+      return false unless list
+      host = host.downcase
+      list.split(',').each do |raw_entry|
+        entry_host, entry_port = no_proxy_entry(raw_entry.strip.downcase)
+        next if entry_host.empty?
+        return true if entry_host == "*" || host_matches_entry?(host, entry_host) &&
+                       (entry_port.nil? || entry_port == port)
+      end
+      false
+    end
+
+    private def self.no_proxy_entry(entry : String) : {String, Int32?}
+      # A bracketed IPv6 literal swallows the separator; keep it whole.
+      return {entry, nil} if entry.starts_with?('[')
+      host, separator, port_text = entry.rpartition(':')
+      return {entry, nil} if separator.empty? || port_text.empty?
+      port = port_text.to_i?
+      port ? {host, port} : {entry, nil}
+    end
+
+    private def self.host_matches_entry?(host : String, entry_host : String) : Bool
+      bare = entry_host.lchop('.')
+      host == bare || host.ends_with?(".#{bare}")
+    end
+
+    private def self.effective_port(uri : URI) : Int32
+      uri.port || (uri.scheme.try(&.downcase) == "https" ? 443 : 80)
+    end
+
+    private def self.proxy_authorization(proxy : URI) : String?
+      user = proxy.user
+      return unless user
+      password = proxy.password || ""
+      "Basic #{Base64.strict_encode("#{URI.decode(user)}:#{URI.decode(password)}")}"
+    end
+
+    private def self.authority(uri : URI) : String
+      host = uri.host || ""
+      port = uri.port
+      port && port != effective_port(uri) ? "#{host}:#{port}" : host
+    end
+
     private def self.fetch_image(url : String) : Bytes?
       uri = URI.parse(url)
       3.times do
-        # Redirects come back through here, so every hop is re-validated.
-        return unless image_fetch_allowed?(uri.to_s)
-        client = HTTP::Client.new(uri)
-        client.read_timeout = 15.seconds
-        client.connect_timeout = 15.seconds
+        # Redirects come back through here, so every hop is
+        # re-validated: the guard for direct connections, the proxy
+        # choice for proxied ones.
+        proxy = proxy_for(uri)
+        return unless proxy || image_fetch_allowed?(uri.to_s)
+        client = proxy ? proxied_client(uri, proxy) : direct_client(uri)
+        return unless client
         begin
-          response = client.get(uri.request_target)
-          STDERR.puts "fetch status=#{response.status}" if ENV["LITEPDF_DEBUG"]?
-          case response.status
-          when .redirection?
-            location = response.headers["Location"]?
-            return unless location
-            uri = URI.parse(location)
-          when .success?
-            return read_capped(response.body_io, MAX_IMAGE_BYTES)
-          else
-            return
+          # The block form streams the response body: read_capped
+          # enforces the size cap while bytes arrive. The non-block
+          # form reads the whole body into memory first (making
+          # body_io raise and the cap useless) — with it, every
+          # remote fetch silently failed.
+          client.exec(request_for(uri, proxy)) do |response|
+            STDERR.puts "fetch status=#{response.status}" if ENV["LITEPDF_DEBUG"]?
+            case response.status
+            when .redirection?
+              location = response.headers["Location"]?
+              return unless location
+              uri = uri.resolve(location)
+            when .success?
+              return read_capped(response.body_io, MAX_IMAGE_BYTES)
+            else
+              return
+            end
           end
         rescue e
           STDERR.puts "fetch EXC #{e.class}: #{e.message}" if ENV["LITEPDF_DEBUG"]?
@@ -739,6 +843,67 @@ module Markd
       nil
     rescue
       nil
+    end
+
+    private def self.direct_client(uri : URI) : HTTP::Client
+      client = HTTP::Client.new(uri)
+      client.read_timeout = 15.seconds
+      client.connect_timeout = 15.seconds
+      client
+    end
+
+    # Dials the proxy and returns a client bound to it: plain-http
+    # targets reuse the proxy socket as-is (requests go out in
+    # absolute form, see request_for), https targets get a CONNECT
+    # tunnel wrapped in TLS to the origin. An https proxy URL wraps
+    # the connection to the proxy itself in TLS first.
+    private def self.proxied_client(uri : URI, proxy : URI) : HTTP::Client?
+      host = uri.host
+      proxy_host = proxy.host
+      return if host.nil? || host.empty? || proxy_host.nil? || proxy_host.empty?
+      begin
+        socket = TCPSocket.new(proxy_host, effective_port(proxy), connect_timeout: 15.seconds)
+        socket.read_timeout = 15.seconds
+        if proxy.scheme.try(&.downcase) == "https"
+          socket = OpenSSL::SSL::Socket::Client.new(socket, hostname: proxy_host, sync_close: true)
+          socket.read_timeout = 15.seconds
+        end
+        port = effective_port(uri)
+        if uri.scheme.try(&.downcase) == "https"
+          return unless connect_via_proxy(socket, host, port, proxy)
+          tunnel = OpenSSL::SSL::Socket::Client.new(socket, hostname: host, sync_close: true)
+          tunnel.read_timeout = 15.seconds
+          return HTTP::Client.new(tunnel, host, port)
+        end
+        HTTP::Client.new(socket, host, port)
+      rescue e
+        STDERR.puts "proxy EXC #{e.class}: #{e.message}" if ENV["LITEPDF_DEBUG"]?
+        nil
+      end
+    end
+
+    private def self.connect_via_proxy(socket : IO, host : String, port : Int32, proxy : URI) : Bool
+      request = HTTP::Request.new("CONNECT", "#{host}:#{port}")
+      request.headers["Host"] = "#{host}:#{port}"
+      proxy_authorization(proxy).try { |auth| request.headers["Proxy-Authorization"] = auth }
+      request.to_io(socket)
+      socket.flush
+      response = HTTP::Client::Response.from_io(socket, ignore_body: true)
+      response.status.success?
+    rescue e
+      STDERR.puts "proxy CONNECT EXC #{e.class}: #{e.message}" if ENV["LITEPDF_DEBUG"]?
+      false
+    end
+
+    private def self.request_for(uri : URI, proxy : URI?) : HTTP::Request
+      # Through a proxy, plain-http requests must name the origin in
+      # absolute form so the proxy knows what to dial; tunneled https
+      # requests use origin-form inside the tunnel, like direct ones.
+      target = proxy && uri.scheme.try(&.downcase) == "http" ? uri.to_s : uri.request_target
+      request = HTTP::Request.new("GET", target)
+      request.headers["Host"] = authority(uri)
+      proxy.try { |chosen| proxy_authorization(chosen).try { |auth| request.headers["Proxy-Authorization"] = auth } }
+      request
     end
 
     # One byte past the cap is read to detect an oversized body; it is

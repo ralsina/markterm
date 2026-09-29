@@ -146,8 +146,11 @@ mechanism (via [docopt-config](https://github.com/ralsina/docopt-config)).
 Every option can be set in four places, in decreasing precedence:
 
 1. the command line (e.g. `--width 60`)
-2. environment variables prefixed with the tool's name (e.g. `MARKTERM_WIDTH=60`, `MARKPDF_STYLE=book`)
-3. a YAML config file: `~/.config/markterm/config.yml`, `~/.config/markmark/config.yml` or `~/.config/markpdf/config.yml` (honoring `$XDG_CONFIG_HOME`)
+2. environment variables prefixed with the tool's name
+   (e.g. `MARKTERM_WIDTH=60`, `MARKPDF_STYLE=book`)
+3. a YAML config file: `~/.config/markterm/config.yml`,
+   `~/.config/markmark/config.yml` or `~/.config/markpdf/config.yml`
+   (honoring `$XDG_CONFIG_HOME`)
 4. the built-in defaults shown in the help
 
 Config file keys are the long option names, with underscores or dashes,
@@ -292,6 +295,14 @@ If you use "-" as the file argument, markpdf will read from stdin.
 Complete HTML documents (and .html files) are rendered directly,
 skipping the markdown conversion.
 Images are resolved relative to the input file's directory.
+Remote http(s) images honor the standard proxy variables — `HTTPS_PROXY`,
+`HTTP_PROXY` and `ALL_PROXY` (lowercase spellings win, and `user:pass@`
+in the proxy URL becomes proxy basic auth) — with `NO_PROXY` exempting
+hosts (`*` for everything, exact names, domain suffixes, optional
+`:port`). Plain-http images are requested in absolute form, https
+images travel through a CONNECT tunnel with the origin certificate
+verified as always; only http(s) proxies are supported, so `socks5://`
+URLs are ignored and those fetches stay direct.
 
 Options can also be set in ~/.config/markpdf/config.yml (keys are the
 long option names, e.g. "page-size: letter"; list-valued keys work for
@@ -466,7 +477,7 @@ so it is meant for demo traffic, not for heavy use.
 Limits (all env-tunable) keep the demo from being set on fire:
 
 | Variable | Default | Meaning |
-|----------|---------|---------|
+| ------- | ------- | ------- |
 | `MARKPDF_WEB_MAX_MARKDOWN_KB` | 512 | Largest accepted markdown body |
 | `MARKPDF_WEB_MAX_RENDER_SECONDS` | 30 | Render timeout, answers 503 |
 | `MARKPDF_WEB_MAX_QUEUE` | 8 | Waiting renders before answers turn 429 |
@@ -479,7 +490,12 @@ make the server talk to the network. Re-enable it with
 `MARKPDF_WEB_FETCH_IMAGES=1`; when it is on, images are only fetched
 from public http(s) hosts — loopback, private ranges and link-local
 addresses (cloud metadata included) are refused, redirects included —
-and anything bigger than the image cap is dropped. The CLI fetches by
+and anything bigger than the image cap is dropped. That screen applies
+to direct connections: if proxy variables (`HTTPS_PROXY` and friends)
+are set in the server's environment, fetches go through the proxy, the
+proxy does the resolving, and the screen is skipped — don't combine a
+proxy with `MARKPDF_WEB_FETCH_IMAGES=1` unless the proxy enforces the
+egress policy you want. The CLI fetches by
 default and can skip remote images with `--no-remote-images`.
 Local/relative image sources resolve against an empty directory, so
 server files are never reachable as "images". Temp PDFs are deleted
