@@ -74,10 +74,17 @@ jobs:
             -DPNG_TESTS=OFF -DPNG_TOOLS=OFF
           cmake --build /tmp/libpng-build
           cmake --install /tmp/libpng-build
+          # guarantee the "libpng" module name resolves in the prefix
+          ln -sf libpng16.pc "$deps/lib/pkgconfig/libpng.pc"
       - name: Build binaries
         run: |
           set -e
           deps="$HOME/ci-deps"
+          # pkg-config must resolve libpng to the static build above,
+          # not Homebrew's dylib (the linker follows whichever -L wins;
+          # Homebrew's pkg-config dir is the runner default). Crystal's
+          # install action appends its own openssl path, which stays.
+          export PKG_CONFIG_PATH="$deps/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
           export LIBRARY_PATH="$deps/lib"
           export CPATH="$deps/include${CPATH:+:$CPATH}"
           export CMAKE_PREFIX_PATH="$deps"
