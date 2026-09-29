@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.0] - 2026-09-29
+
+### 🚀 Features
+
+- *(pdf)* Honor proxy environment variables when fetching remote images
+
+### 🐛 Bug Fixes
+
+- *(pdf)* Route remote SVGs through the capped, SSRF-checked fetcher
+
+### 🚜 Refactor
+
+- *(markpdf)* Polish pass on CLI, page sizes and web hardening
+
 ## [0.13.0] - 2026-09-08
 
 ### 🚀 Features
@@ -15,6 +29,10 @@ All notable changes to this project will be documented in this file.
 
 - Keep page cuts from slicing line descenders onto the next page
 - Only break pages at block and line-box boundaries
+
+### 🔖 Releases
+
+- Release v0.13.0
 
 ### 📚 Documentation
 
@@ -158,7 +176,8 @@ All notable changes to this project will be documented in this file.
 - *(markpdf)* Draw non-BMP codepoints (emoji!) through alternate CIDs
 - *(markpdf)* Continuation table rows keep their top border
 - *(markpdf)* Clean border rules at table page cuts
-- *(markpdf)* Surface image failures, correct alpha on themed pages, guard the C boundary
+- *(markpdf)* Surface image failures, correct alpha on themed pages,
+  guard the C boundary
 - *(markpdf)* Spec coverage for emoji CIDs, table page cuts, and crash paths
 - *(markterm)* Measure display width, tolerate parser data gaps
 - *(markterm)* Readability pass on math, links, images, headings, code
