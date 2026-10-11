@@ -8,12 +8,13 @@ cd "$(dirname "$0")"
 mkdir -p build
 cd build
 
-# the patch lives one directory up (ext/), next to this script; the
+# the patches live one directory up (ext/), next to this script; the
 # absolute path keeps both the staleness test and `git -C libharu
 # apply` working regardless of the current directory
 PATCH="$(cd .. && pwd)/libharu-cid-fixes.patch"
+PATCH2="$(cd .. && pwd)/libharu-actualtext.patch"
 
-if [ -f libhpdf.a ] && [ ! "$PATCH" -nt libhpdf.a ]; then
+if [ -f libhpdf.a ] && [ ! "$PATCH" -nt libhpdf.a ] && [ ! "$PATCH2" -nt libhpdf.a ]; then
   echo "libhpdf.a already present"
   exit 0
 fi
@@ -33,13 +34,16 @@ if [ ! -f "$PATCH" ]; then
   exit 1
 fi
 
-# A pristine v2.4.6 tree must take the patch; any failure is fatal.
+# A pristine v2.4.6 tree must take both patches; any failure is fatal.
 # (An earlier version of this script ran `git apply --check` with a
 # relative path that never resolved, silently skipped the patch, and
 # reported it as already applied.)
-# The patch is piped instead of passed as a file: checkouts on Windows
-# may give it CRLF endings, which makes `git apply` fail on every hunk.
+# The patches are piped instead of passed as files: checkouts on Windows
+# may give them CRLF endings, which makes `git apply` fail on every hunk.
+# The second one (ActualText marked content for the MicroTeX math) is
+# generated against the CID-patched tree, so the order matters.
 tr -d '\r' < "$PATCH" | git -C libharu apply -
+tr -d '\r' < "$PATCH2" | git -C libharu apply -
 # CMAKE_TOOLCHAIN_FILE is passed explicitly rather than read from the
 # environment because cmake only honors it as a -D option; it stays
 # unset for native builds.

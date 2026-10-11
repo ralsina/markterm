@@ -6,9 +6,11 @@ repos:
       rev: v4.6.0
       hooks:
           - id: trailing-whitespace
-            exclude: ^ext/(tinyxml2|stb)/
+            # vendored code stays byte-identical to upstream, and patch
+            # files must keep the exact bytes of their context lines
+            exclude: ^ext/(tinyxml2|stb)/|\.patch$
           - id: end-of-file-fixer
-            exclude: ^ext/(tinyxml2|stb)/
+            exclude: ^ext/(tinyxml2|stb)/|\.patch$
           - id: check-yaml
           - id: check-added-large-files
           - id: check-merge-conflict

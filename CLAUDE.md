@@ -119,6 +119,14 @@ puts Markd.to_md(source)    # Markdown-to-markdown
   glyph fidelity depends on loading the exact res TTFs — stb_truetype
   only supplies outlines (drawn as filled bezier paths) and \text{}
   advances. tinyxml2 is vendored in `ext/tinyxml2/` for the XML.
+- The formula ink carries its LaTeX source as PDF ActualText
+  (`/Span << /ActualText (...) >> BDC … EMC`, from a small libharu
+  patch, `ext/libharu-actualtext.patch`, applied by build-libharu.sh
+  after the CID patch): copying, searching and screen readers get the
+  source instead of nothing. Each span also draws one invisible
+  anchor glyph (base-14 Helvetica, rendering mode 3) because poppler's
+  text extractor only substitutes ActualText for spans that contain a
+  text-showing operation.
 - `make -C ext test` builds `build/litepdf_test`, the standalone HTML
   driver; with `LITEPDF_TEST_MATH='...'` it pre-registers one formula
   so the file can use `math:0`.

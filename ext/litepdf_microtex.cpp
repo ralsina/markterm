@@ -691,6 +691,7 @@ std::string find_res_dir()
 
 std::mutex g_registry_mutex;
 std::vector<tex::TeXRender*> g_renders;
+std::vector<std::string> g_sources;  // LaTeX source per id, for ActualText
 std::map<std::string, int> g_render_ids;
 const size_t kMaxRenders = 4096;
 
@@ -783,11 +784,13 @@ extern "C" int litepdf_math_register(const char* latex, float text_size, float w
         // drop everything and reparse on demand.
         for (tex::TeXRender* old : g_renders) delete old;
         g_renders.clear();
+        g_sources.clear();
         g_render_ids.clear();
     }
 
     const int id = (int)g_renders.size();
     g_renders.push_back(render);
+    g_sources.push_back(latex);
     g_render_ids[key] = id;
     *out_width = (float)render->getWidth();
     *out_height = (float)render->getHeight();
@@ -804,21 +807,43 @@ extern "C" int litepdf_math_size(int id, float* out_width, float* out_height)
     return 0;
 }
 
-extern "C" void litepdf_math_draw(void* page_ptr, int id, float x, float top, float width)
+extern "C" void litepdf_math_draw(void* page_ptr, void* anchor_font, int id, float x, float top, float width)
 {
     tex::TeXRender* render = nullptr;
+    std::string source;
     {
         std::lock_guard<std::mutex> lock(g_registry_mutex);
         if (id < 0 || (size_t)id >= g_renders.size() || !g_renders[id]) return;
         render = g_renders[id];
+        if ((size_t)id < g_sources.size()) source = g_sources[id];
     }
     HPDF_Page page = (HPDF_Page)page_ptr;
     if (!page || width <= 0) return;
     const float scale = width / (float)render->getWidth();
     if (getenv("LITEPDF_DEBUG"))
         std::fprintf(stderr, "math draw id=%d x=%.1f top=%.1f w=%.1f scale=%.4f\n", id, x, top, width, scale);
+    // The formula is ink, not text: mark the span with the LaTeX
+    // source as its ActualText so copying, searching and screen
+    // readers see the source instead of nothing.
+    HPDF_Page_BeginActualText(page, source.c_str());
+    if (anchor_font)
+    {
+        // Poppler only substitutes ActualText on spans containing at
+        // least one text-showing operation (it needs the glyph extents
+        // to place the replacement): draw an invisible anchor glyph at
+        // the formula baseline. Tr reverts to fill explicitly — gstate
+        // restore semantics differ across producers.
+        const float baseline = top + ((float)render->getHeight() - (float)render->getDepth()) * scale;
+        HPDF_Page_SetFontAndSize(page, (HPDF_Font)anchor_font, 1);
+        HPDF_Page_BeginText(page);
+        HPDF_Page_SetTextRenderingMode(page, HPDF_INVISIBLE);
+        HPDF_Page_TextOut(page, x, baseline, "x");
+        HPDF_Page_SetTextRenderingMode(page, HPDF_FILL);
+        HPDF_Page_EndText(page);
+    }
     Graphics2D_hpdf g2(page, x, top, scale);
     render->draw(g2, 0, 0);
+    HPDF_Page_EndActualText(page);
 }
 
 #else  // !WITH_MICROTEX
@@ -838,7 +863,7 @@ extern "C" int litepdf_math_size(int, float*, float*)
     return -1;
 }
 
-extern "C" void litepdf_math_draw(void*, int, float, float, float)
+extern "C" void litepdf_math_draw(void*, void*, int, float, float, float)
 {
 }
 

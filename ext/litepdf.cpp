@@ -1964,8 +1964,13 @@ class PdfContainer : public litehtml::document_container
             {
                 return;
             }
+            // Not cached: the pipeline swaps libharu documents between
+            // measure/draw passes, and a font handle is only valid in
+            // the document that created it (HPDF_GetFont itself
+            // memoizes per document).
+            HPDF_Font anchor_font = HPDF_GetFont(pdf, "Helvetica", nullptr);
             const litehtml::position& box = layer.border_box;
-            litepdf_math_draw(context->page, atoi(url.c_str() + 5),
+            litepdf_math_draw(context->page, anchor_font, atoi(url.c_str() + 5),
                               context->pdf_x(px(box.x)), context->pdf_y(px(box.y)), px(box.width));
             return;
         }

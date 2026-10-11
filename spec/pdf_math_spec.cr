@@ -80,4 +80,23 @@ describe "pdf math rendering" do
       File.delete?(path)
     end
   end
+
+  it "carries the LaTeX source as ActualText for copy and search" do
+    pending!("MicroTeX vector math not available") unless MathRender.vector_math?
+    extractor = pdftotext_path
+    pending!("pdftotext not installed") unless extractor
+    source = "Plain sentence.\n\n$$\\frac{a}{b} + \\sqrt{c}$$\n"
+    path = File.tempname("markpdf_math", ".pdf")
+    Markd::Pdf.render(source, path, Markd::Options.new)
+    begin
+      text = IO::Memory.new
+      Process.run(extractor, [path, "-"], output: text)
+      extracted = text.to_s
+      extracted.should contain("Plain sentence.")
+      extracted.should contain("\\frac{a}{b}")
+      extracted.should contain("\\sqrt{c}")
+    ensure
+      File.delete?(path)
+    end
+  end
 end

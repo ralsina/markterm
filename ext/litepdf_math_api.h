@@ -28,8 +28,13 @@ int litepdf_math_size(int id, float* out_width, float* out_height);
 // Draw a registered formula on a libharu page. (x, top) is the
 // top-left corner in page coordinates, width the box width in
 // points; the formula is uniformly scaled to the width and its
-// depth hangs below the box top accordingly.
-void litepdf_math_draw(void* page, int id, float x, float top, float width);
+// depth hangs below the box top accordingly. The span is wrapped in
+// marked content carrying the formula's LaTeX source as ActualText
+// (copy/search/screen readers see the source), and anchor_font — any
+// HPDF_Font, e.g. base-14 Helvetica — is used for one invisible
+// glyph inside the span: poppler's text extractor only substitutes
+// ActualText for spans that contain a text-showing operation.
+void litepdf_math_draw(void* page, void* anchor_font, int id, float x, float top, float width);
 
 #ifdef __cplusplus
 }
