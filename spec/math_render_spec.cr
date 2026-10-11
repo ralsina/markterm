@@ -55,6 +55,21 @@ describe MathRender do
       MathRender.rewrite_html(html).should eq(html)
     end
 
+    it "rewrites digit-leading inline math that carries TeX markup" do
+      rewritten = MathRender.rewrite_html("<p>A $2 \\times 2$ matrix</p>")
+      rewritten.should_not contain("$2")
+      if MathRender.vector_math?
+        rewritten.should contain("src=\"math:")
+      else
+        rewritten.should contain("2 × 2")
+      end
+    end
+
+    it "leaves currency ranges without markup alone" do
+      html = "<p>It costs $5-$10 here.</p>"
+      MathRender.rewrite_html(html).should eq(html)
+    end
+
     it "skips code spans" do
       html = "<p><code>$x^2$</code> and $y^3$</p>"
       rewritten = MathRender.rewrite_html(html)
@@ -66,6 +81,10 @@ describe MathRender do
   describe ".rewrite_markdown_math" do
     it "converts inline math to unicode text" do
       MathRender.rewrite_markdown_math("Inline $E = mc^2$ here").should eq("Inline E = mc² here")
+    end
+
+    it "converts digit-leading inline math with markup" do
+      MathRender.rewrite_markdown_math("A $2 \\times 2$ matrix").should eq("A 2 × 2 matrix")
     end
 
     it "leaves fenced code blocks alone" do

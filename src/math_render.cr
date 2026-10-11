@@ -164,8 +164,12 @@ module MathRender
   # styled span.
   SEGMENT_SPLIT = Regex.new("(<code[^>]*>[\\s\\S]*?</code>|<pre[^>]*>[\\s\\S]*?</pre>|<[^>]*>)")
   DISPLAY_MATH  = Regex.new("\\$\\$([\\s\\S]*?)\\$\\$")
-  INLINE_MATH   = Regex.new("\\$(?=[^\\s\\d])([^$\\n]*?[^\\s$])\\$(?!\\d)")
-  PLACEHOLDER   = Regex.new("\uE000(\\d+)\uE001")
+  # Inline math must not open on whitespace or a digit (the "costs $5
+  # and $10" guard) — except when the content carries TeX markup
+  # (\, ^, _, {), because currency ranges like "$5-$10" never do while
+  # math like "$2 \times 2$" or "$10^{23}$" often starts with a digit.
+  INLINE_MATH = Regex.new("\\$(?:(?=[^\\s\\d])|(?=[^\\s][^$\\n]*[\\\\^_{}]))([^$\\n]*?[^\\s$])\\$(?!\\d)")
+  PLACEHOLDER = Regex.new("\uE000(\\d+)\uE001")
 
   # Whether the MicroTeX vector bridge is compiled in and initialized
   # successfully (resource tree found or extracted). The first call
