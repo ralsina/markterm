@@ -12,7 +12,7 @@
        gradient over a repeating SVG of scattered little documents. */
     .hero {
       text-align: center;
-      padding: 4rem 2rem;
+      padding: 1.25rem 1.5rem 1rem;
       border-radius: 1em;
       overflow: hidden;
       background-image:
@@ -25,18 +25,31 @@
       background-size: cover, 340px 340px;
       background-repeat: no-repeat, repeat;
       background-position: center, top left;
-      margin-bottom: 2rem;
+      margin-bottom: 1.25rem;
     }
-    .hero h1 { margin-bottom: .5rem; }
-    .hero .lead { font-size: 1.15rem; max-width: 46rem; margin: 0 auto 1.5rem; }
+    .hero h1 { margin-bottom: .5rem; font-size: clamp(1.7rem, 4vw, 2.1rem); }
+    .hero .lead { font-size: 1.1rem; max-width: 52rem; margin: 0 auto .5rem; }
+    .hero-links { margin: 0; font-size: .95rem; }
     .grid-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
     .grid-features article { margin: 0; }
     .grid-features h3 { font-size: 1rem; margin-bottom: .25rem; }
     .grid-features p { margin-bottom: 0; font-size: .9rem; }
+    /* The playground is the point of the page: it starts right under the
+       slim hero, and its panes are sized so the whole workbench fits the
+       first screen on a typical laptop. */
+    #playground h2 { margin-bottom: .5rem; }
+    #playground > p { margin-bottom: 1rem; }
+    .workbench {
+      border: 1px solid var(--pico-card-border-color, var(--pico-muted-border-color));
+      border-radius: var(--pico-border-radius);
+      background: var(--pico-card-background-color, var(--pico-background-color));
+      padding: 1rem;
+    }
+    .workbench .toolbar { margin-bottom: .75rem; }
     .playground-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
     @media (max-width: 920px) { .playground-grid { grid-template-columns: 1fr; } }
-    #markdown { font-family: var(--pico-font-family-monospace); font-size: .85rem; height: 58vh; min-height: 20rem; resize: vertical; margin-bottom: .5rem; }
-    #preview { width: 100%; height: 78vh; min-height: 24rem; border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); background: #fff; }
+    #markdown { font-family: var(--pico-font-family-monospace); font-size: .85rem; height: clamp(15rem, calc(100dvh - 29rem), 40rem); resize: vertical; margin-bottom: .5rem; }
+    #preview { width: 100%; height: clamp(15rem, calc(100dvh - 29rem), 40rem); border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); background: #fff; }
     .toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .5rem; }
     .toolbar select { width: auto; margin: 0; }
     .toolbar [role="button"], .toolbar button { margin: 0; }
@@ -44,7 +57,7 @@
     .toolbar .toolbar-check input { width: auto; margin: 0; }    .knob-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .75rem 1.25rem; }
     .knob-grid label, .knob-grid > label { display: flex; flex-direction: column; gap: .3rem; margin-bottom: 0; }
     .knob-grid input, .knob-grid select { margin-bottom: 0; }
-    [role="tablist"] { display: flex; gap: .25rem; border-bottom: 1px solid var(--pico-muted-border-color); margin: 1.5rem 0 1rem; overflow-x: auto; }
+    [role="tablist"] { display: flex; gap: .25rem; border-bottom: 1px solid var(--pico-muted-border-color); margin: 1.25rem 0 .75rem; overflow-x: auto; }
     [role="tab"] { width: auto; margin: 0; padding: .4rem .9rem; background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; box-shadow: none; color: var(--pico-muted-color); font-weight: 500; }
     [role="tab"]:hover { color: var(--pico-primary); border-bottom-color: var(--pico-muted-border-color); }
     [role="tab"][aria-selected="true"] { color: var(--pico-primary); border-bottom-color: var(--pico-primary); font-weight: 600; }
@@ -67,6 +80,7 @@
     .knob-hint { font-size: .85rem; color: var(--pico-muted-color); margin: .5rem 0 0; }
     #error-box { display: none; margin-top: .5rem; }
     #error-box pre { white-space: pre-wrap; margin: 0; }
+    nav.container ul { flex-wrap: wrap; }
     section { margin-bottom: 3rem; }
     code { font-size: .85em; }
     footer { text-align: center; padding: 1.5rem 0; }
@@ -88,12 +102,143 @@
   <main class="container">
     <div class="hero">
       <h1>Markdown in. Beautiful PDF out.</h1>
-      <p class="lead">One static binary, real typography, zero fuss.</p>
-      <a href="#playground" role="button">Try it live</a>
-      <a href="https://github.com/ralsina/markterm" role="button" class="outline">Source on GitHub</a>
+      <p class="lead">One static binary, real typography, zero fuss — try it
+      below, no install needed.</p>
+      <p class="hero-links">
+        <a href="#install">Install the CLI</a> ·
+        <a href="https://github.com/ralsina/markterm">Source on GitHub</a>
+      </p>
     </div>
 
+    <section id="playground">
+      <h2>Playground</h2>
+      <p>Edit the markdown on the left; the PDF on the right updates as you
+      type. Documents live in your browser and can be shared as a link;
+      rendering happens in memory on this server — nothing is kept. Unlike
+      the CLI, the demo doesn't fetch remote images.</p>
+      <noscript><p role="alert">The playground needs JavaScript to talk to the
+      renderer. The CLI, meanwhile, needs nothing at all.</p></noscript>
+
+      <div class="workbench">
+        <div class="toolbar">
+          <select id="sample-select" aria-label="Load a sample document">
+            <option value="">Samples…</option>
+          </select>
+          <button id="render-btn" class="primary" type="button">Render</button>
+          <button id="share-btn" class="outline" type="button">Copy link</button>
+          <a id="download-link" role="button" class="outline" href="#" download="markpdf.pdf">Download</a>
+          <label class="toolbar-check"><input type="checkbox" id="auto-render" checked> Auto-render</label>
+        </div>
+
+        <div class="playground-grid">
+          <div>
+            <textarea id="markdown" spellcheck="false" aria-label="Markdown source"></textarea>
+            <p id="status">Ready.</p>
+            <div id="error-box" role="alert"><article><pre></pre></article></div>
+          </div>
+
+          <div>
+            <iframe id="preview" title="PDF preview"></iframe>
+            <p><a id="open-tab" href="#" target="_blank" rel="noopener">Open the PDF in its own tab</a></p>
+          </div>
+        </div>
+
+        <div role="tablist" aria-label="Styling knobs">
+          <button type="button" role="tab" id="tab-document" aria-controls="panel-document" aria-selected="true">Document</button>
+          <button type="button" role="tab" id="tab-themes" aria-controls="panel-themes" aria-selected="false">Themes</button>
+          <button type="button" role="tab" id="tab-text" aria-controls="panel-text" aria-selected="false">Text &amp; pages</button>
+          <button type="button" role="tab" id="tab-advanced" aria-controls="panel-advanced" aria-selected="false">Advanced</button>
+        </div>
+
+        <div role="tabpanel" id="panel-document" aria-labelledby="tab-document">
+          <div class="knob-grid">
+            <label>Style
+              <select id="style">
+                <% styles.each do |style| %>
+                <option value="<%= style[:name] %>"><%= style[:name] %> — <%= style[:description] %></option>
+                <% end %>
+              </select>
+            </label>
+            <label>Page size
+              <select id="page-size">
+                <% page_size_names.each do |size| %>
+                <option value="<%= size %>"<%= size == "a4" ? " selected" : "" %>><%= size %></option>
+                <% end %>
+              </select>
+            </label>
+            <label>Custom size (WxH mm)
+              <input type="text" id="page-size-custom" placeholder="e.g. 100x200">
+            </label>
+            <label>Margin (mm)
+              <input type="number" id="margin" min="0" max="100" step="1" value="20">
+            </label>
+          </div>
+          <div class="checks">
+            <label><input type="checkbox" id="pageless"> Pageless (one tall page)</label>
+          </div>
+          <p id="pageless-hint" class="knob-hint" hidden>
+            Pageless output is one tall screen page: headers and footers don't
+            apply. Uncheck pageless to use them.
+          </p>
+        </div>
+
+        <div role="tabpanel" id="panel-themes" aria-labelledby="tab-themes" hidden>
+          <div class="knob-grid">
+            <label>Page theme
+              <select id="theme">
+                <option value="">— none —</option>
+                <% page_themes.each do |page_theme| %>
+                <option value="<%= page_theme %>"><%= page_theme %></option>
+                <% end %>
+              </select>
+            </label>
+            <label>Code theme
+              <select id="code-theme">
+                <option value="">— auto —</option>
+                <% code_themes.each do |code_theme| %>
+                <option value="<%= code_theme %>"><%= code_theme %></option>
+                <% end %>
+              </select>
+            </label>
+          </div>
+          <p class="knob-hint">Page themes are the base16 roster; with no explicit
+          code theme, the dark style picks a dark one automatically.</p>
+        </div>
+
+        <div role="tabpanel" id="panel-text" aria-labelledby="tab-text" hidden>
+          <div class="knob-grid">
+            <label>Language
+              <select id="language">
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+              </select>
+            </label>
+            <label>Header
+              <input type="text" id="header" placeholder="Page %p of %t" maxlength="200">
+            </label>
+            <label>Footer
+              <input type="text" id="footer" placeholder="markpdf playground" maxlength="200">
+            </label>
+          </div>
+          <div class="checks">
+            <label><input type="checkbox" id="hyphenate"> Hyphenate</label>
+          </div>
+          <p class="knob-hint">The language is used for hyphenation. Header and
+          footer placeholders: <code>%p</code> page number, <code>%t</code> total
+          pages.</p>
+        </div>
+
+        <div role="tabpanel" id="panel-advanced" aria-labelledby="tab-advanced" hidden>
+          <label for="custom-css">Custom CSS</label>
+          <textarea id="custom-css" spellcheck="false" placeholder='h1 { color: purple; } — layered on top of the style. Try h2 { page-break-before: always } for chapter breaks.' rows="5"></textarea>
+          <p class="knob-hint">Layered on top of the selected style; the last
+          declaration wins, just like repeatable <code>--css</code> in the CLI.</p>
+        </div>
+      </div>
+    </section>
+
     <section id="features">
+      <h2>Features</h2>
       <div class="grid-features">
         <article>
           <h3>GitHub Flavoured Markdown</h3>
@@ -113,131 +258,6 @@
           with justified prose, proper hyphenation, and headers and footers
           that know the page number.</p>
         </article>
-      </div>
-    </section>
-
-    <section id="playground">
-      <h2>Playground</h2>
-      <p>Edit the markdown, tweak the knobs, and the PDF updates. Documents are
-      saved in your browser and can be shared as a link. Rendering happens on
-      this server: your markdown is uploaded with the request, rendered in
-      memory, and the PDF is streamed straight back — it never touches disk.
-      The demo doesn't fetch remote images — the CLI does.</p>
-      <noscript><p role="alert">The playground needs JavaScript to talk to the
-      renderer. The CLI, meanwhile, needs nothing at all.</p></noscript>
-
-      <div class="playground-grid">
-        <div>
-          <div class="toolbar">
-            <select id="sample-select" aria-label="Load a sample document">
-              <option value="">Samples…</option>
-            </select>
-            <button id="render-btn" class="primary" type="button">Render</button>
-            <button id="share-btn" class="outline" type="button">Copy link</button>
-            <a id="download-link" role="button" class="outline" href="#" download="markpdf.pdf">Download</a>
-            <label class="toolbar-check"><input type="checkbox" id="auto-render" checked> Auto-render</label>
-          </div>
-          <textarea id="markdown" spellcheck="false" aria-label="Markdown source"></textarea>
-          <p id="status">Ready.</p>
-          <div id="error-box" role="alert"><article><pre></pre></article></div>
-        </div>
-
-        <div>
-          <iframe id="preview" title="PDF preview"></iframe>
-          <p><a id="open-tab" href="#" target="_blank" rel="noopener">Open the PDF in its own tab</a></p>
-        </div>
-      </div>
-
-      <div role="tablist" aria-label="Styling knobs">
-        <button type="button" role="tab" id="tab-document" aria-controls="panel-document" aria-selected="true">Document</button>
-        <button type="button" role="tab" id="tab-themes" aria-controls="panel-themes" aria-selected="false">Themes</button>
-        <button type="button" role="tab" id="tab-text" aria-controls="panel-text" aria-selected="false">Text &amp; pages</button>
-        <button type="button" role="tab" id="tab-advanced" aria-controls="panel-advanced" aria-selected="false">Advanced</button>
-      </div>
-
-      <div role="tabpanel" id="panel-document" aria-labelledby="tab-document">
-        <div class="knob-grid">
-          <label>Style
-            <select id="style">
-              <% styles.each do |style| %>
-              <option value="<%= style[:name] %>"><%= style[:name] %> — <%= style[:description] %></option>
-              <% end %>
-            </select>
-          </label>
-          <label>Page size
-            <select id="page-size">
-              <% page_size_names.each do |size| %>
-              <option value="<%= size %>"<%= size == "a4" ? " selected" : "" %>><%= size %></option>
-              <% end %>
-            </select>
-          </label>
-          <label>Custom size (WxH mm)
-            <input type="text" id="page-size-custom" placeholder="e.g. 100x200">
-          </label>
-          <label>Margin (mm)
-            <input type="number" id="margin" min="0" max="100" step="1" value="20">
-          </label>
-        </div>
-        <div class="checks">
-          <label><input type="checkbox" id="pageless"> Pageless (one tall page)</label>
-        </div>
-        <p id="pageless-hint" class="knob-hint" hidden>
-          Pageless output is one tall screen page: headers and footers don't
-          apply. Uncheck pageless to use them.
-        </p>
-      </div>
-
-      <div role="tabpanel" id="panel-themes" aria-labelledby="tab-themes" hidden>
-        <div class="knob-grid">
-          <label>Page theme
-            <select id="theme">
-              <option value="">— none —</option>
-              <% page_themes.each do |page_theme| %>
-              <option value="<%= page_theme %>"><%= page_theme %></option>
-              <% end %>
-            </select>
-          </label>
-          <label>Code theme
-            <select id="code-theme">
-              <option value="">— auto —</option>
-              <% code_themes.each do |code_theme| %>
-              <option value="<%= code_theme %>"><%= code_theme %></option>
-              <% end %>
-            </select>
-          </label>
-        </div>
-        <p class="knob-hint">Page themes are the base16 roster; with no explicit
-        code theme, the dark style picks a dark one automatically.</p>
-      </div>
-
-      <div role="tabpanel" id="panel-text" aria-labelledby="tab-text" hidden>
-        <div class="knob-grid">
-          <label>Language
-            <select id="language">
-              <option value="en">English</option>
-              <option value="es">Spanish</option>
-            </select>
-          </label>
-          <label>Header
-            <input type="text" id="header" placeholder="Page %p of %t" maxlength="200">
-          </label>
-          <label>Footer
-            <input type="text" id="footer" placeholder="markpdf playground" maxlength="200">
-          </label>
-        </div>
-        <div class="checks">
-          <label><input type="checkbox" id="hyphenate"> Hyphenate</label>
-        </div>
-        <p class="knob-hint">The language is used for hyphenation. Header and
-        footer placeholders: <code>%p</code> page number, <code>%t</code> total
-        pages.</p>
-      </div>
-
-      <div role="tabpanel" id="panel-advanced" aria-labelledby="tab-advanced" hidden>
-        <label for="custom-css">Custom CSS</label>
-        <textarea id="custom-css" spellcheck="false" placeholder='h1 { color: purple; } — layered on top of the style. Try h2 { page-break-before: always } for chapter breaks.' rows="5"></textarea>
-        <p class="knob-hint">Layered on top of the selected style; the last
-        declaration wins, just like repeatable <code>--css</code> in the CLI.</p>
       </div>
     </section>
 
