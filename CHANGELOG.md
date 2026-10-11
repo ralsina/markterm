@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.15.0] - 2026-10-11
+
+### 🚀 Features
+
+- *(pdf)* Typeset math as vector graphics via MicroTeX
+- *(pdf)* Carry math LaTeX source as PDF ActualText
+
+### 🐛 Bug Fixes
+
+- *(math)* Recognize digit-leading inline math with TeX markup
+
 ## [0.14.0] - 2026-09-29
 
 ### 🚀 Features
@@ -11,10 +22,19 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - *(pdf)* Route remote SVGs through the capped, SSRF-checked fetcher
+- *(pdf)* Update linker flags for PNG
+
+### 🔖 Releases
+
+- Release v0.14.0
 
 ### 🚜 Refactor
 
 - *(markpdf)* Polish pass on CLI, page sizes and web hardening
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* Resolve libpng via the static prefix on macOS
 
 ## [0.13.0] - 2026-09-08
 
