@@ -15,7 +15,8 @@ depends on libharu and the submodules.
 
 * [Crystal](https://crystal-lang.org) (see `shard.yml` for the minimum
   version)
-* A C and C++ toolchain (`gcc` or `clang`, plus `make`)
+* A C and C++ toolchain (`gcc` or `clang`, plus `make`; the MicroTeX
+  math engine needs C++17)
 * git (the sources use submodules)
 * libharu development files for `markpdf` (`pacman -S libharu`,
   `apt install libharu-dev`, ...)
@@ -33,8 +34,12 @@ git submodule update --init
 This fetches:
 
 * `ext/litehtml` — HTML parsing and layout (required for `markpdf`)
-* `ext/libtexprintf` — LaTeX-to-Unicode-art renderer (required only
-  for the GPL math build; see below)
+* `ext/microtex` — MIT-licensed LaTeX typesetting engine used by
+  `markpdf` to draw math as vector graphics (required for the default
+  math build)
+* `ext/libtexprintf` — LaTeX-to-Unicode-art renderer for the terminal
+  and the non-vector math fallback (required only for the GPL math
+  build; see below)
 
 ## Standard build
 
@@ -45,8 +50,18 @@ shards build
 
 That produces `bin/markterm`, `bin/markmark` and `bin/markpdf`.
 
-**License note:** the standard build links the GPL-3 libtexprintf for
-LaTeX math, which makes the resulting binaries effectively GPL-3 (the
+`markpdf` typesets math with MicroTeX and needs its resource tree
+(Computer Modern fonts + TeX metrics, ~2 MB) at runtime. The tree is
+looked up in this order: `$MARKPDF_MATH_RES`, a `math-res` directory
+installed next to the binary (`<prefix>/share/markterm/math-res`),
+`/usr/{,local/}/share/{markterm/math-res,clatexmath}` — and, failing
+all of those, a copy embedded into the binary is extracted to a temp
+directory, so the stock build needs no external files. Fonts embedded
+that way carry their own licenses (`ext/microtex/res/fonts/licences`).
+
+**License note:** the standard build additionally links the GPL-3
+libtexprintf for the terminal's ASCII math art (and the non-vector
+fallback), which makes the resulting binaries effectively GPL-3 (the
 project source itself stays MIT).
 
 ## Build without the GPL math (MIT binary)
@@ -60,10 +75,15 @@ make -C ext WITH_TEXMATH=0
 WITH_TEXMATH=0 shards build
 ```
 
-The only difference: display math (`$$…$$`) renders through a Unicode
-styling pass instead of libtexprintf's text art. Everything else is
-identical. When switching the flag, rebuild the shim (`make -C ext
-clean` is the safe way) so the objects and the license agree.
+The differences: display math (`$$…$$`) in the terminal renders
+through a Unicode styling pass instead of libtexprintf's text art,
+and `markpdf` loses that art as its non-MicroTeX fallback. Everything
+else (including the MicroTeX vector math in `markpdf`) is identical.
+When switching the flag, rebuild the shim (`make -C ext clean` is the
+safe way) so the objects and the license agree.
+
+`WITH_MICROTEX=0` (again in both steps) disables the vector engine
+too, if you want a binary with no math resources embedded at all.
 
 ## Tests
 
@@ -90,6 +110,10 @@ releases.
   missing although the Crystal side expects them: you disabled
   `WITH_TEXMATH` in one step and not the other. Rerun both steps with
   the same value.
+* **`markpdf: math resources not found`** — the binary was built
+  without the embedded resources (`WITH_MICROTEX=0`) and no resource
+  directory was found; point `$MARKPDF_MATH_RES` at a copy of
+  `ext/microtex/res`.
 * **`Invalid memory access` while rendering math** — you are running a
   binary older than the writable-copy fix in `litepdf_render_math`;
   rebuild.

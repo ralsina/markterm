@@ -42,8 +42,9 @@ Done recently (markpdf):
 * ✅ Wide tables scale to fit and split across pages at row boundaries
 * ✅ Collapse-style table borders and keep-with-next pagination
 * ✅ Superscript and subscript via inline HTML
-* ✅ Math: styled Unicode pass (always) + optional libtexprintf text
-  art for display math (GPL build flag)
+* ✅ Math: true LaTeX typesetting as vector graphics in the PDF
+  ([MicroTeX](https://github.com/NanoMichael/MicroTex), MIT) + styled
+  Unicode / libtexprintf text art as fallbacks
 * ✅ Emoji and CJK rendering via font fallback (CID font embedding
   through a libharu patch)
 * ✅ Richer header/footer templating: `left|center|right` sections via
@@ -403,23 +404,23 @@ scaled down uniformly — zoom in your viewer; text stays vector-crisp.
 
 #### Math
 
-Markdown math (`$E = mc^2$` inline, `$$…$$` display) is rendered as
-styled Unicode: italic serif with real sub/superscripts and LaTeX
-commands mapped to symbols (∫ ∑ ∞ π ± ≤ …). For display math you can
-get true text-art rendering (integral signs with limits, fraction
-bars) by enabling the optional GPL-3 [libtexprintf](https://github.com/bartp5/libtexprintf)
-library — it lives in `ext/libtexprintf` as a git submodule:
+Markdown math (`$E = mc^2$` inline, `$$…$$` display) renders in the
+PDF as **true typeset math** — Computer Modern glyphs, real fractions,
+radicals, integrals with limits, matrices — drawn as vector graphics
+by an embedded [MicroTeX](https://github.com/NanoMichael/MicroTex)
+engine (MIT-licensed). Inline math aligns to the text baseline;
+display math is centered. MicroTeX's resource tree (CM fonts + TeX
+metrics, ~2 MB) is embedded in the binary, so no external files are
+needed; set `MARKPDF_MATH_RES` to point at a different copy.
 
-```bash
-git submodule update --init ext/libtexprintf
-make -C ext WITH_TEXMATH=1
-WITH_TEXMATH=1 shards build
-```
-
-Note the license trade-off: libtexprintf is GPL-3, and statically
-linking it makes the resulting markpdf binary effectively GPL-3. The
-default build does not use it, keeps your existing license, and renders
-math with the Unicode styling pass.
+The terminal renderer (markterm) keeps its math-ASCII-art pipeline
+via [libtexprintf](https://github.com/bartp5/libtexprintf), which
+also serves as markpdf's fallback when MicroTeX is disabled
+(`make -C ext WITH_MICROTEX=0`), with a plain Unicode styling pass as
+the last resort. Note the license trade-off: libtexprintf is GPL-3,
+and statically linking it (the default build does) makes the
+resulting binaries effectively GPL-3; build with `WITH_TEXMATH=0` for
+an MIT-only binary (see BUILDING.md).
 
 Text uses embedded TrueType fonts with full Unicode support: the shim
 matches the CSS `font-family` names against the fonts you pass with

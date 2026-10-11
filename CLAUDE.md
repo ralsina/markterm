@@ -94,3 +94,31 @@ puts Markd.to_md(source)    # Markdown-to-markdown
   only drawing). `spec/pdf_pagination_spec.cr` covers the gap: it
   renders multi-page documents and checks per-page text with pdftotext
   (pending-skipped when pdftotext is not installed).
+
+## MicroTeX math (markpdf)
+
+- `ext/microtex` (pinned submodule, upstream at NanoMichael/MicroTex,
+  MIT) typesets LaTeX math as vector graphics on the PDF page. The
+  bridge lives in `ext/litepdf_microtex.cpp`: it implements MicroTeX's
+  platform contract (`tex::Graphics2D` over an `HPDF_Page`,
+  `tex::Font`/`tex::TextLayout` over vendored stb_truetype,
+  `ext/stb/`) and keeps a registry of parsed formulas.
+- Integration is through `math:<id>` pseudo-images: the Crystal side
+  registers each formula (`MathRender.math_img` calls
+  `litepdf_math_register`, getting back width/height/depth) and emits
+  an `<img src="math:N">`; litepdf.cpp answers `get_image_size` from
+  the cached render and `draw_image` draws it as vectors. Inline math
+  is TeX text style with a baked `vertical-align: -depth` shift;
+  display math is display style, centered via a wrapper div.
+- MicroTeX's res tree (CM fonts + metrics XML) is embedded into
+  `liblitepdf.a` by `ext/gen-math-res.sh` (`.incbin`) and extracted to
+  a temp dir at runtime when no installed copy is found — see the
+  lookup order in `find_res_dir`. `WITH_MICROTEX=0` drops the whole
+  engine (Unicode/libtexprintf fallbacks take over).
+- Fonts: TeX layout metrics come from MicroTeX's XML resources, so
+  glyph fidelity depends on loading the exact res TTFs — stb_truetype
+  only supplies outlines (drawn as filled bezier paths) and \text{}
+  advances. tinyxml2 is vendored in `ext/tinyxml2/` for the XML.
+- `make -C ext test` builds `build/litepdf_test`, the standalone HTML
+  driver; with `LITEPDF_TEST_MATH='...'` it pre-registers one formula
+  so the file can use `math:0`.

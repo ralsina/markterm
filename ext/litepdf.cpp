@@ -12,6 +12,8 @@
 #include "litehtml/html_tag.h"
 #include "litehtml/string_id.h"
 
+#include "litepdf_math_api.h"
+
 #include <hpdf.h>
 #include <hpdf_error.h>
 
@@ -1929,6 +1931,18 @@ class PdfContainer : public litehtml::document_container
 
     void get_image_size(const char* src, const char* baseurl, litehtml::size& sz) override
     {
+        // "math:<id>" pseudo-images: layout comes from the cached
+        // MicroTeX render, registered by the Crystal side.
+        if (strncmp(src, "math:", 5) == 0)
+        {
+            float width = 0, height = 0;
+            if (litepdf_math_size(atoi(src + 5), &width, &height) == 0)
+            {
+                sz.width = (int)std::ceil(width);
+                sz.height = (int)std::ceil(height);
+            }
+            return;
+        }
         HPDF_Image image = load_image(src, baseurl);
         if (image)
         {
@@ -1941,6 +1955,20 @@ class PdfContainer : public litehtml::document_container
     void draw_image(litehtml::uint_ptr hdc, const litehtml::background_layer& layer, const std::string& url,
                     const std::string& base_url) override
     {
+        // "math:<id>" pseudo-images: draw the formula as vectors at
+        // the laid-out box (no raster, so no DPI audit either).
+        if (url.rfind("math:", 0) == 0)
+        {
+            DrawContext* context = ctx(hdc);
+            if (!context->page)
+            {
+                return;
+            }
+            const litehtml::position& box = layer.border_box;
+            litepdf_math_draw(context->page, atoi(url.c_str() + 5),
+                              context->pdf_x(px(box.x)), context->pdf_y(px(box.y)), px(box.width));
+            return;
+        }
         DrawContext* context = ctx(hdc);
         HPDF_Image image = load_image(url.c_str(), base_url.c_str());
         if (!image || !context->page)
@@ -2886,6 +2914,11 @@ static int render_pdf(const char* html, const char* css, float page_width_mm, fl
     if (errbuf && errbuf_len > 0)
     {
         errbuf[0] = '\0';
+    }
+    if (getenv("LITEPDF_DEBUG_HTML"))
+    {
+        std::fprintf(stderr, "=== litepdf html (%d bytes) ===\n%s\n=== litepdf css (%d bytes) ===\n%s\n",
+                     (int)std::strlen(html), html, css ? (int)std::strlen(css) : 0, css ? css : "");
     }
     HPDF_Doc pdf = HPDF_New(nullptr, nullptr);
     if (!pdf)

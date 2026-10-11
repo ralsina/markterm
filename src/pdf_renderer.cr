@@ -161,21 +161,25 @@ module Markd
         # markdown and HTML fragments.
         is_html = @html_input || Pdf.html_document?(source)
         background = is_html ? "" : Pdf.page_background(css)
+        # Geometry feeds the math rewriter: formulas wrap and size
+        # against the actual text column (the default stylesheet's
+        # body font is 11px, and 1px = 1pt in this pipeline).
+        page_width_mm, page_height_mm = Pdf.parse_page_size(@page_size)
+        margins = Pdf.parse_margins(@margins || @margin_mm.to_s)
+        math_wrap_width = (page_width_mm * 72.0 / 25.4 - margins.left - margins.right).to_f32
         if is_html
           # No markdown processing, no skeleton: the document keeps
           # its own styles and title.
           html = Pdf.process_images(source, @base_dir, temp_dir, converted)
           html = Pdf.inject_toc(Pdf.rewrite_heading_anchors(html), toc_html) if toc_html
         else
-          body_html = Pdf.process_images(MathRender.rewrite_html(Pdf.rewrite_task_lists(Markd.to_html(source, @options, formatter: formatter))), @base_dir, temp_dir, converted)
+          body_html = Pdf.process_images(MathRender.rewrite_html(Pdf.rewrite_task_lists(Markd.to_html(source, @options, formatter: formatter)), font_size: 11_f32, wrap_width: math_wrap_width), @base_dir, temp_dir, converted)
           body_html = Pdf.hyphenate_body(body_html, @hyphenate, @language)
           if toc_html
             body_html = Pdf.inject_toc(Pdf.rewrite_heading_anchors(body_html), toc_html)
           end
           html = Pdf.document_html(body_html, css, extra_css: formatter.style_defs)
         end
-        page_width_mm, page_height_mm = Pdf.parse_page_size(@page_size)
-        margins = Pdf.parse_margins(@margins || @margin_mm.to_s)
         {
           html:          html,
           width_mm:      page_width_mm,

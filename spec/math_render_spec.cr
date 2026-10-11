@@ -28,8 +28,26 @@ describe MathRender do
   end
 
   describe ".rewrite_html" do
-    it "wraps inline math in a styled span" do
-      MathRender.rewrite_html("<p>$E = mc^2$</p>").should contain("<span class=\"math\">E = mc<sup>2</sup></span>")
+    it "rewrites inline math (vector img when available, styled span otherwise)" do
+      rewritten = MathRender.rewrite_html("<p>$E = mc^2$</p>")
+      rewritten.should_not contain("$E")
+      if MathRender.vector_math?
+        rewritten.should contain("src=\"math:")
+        rewritten.should contain("vertical-align:")
+      else
+        rewritten.should contain("<span class=\"math\">E = mc<sup>2</sup></span>")
+      end
+    end
+
+    it "rewrites display math centered (vector img when available)" do
+      rewritten = MathRender.rewrite_html("<p>$$x = 1$$</p>")
+      rewritten.should_not contain("$$")
+      if MathRender.vector_math?
+        rewritten.should contain("<div style=\"text-align:center\">")
+        rewritten.should contain("src=\"math:")
+      else
+        rewritten.should contain("class=\"math")
+      end
     end
 
     it "leaves currency amounts alone" do
@@ -41,7 +59,7 @@ describe MathRender do
       html = "<p><code>$x^2$</code> and $y^3$</p>"
       rewritten = MathRender.rewrite_html(html)
       rewritten.should contain("<code>$x^2$</code>")
-      rewritten.should contain("y<sup>3</sup>")
+      rewritten.should_not contain("$y")
     end
   end
 

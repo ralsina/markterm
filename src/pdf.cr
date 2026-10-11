@@ -563,6 +563,10 @@ module Markd
 
     private def self.image_source(source : String, base_dir : String, temp_dir : String,
                                   converted : Array(String)) : String?
+      # Math pseudo-images ("math:<id>") resolve inside the litepdf
+      # shim: get_image_size answers from the cached MicroTeX render
+      # and draw_image draws it as vectors. Pass them through.
+      return source if source.starts_with?("math:")
       if source.starts_with?("data:image/")
         return data_uri_image(source, temp_dir, converted)
       end

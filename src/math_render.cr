@@ -129,13 +129,21 @@ module MathRender
     s.chars.map { |character| SUBSCRIPT[character]? || character }.join if s.size <= 4
   end
 
-  # The math glue lives in liblitepdf (ext/litepdf_math.c): render_math
-  # links libtexprintf when the native build enabled WITH_TEXMATH and
-  # returns NULL otherwise (the Unicode styling pass is the fallback).
-  @[Link("litepdf", ldflags: "-L #{__DIR__}/../ext/build -lm")]
+  # The math glue lives in liblitepdf (ext/litepdf_math.c and
+  # ext/litepdf_microtex.cpp): render_math links libtexprintf when the
+  # native build enabled WITH_TEXMATH and returns NULL otherwise (the
+  # Unicode styling pass is the fallback); math_register/math_available
+  # are the MicroTeX vector bridge (C++, hence -lstdc++).
+  @[Link("hpdf", ldflags: "-L #{__DIR__}/../ext/build")]
+  @[Link("litepdf", ldflags: "-L #{__DIR__}/../ext/build -lm -lstdc++")]
   lib Litepdf
     fun render_math = litepdf_render_math(latex : LibC::Char*) : LibC::Char*
     fun free_mem = litepdf_free(ptr : Void*) : Void
+    fun math_available = litepdf_math_available : LibC::Int
+    fun math_register = litepdf_math_register(latex : LibC::Char*, text_size : LibC::Float,
+                                              wrap_width : LibC::Float, display : LibC::Int,
+                                              out_width : LibC::Float*,
+                                              out_height : LibC::Float*, out_depth : LibC::Float*) : LibC::Int
   end
 
   # Display art comes from the shim's litepdf_render_math.
@@ -159,22 +167,63 @@ module MathRender
   INLINE_MATH   = Regex.new("\\$(?=[^\\s\\d])([^$\\n]*?[^\\s$])\\$(?!\\d)")
   PLACEHOLDER   = Regex.new("\uE000(\\d+)\uE001")
 
+  # Whether the MicroTeX vector bridge is compiled in and initialized
+  # successfully (resource tree found or extracted). The first call
+  # performs the one-time init.
+  def self.vector_math? : Bool
+    Litepdf.math_available == 1
+  end
+
+  # Register a formula with the MicroTeX bridge (when built in) and
+  # return an <img> whose src the C++ side resolves to the cached
+  # vector render: get_image_size answers layout from the render,
+  # draw_image draws it on the page. Nil when math support is missing
+  # or the formula fails to parse, so callers fall back.
+  #
+  # Inline math sits on the text baseline like any replaced element,
+  # shifted down by the formula's depth so the TeX baseline lands on
+  # the text baseline; display math is a centered block.
+  def self.math_img(latex : String, font_size : Float32, wrap_width : Float32,
+                    display : Bool) : String?
+    return if Litepdf.math_available != 1
+    width = Pointer(Float32).malloc(1)
+    height = Pointer(Float32).malloc(1)
+    depth = Pointer(Float32).malloc(1)
+    id = Litepdf.math_register(unescape_html(latex), font_size, wrap_width, display ? 1 : 0, width, height, depth)
+    return if id < 0
+    if display
+      # display:inline-block beats the stylesheet's ".math.block {
+      # display: block }" (written for the Unicode-span fallback): a
+      # block img ignores the centering text-align of the wrapper.
+      "<div style=\"text-align:center\"><img class=\"math block\" src=\"math:#{id}\"" \
+      " style=\"display:inline-block;width:#{"%.2f" % width.value}px;height:#{"%.2f" % height.value}px;margin:0.6em 0\"/></div>"
+    else
+      "<img class=\"math\" src=\"math:#{id}\"" \
+      " style=\"width:#{"%.2f" % width.value}px;height:#{"%.2f" % height.value}px;" \
+      "vertical-align:-#{"%.2f" % depth.value}px\"/>"
+    end
+  end
+
   # Rewrite display ($$...$$) and inline ($...$) math in generated HTML.
   # Content inside code elements and inside tags is left alone, so code
-  # spans and attributes never become math. Display math renders as
-  # text art in a mono pre block when libtexprintf is available, with a
-  # styled Unicode span as fallback; inline math always uses the
-  # styled span. Rendered pieces are held aside behind placeholders so
-  # later passes cannot re-process them.
-  def self.rewrite_html(html : String) : String
+  # spans and attributes never become math. Formulas typeset by the
+  # MicroTeX bridge become "math:<id>" pseudo-images (vector drawn by
+  # the C++ side, sized by the cached render); the fallbacks are the
+  # libtexprintf text art (display only) and the styled Unicode span.
+  # Rendered pieces are held aside behind placeholders so later passes
+  # cannot re-process them.
+  def self.rewrite_html(html : String, font_size : Float32 = 11_f32,
+                        wrap_width : Float32 = 468_f32) : String
     held = [] of String
     rewritten = html.split(SEGMENT_SPLIT).map_with_index do |part, index|
       next part if index.odd? # captured delimiter: tag or code
       part.gsub(DISPLAY_MATH) do |_, match|
-        held << display_html(match[1].strip)
+        latex = match[1].strip
+        held << (math_img(latex, font_size, wrap_width, display: true) || display_html(latex))
         placeholder(held.size - 1)
       end.gsub(INLINE_MATH) do |_, match|
-        held << "<span class=\"math\">#{stylize_html(match[1])}</span>"
+        held << (math_img(match[1], font_size, wrap_width, display: false) ||
+                 "<span class=\"math\">#{stylize_html(match[1])}</span>")
         placeholder(held.size - 1)
       end
     end

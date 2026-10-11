@@ -7,3 +7,6 @@
 [submodule "ext/libtexprintf"]
 	path = ext/libtexprintf
 	url = https://github.com/bartp5/libtexprintf
+[submodule "ext/microtex"]
+	path = ext/microtex
+	url = https://github.com/NanoMichael/MicroTex

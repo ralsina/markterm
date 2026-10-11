@@ -1,13 +1,21 @@
 // Standalone driver to render an HTML file (plus optional CSS file) to
 // PDF without going through the Crystal side. Used for iterating on the
 // shim: ./build/litepdf_test file.html [file.css] out.pdf [base_dir]
+//
+// With LITEPDF_TEST_MATH set, its value is registered as formula 0
+// first, so the file can exercise math:0 pseudo-images.
+#include "litepdf_math_api.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <string>
-#include <vector>
 
-extern "C" int litepdf_render(const char* html, const char* css, int page_size, float margin_pt,
-                              const char* out_path, const char* base_dir, char* errbuf, int errbuf_len);
+extern "C" int litepdf_render(const char* html, const char* css, float page_width_mm, float page_height_mm,
+                              float margin_top, float margin_right, float margin_bottom, float margin_left,
+                              float margin_gutter, const char* out_path,
+                              const char* base_dir, const char* header, const char* footer,
+                              const char* page_background, char* errbuf, int errbuf_len, int single_page, int kdp,
+                              int mirror_headers, char** heading_map, size_t* heading_map_len);
 
 static std::string read_file(const char* path)
 {
@@ -48,8 +56,15 @@ int main(int argc, char** argv)
             base_dir = argv[i];
         }
     }
+    if (const char* math = getenv("LITEPDF_TEST_MATH"))
+    {
+        float width = 0, height = 0, depth = 0;
+        int id = litepdf_math_register(math, 12, 468, 1, &width, &height, &depth);
+        std::printf("math register id=%d (%.1fx%.1f, depth %.1f)\n", id, width, height, depth);
+    }
     char errbuf[512];
-    int pages = litepdf_render(html.c_str(), css.c_str(), 0, 56.7f, out, base_dir, errbuf, sizeof(errbuf));
+    int pages = litepdf_render(html.c_str(), css.c_str(), 210, 297, 20, 20, 20, 20, 0, out,
+                               base_dir, "", "", "", errbuf, sizeof(errbuf), 0, 0, 0, nullptr, nullptr);
     if (pages < 0)
     {
         std::fprintf(stderr, "error: %s\n", errbuf);
