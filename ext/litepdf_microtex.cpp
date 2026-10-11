@@ -34,10 +34,16 @@
 
 #include "hpdf.h"
 
+#ifdef _WIN32
+#include <direct.h>
+#include <process.h>
+#include <windows.h>
+#else
 #include <sys/stat.h>
 #include <sys/types.h>
 
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -600,11 +606,27 @@ std::string res_with_marker(const std::string& dir)
 
 std::string executable_path()
 {
+#ifdef _WIN32
+    char buffer[MAX_PATH];
+    DWORD n = GetModuleFileNameA(nullptr, buffer, sizeof(buffer));
+    if (n == 0 || n >= sizeof(buffer)) return "";
+    return buffer;
+#else
     char buffer[PATH_MAX];
     ssize_t n = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
     if (n <= 0) return "";
     buffer[n] = '\0';
     return buffer;
+#endif
+}
+
+int make_dir(const std::string& path)
+{
+#ifdef _WIN32
+    return _mkdir(path.c_str());
+#else
+    return mkdir(path.c_str(), 0755);
+#endif
 }
 
 void mkdir_p(const std::string& dir)
@@ -615,29 +637,60 @@ void mkdir_p(const std::string& dir)
     while (std::getline(parts, part, '/'))
     {
         if (part.empty()) continue;
-        if (current.empty() && dir[0] == '/') current = "/";
-        if (!current.empty() && current.back() != '/') current += "/";
-        current += part;
-        mkdir(current.c_str(), 0755);
+        if (current.empty())
+        {
+            if (part.size() > 1 && part[1] == ':')
+                current = part;              // windows drive prefix
+            else if (dir[0] == '/')
+                current = "/" + part;        // unix absolute
+            else
+                current = part;              // relative
+        }
+        else
+        {
+            current += "/" + part;
+        }
+        make_dir(current);
     }
 }
 
 #ifdef MATH_RES_EMBEDDED
-// Extract the embedded resource tree to a fresh temp directory.
-std::string extract_embedded_res()
+// A fresh private directory under the system temp dir.
+std::string make_temp_dir()
 {
+#ifdef _WIN32
+    const char* base = getenv("TEMP");
+    if (!base || !*base) base = getenv("TMP");
+    const std::string prefix = std::string(base && *base ? base : ".") + "\\markpdf-mathres-";
+    for (unsigned int attempt = 0; attempt < 4096; attempt++)
+    {
+        std::string dir = prefix + std::to_string((unsigned)getpid()) + "-" + std::to_string(attempt);
+        if (make_dir(dir) == 0) return dir;
+    }
+    return "";
+#else
     const char* tmp = getenv("TMPDIR");
     if (!tmp || !*tmp) tmp = "/tmp";
     std::string pattern = std::string(tmp) + "/markpdf-mathres-XXXXXX";
     std::vector<char> dir(pattern.begin(), pattern.end());
     dir.push_back('\0');
     if (!mkdtemp(dir.data())) return "";
-    std::string root(dir.data());
+    return std::string(dir.data());
+#endif
+}
+
+// Extract the embedded resource tree to a fresh temp directory.
+std::string extract_embedded_res()
+{
+    std::string root = make_temp_dir();
+    if (root.empty()) return "";
     for (unsigned int i = 0; i < math_res_files_count; i++)
     {
         const MathResFile& file = math_res_files[i];
         std::string target = root + "/" + file.path;
         std::string parent = target.substr(0, target.rfind('/'));
+        for (char& c : parent)
+            if (c == '\\') c = '/';
         mkdir_p(parent);
         FILE* out = fopen(target.c_str(), "wb");
         if (!out) continue;

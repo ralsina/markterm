@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - *(math)* Recognize digit-leading inline math with TeX markup
+- *(pdf)* Make the embedded math resources portable across platforms
 
 ## [0.14.0] - 2026-09-29
 

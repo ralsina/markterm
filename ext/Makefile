@@ -57,7 +57,7 @@ MICROTEX_SRC := $(wildcard $(MICROTEX_DIR)/src/*.cpp) \
 MICROTEX_OBJ := $(patsubst $(MICROTEX_DIR)/src/%.cpp,build/microtex/%.o,$(MICROTEX_SRC))
 MICROTEX_INCLUDES = -I $(MICROTEX_DIR)/src -I tinyxml2 -I stb
 MICROTEX_SHIM_OBJS := build/litepdf_microtex.o build/stb_impl.o build/tinyxml2.o \
-                      build/math_res.o build/math_res_index.o
+                      build/math_res_data.o build/math_res_index.o
 
 LIB := build/liblitepdf.a
 
@@ -161,11 +161,11 @@ RES_FILES := $(shell find $(MICROTEX_DIR)/res -type f 2>/dev/null)
 build/math_res.manifest: gen-math-res.sh $(RES_FILES)
 	./gen-math-res.sh
 
-build/math_res.S build/math_res_index.cpp build/math_res_index.h: build/math_res.manifest
+build/math_res_data.cpp build/math_res_index.cpp build/math_res_index.h: build/math_res.manifest
 	./gen-math-res.sh
 
-build/math_res.o: build/math_res.S | build
-	$(CC) -c build/math_res.S -o $@
+build/math_res_data.o: build/math_res_data.cpp | build
+	$(CXX) $(CXXFLAGS) -c build/math_res_data.cpp -o $@
 
 build/math_res_index.o: build/math_res_index.cpp | build
 	$(CXX) $(CXXFLAGS) -I build -c build/math_res_index.cpp -o $@
