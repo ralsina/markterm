@@ -97,6 +97,22 @@ module MarkpdfWeb
     ENV[name]?.try(&.to_i?) || default
   end
 
+  # Behind Cloudflare and Fly's proxy the socket peer is a proxy, not the
+  # visitor, so keying the rate limiter on remote_address would put every
+  # visitor in one shared bucket. Use the forwarded client IP when the
+  # edge provides one; trusting the headers is fine because both proxies
+  # overwrite them on the way in.
+  def self.client_key(env : HTTP::Server::Context) : String
+    env.request.headers["CF-Connecting-IP"]? ||
+      env.request.headers["Fly-Client-IP"]? ||
+      env.request.headers["X-Forwarded-For"]?.try(&.split(',').first?.try(&.strip)) ||
+      peer_key(env.request.remote_address)
+  end
+
+  private def self.peer_key(address : Socket::Address?) : String
+    address.is_a?(Socket::IPAddress) ? address.address : "unknown"
+  end
+
   struct RenderParams
     getter markdown : String
     getter style : String
@@ -447,12 +463,13 @@ end
 
 # Baseline hardening for every response: never MIME-sniff, and keep
 # the page from loading anything it doesn't need (inline script and
-# style are the playground itself; Pico comes from the pinned CDN with
-# SRI; the preview iframe shows a blob: PDF).
+# style are the playground itself; Pico and the icon are served from
+# this app so no third-party origin is involved; the preview iframe
+# shows a blob: PDF).
 SECURITY_HEADERS = {
   "X-Content-Type-Options"  => "nosniff",
   "Content-Security-Policy" => "default-src 'self'; " \
-                               "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " \
+                               "style-src 'self' 'unsafe-inline'; " \
                                "script-src 'self' 'unsafe-inline'; " \
                                "img-src 'self' data:; " \
                                "frame-src blob:; " \
@@ -465,6 +482,29 @@ before_all do |env|
   end
 end
 
+# Pico CSS v2.1.1 (https://picocss.com, MIT) and the favicon are read
+# into the binary at compile time: the landing page keeps its
+# self-contained, no-external-origin story and needs no static file
+# directory at deploy time.
+PICO_CSS = {{ read_file("#{__DIR__}/assets/pico.min.css") }}
+FAVICON  = {{ read_file("#{__DIR__}/assets/favicon.svg") }}
+
+get "/pico.css" do |env|
+  env.response.content_type = "text/css; charset=utf-8"
+  env.response.headers.add("Cache-Control", "public, max-age=31536000, immutable")
+  PICO_CSS
+end
+
+get "/favicon.svg" do |env|
+  env.response.content_type = "image/svg+xml"
+  env.response.headers.add("Cache-Control", "public, max-age=31536000, immutable")
+  FAVICON
+end
+
+get "/favicon.ico" do |env|
+  env.redirect "/favicon.svg"
+end
+
 get "/" do |env|
   env.response.content_type = "text/html; charset=utf-8"
   MarkpdfWeb::LandingPage.new.to_s
@@ -473,7 +513,7 @@ end
 RENDER_LIMITER = MarkpdfWeb::RateLimiter.new(MarkpdfWeb::MAX_RENDERS_PER_MIN, 1.minute)
 
 post "/render" do |env|
-  client_key = env.request.remote_address.as(Socket::IPAddress).address
+  client_key = MarkpdfWeb.client_key(env)
   unless RENDER_LIMITER.allow?(client_key)
     env.response.headers.add("Retry-After", RENDER_LIMITER.retry_after(client_key).to_s)
     env.response.content_type = "text/plain; charset=utf-8"

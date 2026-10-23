@@ -6,6 +6,13 @@ def web_form(body : String) : HTTP::Params
   HTTP::Params.parse(body)
 end
 
+def web_context(headers : HTTP::Headers = HTTP::Headers.new,
+                remote : Socket::Address? = Socket::IPAddress.new("127.0.0.1", 40000)) : HTTP::Server::Context
+  request = HTTP::Request.new("GET", "/", headers)
+  request.remote_address = remote
+  HTTP::Server::Context.new(request, HTTP::Server::Response.new(IO::Memory.new))
+end
+
 def web_params(body : String) : MarkpdfWeb::RenderParams
   MarkpdfWeb::RenderParams.from_form(web_form(body))
 end
@@ -139,6 +146,20 @@ describe MarkpdfWeb::LandingPage do
     landing_html.should contain(%(id="preview"))
   end
 
+  it "carries social preview and favicon metadata" do
+    landing_html.should contain(%(property="og:title"))
+    landing_html.should contain(%(property="og:description"))
+    landing_html.should contain(%(name="twitter:card"))
+    landing_html.should contain(%(rel="icon"))
+  end
+
+  it "ships the light/dark toggle and mobile pane switch" do
+    landing_html.should contain(%(id="theme-toggle"))
+    landing_html.should contain(%(id="pane-editor"))
+    landing_html.should contain(%(id="pane-preview"))
+    landing_html.should contain(%(id="preview-fallback"))
+  end
+
   it "offers every built-in style" do
     Markd::Pdf.style_names.each do |name|
       landing_html.should contain(%(value="#{name}"))
@@ -247,6 +268,38 @@ describe "Markd::Pdf image fetch guard" do
   end
 end
 
+describe "MarkpdfWeb.client_key" do
+  it "prefers the Cloudflare client IP over everything else" do
+    context = web_context(HTTP::Headers{
+      "CF-Connecting-IP" => "203.0.113.7",
+      "Fly-Client-IP"    => "203.0.113.8",
+      "X-Forwarded-For"  => "203.0.113.9",
+    })
+    MarkpdfWeb.client_key(context).should eq("203.0.113.7")
+  end
+
+  it "falls back to Fly's client IP, then the first forwarded hop" do
+    fly_context = web_context(HTTP::Headers{
+      "Fly-Client-IP"   => "203.0.113.8",
+      "X-Forwarded-For" => "203.0.113.9, 10.0.0.1",
+    })
+    MarkpdfWeb.client_key(fly_context).should eq("203.0.113.8")
+
+    forwarded_context = web_context(HTTP::Headers{"X-Forwarded-For" => "203.0.113.9, 10.0.0.1"})
+    MarkpdfWeb.client_key(forwarded_context).should eq("203.0.113.9")
+  end
+
+  it "uses the socket peer when no proxy headers exist" do
+    MarkpdfWeb.client_key(web_context).should eq("127.0.0.1")
+  end
+
+  it "does not crash on a nil or non-IP peer address" do
+    unix_context = web_context(remote: Socket::UNIXAddress.new("/tmp/markpdf-spec.sock"))
+    MarkpdfWeb.client_key(unix_context).should eq("unknown")
+    MarkpdfWeb.client_key(web_context(remote: nil)).should eq("unknown")
+  end
+end
+
 describe "MarkpdfWeb::RateLimiter" do
   it "allows the budget per window, then refuses until it resets" do
     limiter = MarkpdfWeb::RateLimiter.new(2, 50.milliseconds)
@@ -273,6 +326,27 @@ describe "markpdf-web routes" do
     response.status_code.should eq(200)
     response.headers["Content-Type"].should contain("text/html")
     response.body.should contain("Playground")
+  end
+
+  it "serves Pico CSS from the app, not a CDN" do
+    response = WEB_CLIENT.get("/pico.css")
+    response.status_code.should eq(200)
+    response.headers["Content-Type"].should contain("text/css")
+    response.body.should contain("Pico CSS")
+    response.headers["Cache-Control"].should contain("max-age")
+    landing = WEB_CLIENT.get("/").body
+    landing.should_not contain("cdn.jsdelivr.net")
+    landing.should contain(%(href="/pico.css"))
+  end
+
+  it "serves the favicon and redirects the legacy .ico path" do
+    svg = WEB_CLIENT.get("/favicon.svg")
+    svg.status_code.should eq(200)
+    svg.headers["Content-Type"].should contain("image/svg+xml")
+
+    ico = WEB_CLIENT.get("/favicon.ico")
+    ico.status_code.should eq(302)
+    ico.headers["Location"].should eq("/favicon.svg")
   end
 
   it "renders PDFs from the form" do

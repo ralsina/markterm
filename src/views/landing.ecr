@@ -4,8 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="markpdf turns Markdown into beautiful, print-ready PDFs. Edit markdown, tweak the styling knobs, and see the output live.">
+  <meta property="og:title" content="markpdf — Markdown to beautiful PDFs">
+  <meta property="og:description" content="Edit markdown, tweak the styling knobs, and watch the PDF update live. One static binary, real typography, zero fuss.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://markpdf.ralsina.me/">
+  <meta property="og:site_name" content="markpdf">
+  <meta name="twitter:card" content="summary">
   <title>markpdf — Markdown to beautiful PDFs</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" integrity="sha384-L1dWfspMTHU/ApYnFiMz2QID/PlP1xCW9visvBdbEkOLkSSWsP6ZJWhPw6apiXxU" crossorigin="anonymous">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <script>
+    /* Apply the saved light/dark choice before the stylesheet lands so
+       there is no flash of the wrong theme. No stored choice: follow the
+       system, which is Pico's default with no data-theme attribute. */
+    (function () {
+      var saved = localStorage.getItem("markpdf-theme");
+      if (saved === "light" || saved === "dark") {
+        document.documentElement.setAttribute("data-theme", saved);
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/pico.css">
   <style>
     /* Quirky drifting-pages backdrop, tinted with the theme colors like
        nicolino.ralsina.me's hero: a translucent page-color to accent
@@ -81,6 +99,63 @@
     #error-box { display: none; margin-top: .5rem; }
     #error-box pre { white-space: pre-wrap; margin: 0; }
     nav.container ul { flex-wrap: wrap; }
+    /* The light/dark toggle: a quiet icon-ish button that must not look
+       like it navigates anywhere. */
+    #theme-toggle {
+      width: auto; margin: 0; padding: .25rem .6rem;
+      background: none; border: none; box-shadow: none;
+      color: var(--pico-muted-color); font-size: 1.05rem; cursor: pointer;
+      line-height: 1.2;
+    }
+    #theme-toggle:hover { color: var(--pico-primary); }
+    /* While a render is in flight, breathe on the preview so the stale
+       PDF below it is never mistaken for the finished result. */
+    .playground-grid.rendering #preview,
+    .playground-grid.rendering #preview-fallback {
+      outline: 3px solid var(--pico-primary);
+      outline-offset: -3px;
+      animation: render-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes render-pulse { 50% { outline-color: transparent; } }
+    /* Browsers that cannot show a PDF inline (several mobile ones) get
+       an honest call-to-action instead of a blank pane. The markup
+       ships with the hidden attribute; JS reveals it when needed. */
+    #preview-fallback {
+      height: clamp(15rem, calc(100dvh - 29rem), 40rem);
+      border: 1px dashed var(--pico-muted-border-color);
+      border-radius: var(--pico-border-radius);
+      padding: 2rem 1.5rem;
+      text-align: center;
+    }
+    #preview-fallback[hidden] { display: none; }
+    #preview-fallback p { margin-bottom: 1rem; }
+    /* On phones the stacked editor + preview wastes a screen each: show
+       one pane at a time, picked with a small segmented control. */
+    .pane-toggle { display: none; }
+    .copy-btn {
+      display: inline-block; width: auto; margin: 0 0 0 .4rem;
+      padding: .1rem .55rem; font-size: .78rem; vertical-align: baseline;
+      --pico-border-radius: 0.5rem;
+    }
+    @media (max-width: 920px) {
+      nav.container { flex-direction: column; align-items: flex-start; gap: 0; }
+      nav.container ul:last-child { padding-left: 0; }
+      .pane-toggle {
+        display: inline-flex; gap: 0; margin: 0 0 0 auto;
+        border: 1px solid var(--pico-muted-border-color);
+        border-radius: var(--pico-border-radius); overflow: hidden;
+      }
+      .pane-toggle button {
+        width: auto; margin: 0; padding: .25rem .8rem;
+        background: none; border: none; border-radius: 0;
+        box-shadow: none; font-size: .85rem; color: var(--pico-muted-color);
+      }
+      .pane-toggle button[aria-pressed="true"] {
+        background: var(--pico-primary); color: var(--pico-primary-inverse);
+      }
+      .playground-grid:not(.show-preview) > div:last-of-type { display: none; }
+      .playground-grid.show-preview > div:first-of-type { display: none; }
+    }
     section { margin-bottom: 3rem; }
     code { font-size: .85em; }
     footer { text-align: center; padding: 1.5rem 0; }
@@ -96,6 +171,7 @@
       <li><a href="#features">Features</a></li>
       <li><a href="#install">Install</a></li>
       <li><a href="https://github.com/ralsina/markterm">GitHub</a></li>
+      <li><button id="theme-toggle" type="button" aria-label="Switch between light and dark theme"></button></li>
     </ul>
   </nav>
 
@@ -128,6 +204,10 @@
           <button id="share-btn" class="outline" type="button">Copy link</button>
           <a id="download-link" role="button" class="outline" href="#" download="markpdf.pdf">Download</a>
           <label class="toolbar-check"><input type="checkbox" id="auto-render" checked> Auto-render</label>
+          <div class="pane-toggle" role="group" aria-label="Show the editor or the PDF">
+            <button type="button" id="pane-editor" aria-pressed="true">Editor</button>
+            <button type="button" id="pane-preview" aria-pressed="false">PDF</button>
+          </div>
         </div>
 
         <div class="playground-grid">
@@ -139,6 +219,13 @@
 
           <div>
             <iframe id="preview" title="PDF preview"></iframe>
+            <div id="preview-fallback" hidden>
+              <p>This browser can't show a PDF inside the page.</p>
+              <p>
+                <a id="fallback-download" role="button" class="primary" href="#" download="markpdf.pdf">Download the PDF</a>
+                <a id="fallback-open" role="button" class="outline" href="#" target="_blank" rel="noopener">Open it in a new tab</a>
+              </p>
+            </div>
             <p><a id="open-tab" href="#" target="_blank" rel="noopener">Open the PDF in its own tab</a></p>
           </div>
         </div>
@@ -185,24 +272,25 @@
         <div role="tabpanel" id="panel-themes" aria-labelledby="tab-themes" hidden>
           <div class="knob-grid">
             <label>Page theme
-              <select id="theme">
-                <option value="">— none —</option>
+              <input type="text" id="theme" list="page-theme-list" placeholder="— none —" autocomplete="off" spellcheck="false">
+              <datalist id="page-theme-list">
                 <% page_themes.each do |page_theme| %>
-                <option value="<%= page_theme %>"><%= page_theme %></option>
+                <option value="<%= page_theme %>"></option>
                 <% end %>
-              </select>
+              </datalist>
             </label>
             <label>Code theme
-              <select id="code-theme">
-                <option value="">— auto —</option>
+              <input type="text" id="code-theme" list="code-theme-list" placeholder="— auto —" autocomplete="off" spellcheck="false">
+              <datalist id="code-theme-list">
                 <% code_themes.each do |code_theme| %>
-                <option value="<%= code_theme %>"><%= code_theme %></option>
+                <option value="<%= code_theme %>"></option>
                 <% end %>
-              </select>
+              </datalist>
             </label>
           </div>
-          <p class="knob-hint">Page themes are the base16 roster; with no explicit
-          code theme, the dark style picks a dark one automatically.</p>
+          <p class="knob-hint">Type to filter; unknown names are refused by the
+          renderer. Page themes are the base16 roster; with no explicit code
+          theme, the dark style picks a dark one automatically.</p>
         </div>
 
         <div role="tabpanel" id="panel-text" aria-labelledby="tab-text" hidden>
@@ -271,13 +359,15 @@
       <div class="grid">
         <article>
           <h3>Arch Linux</h3>
-          <p><code>yay -S markterm</code><br>From the AUR, via your favorite
-          helper.</p>
+          <p><code>yay -S markterm</code><button class="copy-btn outline" type="button" data-copy="yay -S markterm" aria-label="Copy: yay -S markterm">Copy</button><br>
+          From the AUR, via your favorite helper. The package keeps the
+          project's original name, <code>markterm</code> — it provides the
+          <code>markpdf</code> command this page demos.</p>
         </article>
         <article>
           <h3>From source</h3>
-          <p><code>git clone https://github.com/ralsina/markterm</code><br>
-          <code>cd markterm && make -C ext && shards build</code><br>
+          <p><code>git clone https://github.com/ralsina/markterm</code><button class="copy-btn outline" type="button" data-copy="git clone https://github.com/ralsina/markterm" aria-label="Copy: git clone https://github.com/ralsina/markterm">Copy</button><br>
+          <code>cd markterm &amp;&amp; make -C ext &amp;&amp; shards build</code><button class="copy-btn outline" type="button" data-copy="cd markterm && make -C ext && shards build" aria-label="Copy: cd markterm &amp;&amp; make -C ext &amp;&amp; shards build">Copy</button><br>
           Binaries land in <code>bin/</code>.</p>
         </article>
         <article>
@@ -303,6 +393,10 @@ const checkboxes = ["pageless", "hyphenate"];
 
 const markdownBox = document.getElementById("markdown");
 const previewFrame = document.getElementById("preview");
+const previewFallback = document.getElementById("preview-fallback");
+const fallbackDownload = document.getElementById("fallback-download");
+const fallbackOpen = document.getElementById("fallback-open");
+const playgroundGrid = document.querySelector(".playground-grid");
 const renderButton = document.getElementById("render-btn");
 const statusLine = document.getElementById("status");
 const errorBox = document.getElementById("error-box");
@@ -310,6 +404,14 @@ const errorText = errorBox.querySelector("pre");
 const downloadLink = document.getElementById("download-link");
 const openTabLink = document.getElementById("open-tab");
 const sampleSelect = document.getElementById("sample-select");
+const themeToggle = document.getElementById("theme-toggle");
+const paneEditorButton = document.getElementById("pane-editor");
+const panePreviewButton = document.getElementById("pane-preview");
+
+// Several mobile browsers refuse to render a PDF inside an iframe and
+// just leave a blank pane. Ask the browser instead of guessing; when it
+// won't say, assume it can.
+const PDF_INLINE_OK = navigator.pdfViewerEnabled === undefined ? true : navigator.pdfViewerEnabled;
 
 const STORAGE_KEY = "markpdf-web-state";
 let currentBlobUrl = null;
@@ -374,11 +476,76 @@ function b64urlDecode(text) {
   return new TextDecoder().decode(bytes);
 }
 
-function saveLocal() {
+function b64urlFromBytes(bytes) {
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// Share payloads: deflate-compressed before base64 so a big document
+// doesn't turn into a URL no chat app will keep intact. Browsers
+// without CompressionStream fall back to plain base64 ("z" marks the
+// compressed form).
+async function encodeSharePayload(text) {
+  if (window.CompressionStream) {
+    const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+    return "z" + b64urlFromBytes(new Uint8Array(await new Response(stream).arrayBuffer()));
+  }
+  return b64urlEncode(text);
+}
+
+async function decodeSharePayload(payload) {
+  if (payload.startsWith("z")) {
+    const bytes = Uint8Array.from(atob(
+      payload.slice(1).replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=")
+    ), (character) => character.charCodeAt(0));
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new TextDecoder().decode(await new Response(stream).arrayBuffer());
+  }
+  return b64urlDecode(payload);
+}
+
+// Light/dark: Pico follows the OS when <html> carries no data-theme;
+// an explicit choice is stored and wins until changed again.
+function effectiveTheme() {
+  const saved = localStorage.getItem("markpdf-theme");
+  if (saved === "light" || saved === "dark") return saved;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function syncThemeToggle() {
+  const dark = effectiveTheme() === "dark";
+  themeToggle.textContent = dark ? "☀️" : "🌙";
+  themeToggle.setAttribute("aria-label", dark ? "Switch to the light theme" : "Switch to the dark theme");
+}
+
+themeToggle.addEventListener("click", () => {
+  const next = effectiveTheme() === "dark" ? "light" : "dark";
+  localStorage.setItem("markpdf-theme", next);
+  document.documentElement.setAttribute("data-theme", next);
+  syncThemeToggle();
+});
+
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (!localStorage.getItem("markpdf-theme")) syncThemeToggle();
+});
+
+// Keep both the autosave and the address bar in step with the
+// document, so a plain reload — or a URL copied at any moment —
+// reflects the latest edit instead of a stale snapshot. Both writes
+// are best-effort: private browsing exhausts quotas, and browsers
+// throttle history.replaceState.
+async function persistState() {
+  const stateJson = JSON.stringify(collectState());
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState()));
+    localStorage.setItem(STORAGE_KEY, stateJson);
   } catch {
     /* private browsing or full quota: autosave is best-effort */
+  }
+  try {
+    history.replaceState(null, "", "#d=" + await encodeSharePayload(stateJson));
+  } catch {
+    /* replaceState is rate-limited by some browsers */
   }
 }
 
@@ -395,13 +562,31 @@ function hideError() {
   errorBox.style.display = "none";
 }
 
+// A download named after the document beats a pile of markpdf.pdf
+// files: slugify the first heading when there is one.
+function docFilename() {
+  const match = markdownBox.value.match(/^[ \t]*#[ \t]+(.+?)[ \t]*$/m);
+  if (!match) return "markpdf.pdf";
+  const slug = match[1]
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase()
+    .slice(0, 60);
+  return (slug || "markpdf") + ".pdf";
+}
+
 function setPdfBlob(blob) {
   const url = URL.createObjectURL(blob);
   if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
   currentBlobUrl = url;
+  const filename = docFilename();
   previewFrame.src = url;
   downloadLink.href = url;
+  downloadLink.download = filename;
   openTabLink.href = url;
+  fallbackDownload.href = url;
+  fallbackDownload.download = filename;
+  fallbackOpen.href = url;
 }
 
 async function renderNow() {
@@ -414,6 +599,8 @@ async function renderNow() {
   inFlight = true;
   lastRenderStart = Date.now();
   renderButton.disabled = true;
+  renderButton.setAttribute("aria-busy", "true");
+  playgroundGrid.classList.add("rendering");
   setStatus("Rendering…");
   hideError();
   const state = collectState();
@@ -431,7 +618,11 @@ async function renderNow() {
     if (!response.ok) {
       const detail = await response.text();
       showError(detail || "The renderer refused this document.");
-      setStatus("Something in the document or knobs made the renderer unhappy.");
+      if (response.status === 429 || response.status === 503) {
+        setStatus("The renderer is busy or slow right now — nothing is wrong with your document.");
+      } else {
+        setStatus("Something in the document or knobs made the renderer unhappy.");
+      }
       return;
     }
     const blob = await response.blob();
@@ -449,6 +640,8 @@ async function renderNow() {
   } finally {
     inFlight = false;
     renderButton.disabled = false;
+    renderButton.removeAttribute("aria-busy");
+    playgroundGrid.classList.remove("rendering");
     if (rerenderQueued) {
       rerenderQueued = false;
       renderNow();
@@ -466,7 +659,7 @@ function scheduleRender() {
 
 function scheduleSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveLocal, 400);
+  saveTimer = setTimeout(persistState, 400);
 }
 
 // Pageless output has no headers or footers: grey the fields out and
@@ -482,10 +675,13 @@ function syncPagelessKnobs() {
   pagelessHint.hidden = !pageless;
 }
 
-function loadInitialState() {
+async function loadInitialState() {
   if (location.hash.startsWith("#d=")) {
     try {
-      applyState(JSON.parse(b64urlDecode(location.hash.slice(3))));
+      applyState(JSON.parse(await decodeSharePayload(location.hash.slice(3))));
+      // Re-persist immediately: the state in the hash becomes the new
+      // autosave, and the address bar is refreshed to match it.
+      persistState();
       return;
     } catch {
       /* a broken hash falls through to localStorage */
@@ -532,13 +728,16 @@ sampleSelect.addEventListener("change", () => {
 });
 
 document.getElementById("share-btn").addEventListener("click", async () => {
-  const url = location.origin + location.pathname + "#d=" + b64urlEncode(JSON.stringify(collectState()));
-  history.replaceState(null, "", "#d=" + b64urlEncode(JSON.stringify(collectState())));
+  const payload = await encodeSharePayload(JSON.stringify(collectState()));
+  history.replaceState(null, "", "#d=" + payload);
+  const url = location.origin + location.pathname + "#d=" + payload;
+  // Only worth mentioning when the URL is big enough to be fragile.
+  const sizeNote = url.length > 8192 ? ", " + Math.round(url.length / 1024) + " KB of URL" : "";
   try {
     await navigator.clipboard.writeText(url);
-    setStatus("Shareable link copied to the clipboard.");
+    setStatus("Shareable link copied to the clipboard" + sizeNote + ".");
   } catch {
-    setStatus("The shareable link is in the address bar.");
+    setStatus("The shareable link is in the address bar" + sizeNote + ".");
   }
 });
 
@@ -586,8 +785,40 @@ tabButtons.forEach((button) => {
   });
 });
 
-loadInitialState();
-renderNow();
+// No inline PDF support: an honest call-to-action beats a blank pane,
+// so swap the frame for download/open buttons.
+if (!PDF_INLINE_OK) {
+  previewFrame.hidden = true;
+  previewFallback.hidden = false;
+  openTabLink.parentElement.hidden = true;
+}
+
+// Phone layout shows one pane at a time; the segmented control in the
+// toolbar picks which.
+function selectPane(showPreview) {
+  playgroundGrid.classList.toggle("show-preview", showPreview);
+  paneEditorButton.setAttribute("aria-pressed", String(!showPreview));
+  panePreviewButton.setAttribute("aria-pressed", String(showPreview));
+}
+
+paneEditorButton.addEventListener("click", () => selectPane(false));
+panePreviewButton.addEventListener("click", () => selectPane(true));
+
+// Install snippets: copy the command printed next to the button.
+document.querySelectorAll(".copy-btn").forEach((copyButton) => {
+  copyButton.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(copyButton.getAttribute("data-copy"));
+      copyButton.textContent = "Copied!";
+    } catch {
+      copyButton.textContent = "Select it";
+    }
+    setTimeout(() => { copyButton.textContent = "Copy"; }, 1500);
+  });
+});
+
+syncThemeToggle();
+loadInitialState().then(renderNow);
 </script>
 </body>
 </html>
