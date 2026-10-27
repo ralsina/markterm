@@ -24,13 +24,16 @@ CC ?= gcc
 
 CXXFLAGS ?= -std=c++17 -O2 -fPIC -MMD -MP
 CFLAGS ?= -O2 -fPIC -MMD -MP
-INCLUDES = -I litehtml/include -I litehtml/include/litehtml -I litehtml/src -I litehtml/src/gumbo/include -I litehtml/src/gumbo/include/gumbo -I litehtml/src/gumbo
+INCLUDES = -I litehtml/include -I litehtml/include/litehtml -I litehtml/src -I litehtml/src/gumbo/src
 
 WITH_TEXMATH ?= 1
 WITH_MICROTEX ?= 1
 
 LITEHTML_SRC := $(filter-out litehtml/src/main.cpp,$(wildcard litehtml/src/*.cpp))
-GUMBO_SRC := $(wildcard litehtml/src/gumbo/*.cpp) $(wildcard litehtml/src/gumbo/*.c)
+# gumbo moved its sources and headers from src/gumbo/ (headers under
+# include/) into src/gumbo/src/ when litehtml's PR #485 branch updated
+# its vendored copy.
+GUMBO_SRC := $(wildcard litehtml/src/gumbo/src/*.cpp) $(wildcard litehtml/src/gumbo/src/*.c)
 
 SHIM_OBJ := build/litepdf.o
 LITEHTML_OBJS := $(patsubst litehtml/src/%.cpp,build/litehtml/%.o,$(LITEHTML_SRC))
