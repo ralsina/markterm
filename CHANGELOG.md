@@ -2,11 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.17.0] - 2026-10-27
+
+### 🚀 Features
+
+- *(web)* Rework the playground UX and self-host every page asset
+
+### 🐛 Bug Fixes
+
+- *(pdf)* Treat code theme auto as the automatic pick and validate render knobs
+
+### 📚 Documentation
+
+- Web tweaks
+
+### 🧪 Testing
+
+- *(pdf)* Loosen the BMP conversion size bound
+
+### ⚙️ Miscellaneous Tasks
+
+- *(sub)* Rebase litehtml onto the updated PR #485 branch
+- *(sub)* Track litehtml PR #485 head with the fixed-subtree fix
+- *(release)* Build and ship macOS binaries against OpenSSL 3
+
 ## [0.16.0] - 2026-10-11
 
 ### 🚀 Features
 
 - *(web)* Lead the landing page with the playground
+
+### 🔖 Releases
+
+- Release v0.16.0
 
 ## [0.15.0] - 2026-10-11
 
@@ -19,6 +47,10 @@ All notable changes to this project will be documented in this file.
 
 - *(math)* Recognize digit-leading inline math with TeX markup
 - *(pdf)* Make the embedded math resources portable across platforms
+
+### 🔖 Releases
+
+- Release v0.15.0
 
 ## [0.14.0] - 2026-09-29
 
@@ -203,8 +235,7 @@ All notable changes to this project will be documented in this file.
 - *(markpdf)* Draw non-BMP codepoints (emoji!) through alternate CIDs
 - *(markpdf)* Continuation table rows keep their top border
 - *(markpdf)* Clean border rules at table page cuts
-- *(markpdf)* Surface image failures, correct alpha on themed pages,
-  guard the C boundary
+- *(markpdf)* Surface image failures, themed-page alpha, C boundary guards
 - *(markpdf)* Spec coverage for emoji CIDs, table page cuts, and crash paths
 - *(markterm)* Measure display width, tolerate parser data gaps
 - *(markterm)* Readability pass on math, links, images, headings, code
