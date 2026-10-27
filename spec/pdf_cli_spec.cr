@@ -102,6 +102,18 @@ describe "markpdf CLI" do
     output[0, 5].should eq("%PDF-")
   end
 
+  it "accepts --code-theme auto and aborts cleanly on unknown code themes" do
+    status, output, _error = run_cli(BIN_MARKPDF, ["-", "--code-theme", "auto"],
+      input: "```crystal\nputs 1\n```")
+    status.exit_code.should eq(0)
+    output[0, 5].should eq("%PDF-")
+
+    status, _output, error = run_cli(BIN_MARKPDF, ["-", "--code-theme", "not-a-real-theme"], input: "hi")
+    status.exit_code.should eq(1)
+    error.should contain("code theme")
+    error.should_not contain("Unhandled exception")
+  end
+
   it "reports its version" do
     status, output, _error = run_cli(BIN_MARKPDF, ["--version"])
     status.exit_code.should eq(0)

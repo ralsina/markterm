@@ -150,9 +150,15 @@ module Markd
         html: String, width_mm: Float64, height_mm: Float64,
         margin_top: Float64, margin_right: Float64, margin_bottom: Float64,
         margin_left: Float64, margin_gutter: Float64, background: String)
-        highlighted_theme = @code_theme || Pdf.tartrazine_known_theme?(@theme) || Pdf::DEFAULT_CODE_THEME
+        highlighted_theme = Pdf.normalize_code_theme(@code_theme) ||
+                            Pdf.tartrazine_known_theme?(@theme) || Pdf::DEFAULT_CODE_THEME
+        formatter_theme = begin
+          Tartrazine.theme(highlighted_theme)
+        rescue error
+          raise Error.new("could not load code theme '#{highlighted_theme}': #{error.message}")
+        end
         formatter = Tartrazine::Html.new(
-          theme: Tartrazine.theme(highlighted_theme),
+          theme: formatter_theme,
           line_numbers: false,
           standalone: false,
         )

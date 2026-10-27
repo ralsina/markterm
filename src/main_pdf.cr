@@ -15,7 +15,9 @@ doc = <<-DOC
   Options:
     -h --help                  Show this screen.
     -t <theme>, --theme <theme>  Theme to use for coloring output
-    --code-theme <code-theme>  Theme to use for coloring code blocks
+    --code-theme <code-theme>  Theme to use for coloring code blocks;
+                               "auto" (or leaving it unset) lets markpdf
+                               pick one to match the page
     --version                  Show version.
     -o <output>, --output <output>  Write the PDF to a file (defaults to standard output)
     --page-size <size>         Page size: a0..a6, b0..b6, letter, legal, or

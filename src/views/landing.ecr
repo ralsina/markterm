@@ -577,7 +577,10 @@ function setStatus(message) {
 }
 
 function showError(message) {
-  errorText.textContent = message;
+  // A panicked renderer or an interposed proxy can hand back a whole
+  // HTML page; textContent keeps it inert, the clip keeps the box readable.
+  const clipped = message.length > 500 ? message.slice(0, 500) + "…" : message;
+  errorText.textContent = clipped;
   errorBox.style.display = "block";
 }
 

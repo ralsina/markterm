@@ -151,12 +151,14 @@ module MarkpdfWeb
 
       page_size = form.fetch("page_size", "a4")
       begin
-        Markd::Pdf.parse_page_size(page_size)
+        page_width_mm, page_height_mm = Markd::Pdf.parse_page_size(page_size)
       rescue error : Markd::Pdf::Error
         raise ParamError.new(error.message)
       end
 
+      pageless = truthy?(form["pageless"]?)
       margins = parse_margins_spec(form["margin"]?)
+      ensure_room_for_content(margins, page_width_mm, page_height_mm, pageless)
       language = form.fetch("language", "en")
       unless LANGUAGES.includes?(language)
         raise ParamError.new("unknown hyphenation language '#{language}'")
@@ -166,12 +168,12 @@ module MarkpdfWeb
         markdown: markdown,
         style: style,
         theme: blank_to_nil(clean_text(form["theme"]?)),
-        code_theme: blank_to_nil(clean_text(form["code_theme"]?)),
+        code_theme: validated_code_theme(form["code_theme"]?),
         page_size: page_size,
         margins: margins,
         header: clean_text(form["header"]?),
         footer: clean_text(form["footer"]?),
-        pageless: truthy?(form["pageless"]?),
+        pageless: pageless,
         hyphenate: truthy?(form["hyphenate"]?),
         language: language,
         custom_css: clean_css(form["custom_css"]?),
@@ -191,6 +193,35 @@ module MarkpdfWeb
 
     private def self.truthy?(value : String?) : Bool
       value ? %w[1 true on yes].includes?(value.downcase) : false
+    end
+
+    # The code-theme knob gets the same validation as the other name
+    # knobs, with "auto" (the value the placeholder advertises) as the
+    # documented synonym for "leave the pick to markpdf".
+    private def self.validated_code_theme(value : String?) : String?
+      code_theme = Markd::Pdf.normalize_code_theme(clean_text(value))
+      if code_theme && !Tartrazine.themes.includes?(code_theme)
+        raise ParamError.new("unknown code theme '#{code_theme}'")
+      end
+      code_theme
+    end
+
+    # Margins that swallow the page would render a PDF with no content
+    # area; refuse them with the same clean 422 as the other knobs
+    # instead of letting the page come out empty-ish. Pageless grows
+    # the page height to the document, so only the width budget
+    # applies there.
+    private def self.ensure_room_for_content(margins : String, page_width_mm : Float64,
+                                             page_height_mm : Float64, pageless : Bool) : Nil
+      parsed = Markd::Pdf.parse_margins(margins)
+      gutter = parsed.gutter > 0 ? parsed.gutter : 0.0
+      horizontal = parsed.left + parsed.right + gutter
+      vertical = parsed.top + parsed.bottom
+      if horizontal >= page_width_mm || (!pageless && vertical >= page_height_mm)
+        raise ParamError.new(
+          "margins '#{margins}' leave no room on a #{page_width_mm.round.to_i}x#{page_height_mm.round.to_i}mm page"
+        )
+      end
     end
 
     private def self.clean_text(value : String?) : String
@@ -536,6 +567,13 @@ post "/render" do |env|
     env.response.headers.add("Retry-After", "10")
     env.response.content_type = "text/plain; charset=utf-8"
     halt env, status_code: 503, response: error.message
+  rescue error
+    # Anything else (odd custom CSS tripping the layout engine, a
+    # broken data file…) must not surface as Kemal's framed debug
+    # page with source paths: answer with one short text line.
+    STDERR.puts "markpdf-web: render failed: #{error.class}: #{error.message}"
+    env.response.content_type = "text/plain; charset=utf-8"
+    halt env, status_code: 500, response: "rendering failed: #{error.message || error.class}"
   end
 
   render_seconds = MarkpdfWeb.last_render_seconds

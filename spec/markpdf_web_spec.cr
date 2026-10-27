@@ -100,6 +100,35 @@ describe MarkpdfWeb::RenderParams do
     web_params("markdown=x&margin=101").margins.should eq("101")
   end
 
+  it "rejects margins that leave no room on the page" do
+    expect_raises(MarkpdfWeb::ParamError, "leave no room") do
+      web_params("markdown=x&margin=99999")
+    end
+    expect_raises(MarkpdfWeb::ParamError, "leave no room") do
+      web_params("markdown=x&page_size=100x200&margin=60")
+    end
+    # Pageless grows the page height to the document: only the width
+    # budget applies, so tall top/bottom margins that would swallow a
+    # fixed page are fine there.
+    expect_raises(MarkpdfWeb::ParamError, "leave no room") do
+      web_params("markdown=x&margin=160,10")
+    end
+    web_params("markdown=x&pageless=true&margin=160,10").margins.should eq("160,10")
+  end
+
+  it "treats code_theme auto and blank as the automatic pick" do
+    web_params("markdown=x&code_theme=auto").code_theme.should be_nil
+    web_params("markdown=x&code_theme=Auto").code_theme.should be_nil
+    web_params("markdown=x&code_theme=%20%20").code_theme.should be_nil
+    web_params("markdown=x&code_theme=monokai").code_theme.should eq("monokai")
+  end
+
+  it "rejects unknown code themes" do
+    expect_raises(MarkpdfWeb::ParamError, "code theme") do
+      web_params("markdown=x&code_theme=not-a-real-theme")
+    end
+  end
+
   it "trims whitespace and caps long header/footer text" do
     render_params = web_params("markdown=x&header=%20%20page %p%20&footer=#{("f" * 1000)}")
     render_params.header.should eq("page %p")
@@ -179,6 +208,14 @@ describe Markd::Pdf do
     Markd::Pdf.pick_code_theme("monokai", nil, "book").should eq("monokai")
     # An explicit page theme keeps the code theme following it.
     Markd::Pdf.pick_code_theme(nil, "gruvbox-material-dark-medium", "dark").should be_nil
+  end
+
+  it "treats auto, blank and whitespace as unspecified code themes" do
+    Markd::Pdf.pick_code_theme("auto", nil, "dark").should eq(Markd::Pdf::DARK_CODE_THEME)
+    Markd::Pdf.pick_code_theme("AUTO", nil, "book").should be_nil
+    Markd::Pdf.pick_code_theme("", nil, "dark").should eq(Markd::Pdf::DARK_CODE_THEME)
+    Markd::Pdf.pick_code_theme("   ", nil, "book").should be_nil
+    Markd::Pdf.pick_code_theme(" monokai ", nil, "book").should eq("monokai")
   end
 end
 
@@ -387,5 +424,27 @@ describe "markpdf-web routes" do
       headers: HTTP::Headers{"Content-Type" => "application/x-www-form-urlencoded"})
     response.status_code.should eq(422)
     response.body.should contain("markdown")
+  end
+
+  it "renders with code_theme=auto and refuses unknown code themes" do
+    auto = WEB_CLIENT.post("/render", body: "markdown=%60%60%60crystal%0Aputs 1%0A%60%60%60&code_theme=auto",
+      headers: HTTP::Headers{"Content-Type" => "application/x-www-form-urlencoded"})
+    auto.status_code.should eq(200)
+    auto.headers["Content-Type"].should contain("application/pdf")
+    auto.body.should start_with("%PDF")
+
+    bogus = WEB_CLIENT.post("/render", body: "markdown=hi&code_theme=not-a-real-theme",
+      headers: HTTP::Headers{"Content-Type" => "application/x-www-form-urlencoded"})
+    bogus.status_code.should eq(422)
+    bogus.headers["Content-Type"].should contain("text/plain")
+    bogus.body.should contain("code theme")
+    bogus.body.size.should be < 1000
+  end
+
+  it "answers 422 for margins that leave no room on the page" do
+    response = WEB_CLIENT.post("/render", body: "markdown=hello&margin=99999",
+      headers: HTTP::Headers{"Content-Type" => "application/x-www-form-urlencoded"})
+    response.status_code.should eq(422)
+    response.body.should contain("leave no room")
   end
 end

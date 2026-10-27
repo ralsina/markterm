@@ -17,14 +17,25 @@ module Markd
     # dark page.
     DARK_CODE_THEME = "monokai"
 
+    # "auto" in the code-theme knob means the same as leaving it unset:
+    # markpdf picks (dark style, no page theme → a dark code theme).
+    # Blank and whitespace-only values are normalized away too, and a
+    # real name is stripped so " monokai " works.
+    def self.normalize_code_theme(code_theme : String?) : String?
+      cleaned = code_theme.try(&.strip)
+      return if cleaned.nil? || cleaned.empty? || cleaned.downcase == "auto"
+      cleaned
+    end
+
     # A dark page with the light default code theme would glow: pick a
     # dark code theme for the dark style unless one was asked for
     # explicitly. An explicit theme keeps its existing behavior (the
     # code theme follows it when tartrazine knows it).
     def self.pick_code_theme(code_theme : String?, theme : String?, style : String) : String?
+      code_theme = normalize_code_theme(code_theme)
       return code_theme if code_theme
       return DARK_CODE_THEME if style == "dark" && !theme
-      code_theme
+      nil
     end
 
     STYLE_DESCRIPTIONS = {

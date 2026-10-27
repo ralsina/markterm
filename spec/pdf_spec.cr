@@ -449,3 +449,16 @@ describe Markd::Pdf do
     end
   end
 end
+
+describe "Markd::Pdf code theme errors" do
+  it "reports an unknown code theme as Markd::Pdf::Error" do
+    expect_raises(Markd::Pdf::Error, "code theme") do
+      Markd::Pdf.render_to_memory("hi", code_theme: "not-a-real-theme")
+    end
+  end
+
+  it "renders code_theme=auto like an unset one" do
+    String.new(Markd::Pdf.render_to_memory("```crystal\nputs 1\n```", code_theme: "auto"))
+      .should start_with("%PDF")
+  end
+end
