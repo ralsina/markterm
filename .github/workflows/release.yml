@@ -82,9 +82,15 @@ jobs:
           deps="$HOME/ci-deps"
           # pkg-config must resolve libpng to the static build above,
           # not Homebrew's dylib (the linker follows whichever -L wins;
-          # Homebrew's pkg-config dir is the runner default). Crystal's
-          # install action appends its own openssl path, which stays.
-          export PKG_CONFIG_PATH="$deps/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          # Homebrew's pkg-config dir is the runner default). OpenSSL
+          # goes in front for the same reason: install-crystal prepends
+          # the runner's openssl@1.1 (EOL since September 2023) to
+          # PKG_CONFIG_PATH; putting openssl@3 first makes pkg-config
+          # resolve the SSL libraries to 3.x, which the bundling step
+          # then rewrites and ships.
+          brew install openssl@3
+          openssl3="$(brew --prefix openssl@3)"
+          export PKG_CONFIG_PATH="$openssl3/lib/pkgconfig:$deps/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
           export LIBRARY_PATH="$deps/lib"
           export CPATH="$deps/include${CPATH:+:$CPATH}"
           export CMAKE_PREFIX_PATH="$deps"
@@ -116,6 +122,13 @@ jobs:
             # signature, and arm64 refuses to run unsigned code
             codesign --force --sign - "dist/$binary"
           done
+          # If the link ever falls back to OpenSSL 1.1 (EOL since
+          # September 2023, no security fixes), fail the build instead
+          # of shipping it again.
+          if [ -e dist/libssl.1.1.dylib ] || [ -e dist/libcrypto.1.1.dylib ]; then
+            echo "binaries linked against OpenSSL 1.1; expected 3.x" >&2
+            exit 1
+          fi
       - name: Smoke test (from dist, like end users run it)
         run: |
           set -e
