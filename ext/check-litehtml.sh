@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Guards the litehtml submodule against breaking litehtml PR #485 (draw-time
-# subtree pruning) and the upstream CI that gates it.
+# Guards the litehtml submodule: it must sit on top of upstream master and
+# carry only the known markpdf patches, and it must pass the upstream CI
+# gates (tests + clang-tidy).
+#
+# Upstream master itself carries the draw-time subtree pruning ("Draw
+# elements optimization", 277b1d31, from the closed PR #485 discussion).
 #
 # What it does:
 #   1. Reports the patch stack: which commits the submodule carries on top of
-#      the PR branch, so local-only patches never ride along unnoticed and the
-#      PR tip is never missing from the tree markpdf builds against.
+#      upstream master, so local-only patches never ride along unnoticed and
+#      the tree markpdf builds against never falls behind upstream.
 #   2. Builds the exact submodule tree markpdf compiles against (throwaway
 #      worktree, live checkout untouched) with the PR's CI settings:
 #      LITEHTML_BUILD_TESTING=ON and clang-tidy with -warnings-as-errors=*.
@@ -19,41 +23,41 @@
 #     the build itself then proves nothing about the lint gate.
 #
 # Usage: ext/check-litehtml.sh [--no-fetch]
-#   --no-fetch  skip `git fetch` of the PR branch (offline runs)
+#   --no-fetch  skip `git fetch` of upstream master (offline runs)
 #
 # Environment overrides:
-#   PR_REMOTE (default: fork)  PR_BRANCH (default: prune-clipped-subtrees)
+#   BASE_REMOTE (default: origin)  BASE_BRANCH (default: master)
 
 set -euo pipefail
 cd "$(dirname "$0")/litehtml"
 
-PR_REMOTE="${PR_REMOTE:-fork}"
-PR_BRANCH="${PR_BRANCH:-prune-clipped-subtrees}"
+BASE_REMOTE="${BASE_REMOTE:-origin}"
+BASE_BRANCH="${BASE_BRANCH:-master}"
 
-if [ "${1:-}" != "--no-fetch" ] && git remote get-url "$PR_REMOTE" >/dev/null 2>&1; then
-	if ! git fetch "$PR_REMOTE" "$PR_BRANCH" >/dev/null 2>&1; then
-		echo "note: could not fetch $PR_REMOTE/$PR_BRANCH (offline?); using last fetched state"
+if [ "${1:-}" != "--no-fetch" ] && git remote get-url "$BASE_REMOTE" >/dev/null 2>&1; then
+	if ! git fetch "$BASE_REMOTE" "$BASE_BRANCH" >/dev/null 2>&1; then
+		echo "note: could not fetch $BASE_REMOTE/$BASE_BRANCH (offline?); using last fetched state"
 	fi
 fi
 
 # --- patch stack report ----------------------------------------------------
-pr_tip=$(git rev-parse "$PR_REMOTE/$PR_BRANCH" 2>/dev/null || true)
+base_tip=$(git rev-parse "$BASE_REMOTE/$BASE_BRANCH" 2>/dev/null || true)
 sub_head=$(git rev-parse HEAD)
 short_head=$(git rev-parse --short "$sub_head")
 
-if [ -z "$pr_tip" ]; then
-	echo "WARNING: cannot resolve $PR_REMOTE/$PR_BRANCH — cannot check the patch stack"
-elif git merge-base --is-ancestor "$pr_tip" "$sub_head"; then
-	n_local=$(git rev-list --count "$pr_tip..$sub_head")
+if [ -z "$base_tip" ]; then
+	echo "WARNING: cannot resolve $BASE_REMOTE/$BASE_BRANCH — cannot check the patch stack"
+elif git merge-base --is-ancestor "$base_tip" "$sub_head"; then
+	n_local=$(git rev-list --count "$base_tip..$sub_head")
 	if [ "$n_local" -eq 0 ]; then
-		echo "submodule: exactly at the PR tip ($(git rev-parse --short "$pr_tip"))"
+		echo "submodule: exactly at $BASE_REMOTE/$BASE_BRANCH ($(git rev-parse --short "$base_tip"))"
 	else
-		echo "submodule: $n_local local commit(s) on top of the PR tip ($(git rev-parse --short "$pr_tip")) — not in litehtml/litehtml#485:"
-		git log --oneline --reverse "$pr_tip..$sub_head" | sed 's/^/  local-only: /'
+		echo "submodule: $n_local local commit(s) on top of $BASE_REMOTE/$BASE_BRANCH ($(git rev-parse --short "$base_tip")):"
+		git log --oneline --reverse "$base_tip..$sub_head" | sed 's/^/  local-only: /'
 	fi
 else
-	echo "WARNING: submodule HEAD ($short_head) does NOT contain the PR tip" \
-		"($(git rev-parse --short "$pr_tip")) — markpdf is building against a tree missing PR fixes"
+	echo "WARNING: submodule HEAD ($short_head) is NOT on top of $BASE_REMOTE/$BASE_BRANCH" \
+		"($(git rev-parse --short "$base_tip")) — rebase the markpdf patches onto it"
 fi
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
